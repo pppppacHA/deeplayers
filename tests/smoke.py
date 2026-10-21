@@ -50,7 +50,6 @@ with sync_playwright() as p:
         body = (ROOT / 'js' / 'data.js').read_text(encoding='utf8') + LEGACY_JS
         if os.environ.get('TEST_PATCH_HASH'):  # 실제 코드를 모를 때: 시험용 코드의 해시로 바꿔서 돌린다 (저장소 파일은 그대로)
             import hashlib, re
-            body = re.sub(r"const DEV_CODE_HASH = '[0-9a-f]{64}'", "const DEV_CODE_HASH = '" + hashlib.sha256(DCODE.upper().strip().encode()).hexdigest() + "'", body)
         route.fulfill(body=body, content_type='application/javascript; charset=utf-8')
     pg.route('**/js/data.js', _data_js)
     def _auth_js(route):
@@ -927,7 +926,7 @@ with sync_playwright() as p:
     # ---------- 설정 모달 (컴팩트) ----------
     pg.click('#settingsBtn'); pg.wait_for_timeout(80)
     h = rect(pg, '#modal')['h']
-    check('settings_compact', h < 800 and ev(pg, "[...document.querySelectorAll('#modalBody h3')].map(e=>e.textContent)")== ['소리', '표시', '튜토리얼', '개발자', '알림', '테마'], h)
+    check('settings_compact', h < 800 and ev(pg, "[...document.querySelectorAll('#modalBody h3')].map(e=>e.textContent)")== ['소리', '표시', '튜토리얼', '알림', '테마'], h)
     check('bgm_note_removed', 'audio/bgm.mp3' not in text(pg, '#modalBody') and '화면을 한 번 클릭' not in text(pg, '#modalBody') and '내장 앰비언트' not in text(pg, '#modalBody'))
     check('sound_toggles_split', all(pg.locator(f'label.switch:has(#{i})').count() == 1 for i in ['bgmOn', 'clickOn', 'alertOn']) and pg.locator('#sfxOn').count() == 0 and ev(pg, "document.querySelector('#bgmVolume').value")== '25' and '배경음악' in text(pg, '#modalBody') and '클릭음' in text(pg, '#modalBody') and '알림음' in text(pg, '#modalBody'))
     pg.screenshot(path=str(SHOTS / 'settings.png'))
@@ -1284,21 +1283,38 @@ with sync_playwright() as p:
     pv.close()
     load()
 
-    # ---------- 개발자 코드 (일반 빌드: 코드를 맞게 넣어야 켜진다) ----------
-    check('dev_off_by_default', ev(pg, "typeof window.DEV")== 'undefined' and ev(pg, "devBtn()")== '' and ev(pg, "typeof A['dev-give']")== 'undefined' and ev(pg, "typeof DEV_CODE_HASH")== 'string')
+    # ---------- 개발자 도구 (개발자 코드 입력은 없다: 관리자 계정일 때만 켜진다) ----------
+    check('dev_off_by_default', ev(pg, "typeof window.DEV")== 'undefined' and ev(pg, "devBtn()")== '' and ev(pg, "typeof A['dev-give']")== 'undefined' and ev(pg, "typeof DEV_CODE_HASH")== 'undefined' and ev(pg, "typeof devUnlock")== 'undefined')
     check('codes_not_in_repo_plaintext', all((not c) or c not in open(ROOT / f, encoding='utf8').read() for c in (DCODE, UCODE) for f in ('js/data.js', 'js/auth.js', 'js/ui.js', 'js/dev.js', 'js/core.js')))
     pg.click('#settingsBtn'); pg.wait_for_timeout(80)
-    check('dev_code_field_in_settings', pg.locator('#devCode').count() == 1)
-    pg.fill('#devCode', 'WRONG-CODE'); pg.click('[data-act="dev-unlock"]'); pg.wait_for_timeout(200)
-    check('dev_wrong_code_rejected', ev(pg, "typeof window.DEV")== 'undefined' and '올바르지' in text(pg, '#toast'))
-    pg.fill('#devCode', DCODE or 'x'); pg.click('[data-act="dev-unlock"]'); pg.wait_for_timeout(500)
-    check('dev_right_code_enables_tools', ev(pg, "window.DEV")is True and 'dev-finish' in ev(pg, "devBtn()") and pg.locator('[data-act="dev-open"]').count() == 1)
+    check('no_dev_code_input_or_fold_for_normal_user', pg.locator('#devCode').count() == 0 and pg.locator('#devFold').count() == 0 and pg.locator('[data-act="dev-unlock"]').count() == 0)
+    pg.click('[data-act="close"]')
+    ev(pg, "loadDevScript().then(()=>{renderAction();renderCraft()})"); pg.wait_for_timeout(500)  # 관리자 로그인 때와 같은 경로
+    pg.click('#settingsBtn'); pg.wait_for_timeout(80)
+    check('dev_fold_last_and_minimized', ev(pg, "document.querySelector('#devFold').open")is False and ev(pg, "[...document.querySelectorAll('#modalBody > *')].at(-1).id")== 'devFold')
+    pg.click('#devFold summary'); pg.wait_for_timeout(30)
+    check('dev_admin_enables_tools', ev(pg, "window.DEV")is True and 'dev-finish' in ev(pg, "devBtn()") and pg.locator('[data-act="dev-open"]').count() == 1)
     pg.click('[data-act="dev-open"]'); pg.wait_for_timeout(80)
+    check('dev_mode_toggle_button', pg.locator('[data-act="dev-mode"]').count() == 1 and '켜짐' in text(pg, '#modalBody'))
+    pg.click('[data-act="dev-mode"]'); pg.wait_for_timeout(60)
+    check('dev_mode_off_hides_markers_and_notice_writing', ev(pg, "devBtn()")== '' and ev(pg, "canNotice()")is False and '꺼짐' in text(pg, '#modalBody'))
+    pg.click('[data-act="dev-mode"]'); pg.wait_for_timeout(60)
+    check('dev_mode_on_restores', 'dev-finish' in ev(pg, "devBtn()") and ev(pg, "canNotice()")is True)
     ev(pg, "state.money=0"); pg.click('[data-act="dev-money"]'); pg.wait_for_timeout(40)
     check('dev_panel_actions_work', ev(pg, "state.money")== 1000)
     pg.fill('#devQty', '3'); pg.select_option('#devItem', '짐승 고기'); n_meat = ev(pg, "countItem('짐승 고기')"); pg.click('[data-act="dev-give"]'); pg.wait_for_timeout(40)
     check('dev_panel_give_item', ev(pg, "countItem('짐승 고기')")== n_meat + 3)
     pg.click('[data-act="close"]')
+    # 개발자 모드 켜짐: 알림 채널에 말머리를 달아 공지를 쓸 수 있다
+    pg.click('[data-chat="알림"]'); pg.wait_for_timeout(60)
+    check('notice_form_visible_in_dev_mode', pg.locator('#chatForm:not(.hidden)').count() == 1 and pg.locator('#noticeHead:not(.hidden)').count() == 1 and pg.locator('#noticeNote.hidden').count() == 1)
+    pg.fill('#noticeHead', '점검 일정'); pg.fill('#chatInput', '내일 오전 2시에 점검합니다'); pg.press('#chatInput', 'Enter'); pg.wait_for_timeout(80)
+    check('notice_posted_with_head', ev(pg, "state.chats['알림'].at(-1).join('|')")== '점검 일정|내일 오전 2시에 점검합니다' and '점검 일정' in text(pg, '#chatFeed'))
+    pg.click('[data-chat="월드"]'); pg.wait_for_timeout(40)
+    check('notice_head_hidden_in_world_chat', pg.locator('#noticeHead.hidden').count() == 1)
+    pg.click('[data-chat="알림"]'); ev(pg, "A['dev-mode']()"); pg.wait_for_timeout(60); pg.click('[data-act="close"]')
+    check('notice_form_hidden_when_dev_mode_off', pg.locator('#chatForm.hidden').count() == 1 and pg.locator('#noticeHead.hidden').count() == 1 and pg.locator('#noticeNote.hidden').count() == 0)
+    ev(pg, "A['dev-mode']()"); pg.wait_for_timeout(40); pg.click('[data-act="close"]'); pg.click('[data-chat="월드"]')
     check('no_js_errors_dev', not errs, errs)
 
     # ---------- 가입 페이지 ----------
@@ -1504,7 +1520,7 @@ with sync_playwright() as p:
     check('gather_fixed_5min', ev(pg, "actionPreview('제1구역 숲 목재').time")== '5분' and ev(pg, "GATHER_SEC")== 300 and ev(pg, "(()=>{let ok=true;for(let i=0;i<200;i++){state.vitals.hp=100;const r=resolveAction('제1구역 숲 목재',3,3);if(r.sp!==0||r.spCost<0)ok=false}return ok})()"))
     ev(pg, "(()=>{state.vitals.hp=100;state.vitals.sp=100;state.location='본부';renderBars();renderMapHead();renderMap();renderAction()})()")
     pg.click('#settingsBtn') if pg.locator('#settingsBtn').count() else pg.click('[data-system="설정"]'); pg.wait_for_timeout(80)
-    check('settings_has_signup_link', pg.locator('a[href="signup.html"]').count() == 1)
+    check('settings_has_no_signup_link', pg.locator('a[href="signup.html"]').count() == 0)
     pg.click('[data-act="close"]')
     check('no_js_errors', not errs, errs)
     b.close()

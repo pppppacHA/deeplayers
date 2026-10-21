@@ -57,3 +57,31 @@ end $$;
 
 revoke all on function public.submit_bug(text, jsonb), public.list_bugs(), public.delete_bug(bigint) from public, anon;
 grant execute on function public.submit_bug(text, jsonb), public.list_bugs(), public.delete_bug(bigint) to authenticated;
+
+
+-- ===== 공지 (관리자가 쓰고 모두가 읽는다) =====
+create table if not exists public.notices (
+  id bigint generated always as identity primary key,
+  head text not null,
+  body text not null,
+  created_at timestamptz not null default now()
+);
+alter table public.notices enable row level security;   -- 정책 없음 = 직접 접근 불가
+
+create or replace function public.post_notice(p_head text, p_body text) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_admin() then raise exception 'forbidden'; end if;
+  if p_body is null or char_length(trim(p_body)) < 1 or char_length(p_body) > 300 or char_length(coalesce(p_head, '')) > 20 then raise exception 'bad_text'; end if;
+  insert into public.notices(head, body) values (coalesce(nullif(trim(p_head), ''), '공지'), trim(p_body));
+end $$;
+
+-- 최근 30개 (새것이 먼저)
+create or replace function public.list_notices() returns jsonb
+language sql security definer set search_path = public as $$
+  select coalesce(jsonb_agg(to_jsonb(n) order by n.id desc), '[]'::jsonb)
+  from (select id, head, body, created_at from public.notices order by id desc limit 30) n;
+$$;
+
+revoke all on function public.post_notice(text, text), public.list_notices() from public, anon;
+grant execute on function public.post_notice(text, text), public.list_notices() to authenticated;

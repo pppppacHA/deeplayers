@@ -511,7 +511,7 @@ function simulateBattle(m, hp0) {
     rounds++;
     if (chance(.8)) mhp -= dmg * (chance(.1) ? 2 : 1) * jitter();
     if (mhp <= 0) break;
-    if (!chance(fx.evade)) { const d = Math.max(1, Math.round(m.atk * jitter())); hp -= d; lost += d; }
+    if (chance(BATTLE_HIT * (1 - fx.evade))) { const d = Math.max(1, Math.round(m.atk * jitter())); hp -= d; lost += d; }
   }
   return { win: mhp <= 0, rounds, lost: Math.min(lost, m.hpCap || BATTLE_HP_CAP, hp0 - 1) };
 }

@@ -786,3 +786,8 @@ textarea#mailBody{width:100%;min-height:80px;resize:vertical}
 .bug-row{padding:8px 0;border-bottom:1px solid var(--line)}
 .bug-head{display:flex;align-items:center;gap:8px}.bug-head small{color:var(--muted);flex:1}
 .bug-row p{margin:4px 0 0;white-space:pre-wrap;overflow-wrap:anywhere}
+
+.devrow{display:flex;gap:6px;align-items:center;margin-top:6px}.devrow input{flex:1;min-width:0}
+.cloudrow{display:flex;align-items:center;gap:6px}.cloudrow span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dev-fold>summary{cursor:pointer;font-size:calc(11px*var(--fs));font-weight:800;color:var(--muted);list-style:none}.dev-fold>summary::-webkit-details-marker{display:none}
+.dev-fold>summary::before{content:'▸ '}.dev-fold[open]>summary::before{content:'▾ '}

@@ -7,6 +7,8 @@ sv.RequestHandlerClass.log_message = lambda *a: None
 threading.Thread(target=sv.serve_forever, daemon=True).start()
 URL = f'http://127.0.0.1:{sv.server_port}/index.html'
 fails = []
+def rect(pg, sel):
+    return pg.evaluate("s=>{const r=document.querySelector(s).getBoundingClientRect();return {x:r.x,y:r.y,r:r.right,b:r.bottom,w:r.width,h:r.height}}", sel)
 def check(n, c, info=None):
     print(('ok  ' if c else 'FAIL'), n, '' if c else info)
     if not c: fails.append(n)
@@ -46,7 +48,8 @@ with sync_playwright() as p:
     pg.evaluate("document.querySelector('#tutorial').classList.add('hidden')")
     check('admin_account_gets_dev_tools', pg.evaluate("window.DEV===true"))
     pg.evaluate("openSettings()"); pg.wait_for_timeout(100)
-    check('settings_shows_logged_in', pg.locator('[data-act="cloud-push"]').count() == 1 and pg.locator('#clId').count() == 0)
+    cr_ = [rect(pg, '.cloudrow span'), rect(pg, '[data-act="cloud-push"]'), rect(pg, '[data-act="cloud-pull"]')]
+    check('settings_shows_logged_in_with_save_and_load_right', cr_[1]['x'] > cr_[0]['x'] and cr_[2]['x'] > cr_[1]['x'] and abs(cr_[1]['y'] - cr_[0]['y']) < 14 and pg.locator('.cloudrow button').count() == 2, cr_)
     pg.evaluate("state.money=777;save()"); pg.click('[data-act="cloud-push"]'); pg.wait_for_timeout(300)
     check('manual_push_bumps_rev', server['rev'] == 4 and server['data']['money'] == 777, server['rev'])
     server['rev'] = 9  # 다른 기기가 먼저 저장
@@ -56,7 +59,9 @@ with sync_playwright() as p:
     pg.evaluate("openSettings()"); pg.click('[data-act="cloud-pull"]'); pg.wait_for_timeout(1000)
     check('pull_replaces_local_and_reloads', pg.evaluate("state.money") == 4242, pg.evaluate("state.money"))
     pg.evaluate("document.querySelector('#tutorial').classList.add('hidden')")
-    pg.evaluate("openSettings()"); pg.click('[data-act="cloud-logout"]'); pg.wait_for_timeout(700)
+    pg.evaluate("openSettings()")
+    check('settings_has_no_logout_or_signup_link', pg.locator('[data-act="cloud-logout"]').count() == 0 and pg.locator('a[href="signup.html"]').count() == 0)
+    pg.evaluate("closeModal()"); pg.click('#logoutBtn'); pg.click('[data-act="logout-ok"]'); pg.wait_for_timeout(900)
     check('logout_returns_to_signup', pg.url.endswith('signup.html') and pg.evaluate("Cloud.user()") is None)
     b.close()
 print('FAILED' if fails else 'ALL OK', fails)

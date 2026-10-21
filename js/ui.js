@@ -173,14 +173,7 @@ function renderInventory() {
 
 /* 개발자 도구 자리: 배포 코드에는 개발자 기능이 없다. 미리보기 빌드(tools/build_preview.py)만 tools/dev-preview.js 로 이 버튼을 채워 넣는다. */
 let devBtn = () => '';
-/* 개발자 코드: 맞으면 js/dev.js를 불러와 개발자 도구를 켠다 (이번 접속에서만 유지). 클라이언트 검사일 뿐이라 실서비스에서는 서버 권한이 필요하다 */
-async function devUnlock(code) {
-  code = String(code || '').trim().toUpperCase();
-  if (!code || !window.crypto || !crypto.subtle) return false;
-  const h = [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(code)))].map(b => b.toString(16).padStart(2, '0')).join('');
-  if (h !== DEV_CODE_HASH) return false;
-  return loadDevScript();
-}
+/* 개발자 도구: 서버의 관리자 계정으로 로그인했을 때만 js/dev.js 를 불러온다 (개발자 코드 입력은 없앴다). 미리보기 빌드에는 처음부터 합쳐져 있다 */
 async function loadDevScript() {
   if (!window.DEV) await new Promise((ok, no) => { const s = document.createElement('script'); s.src = 'js/dev.js'; s.onload = ok; s.onerror = () => no(new Error('dev.js')); document.head.appendChild(s); });
   return !!window.DEV;
@@ -452,9 +445,11 @@ function renderChat() {
   const tab = state.chatTab, g = state.guild, bar = $('#guildBar');
   bar.classList.toggle('hidden', tab !== '길드');
   bar.innerHTML = `<span class="chan-info">${icon('groups')} ${g ? `${esc(g.name)} · ${g.members.length + 1}명${g.master ? ' · 길드장' : ''}` : '길드 없음'}</span><button data-act="guild-open">${icon('settings')} ${g ? '관리' : '만들기'}</button>`;
-  $('#chatForm').classList.toggle('hidden', tab === '알림'); // 알림은 공지만 받는 읽기 전용
+  const writer = tab === '알림' && canNotice(); // 알림은 공지만 받는 읽기 전용 — 개발자 모드가 켜져 있으면 말머리를 달아 공지를 쓸 수 있다
+  $('#chatForm').classList.toggle('hidden', tab === '알림' && !writer);
+  $('#noticeHead').classList.toggle('hidden', !writer); $('#chatInput').placeholder = writer ? '공지 내용 입력...' : '암호화 메시지 입력...';
   if (tab === '알림') setTray(false);
-  $('#noticeNote').classList.toggle('hidden', tab !== '알림');
+  $('#noticeNote').classList.toggle('hidden', tab !== '알림' || writer);
   $$('[data-chat]').forEach(b => b.classList.toggle('active', b.dataset.chat === state.chatTab));
   $('#chatFeed').innerHTML = (state.chats[state.chatTab] || []).map(([n, m]) => {
     const st = /^\[(.+)\]$/.exec(m), sticker = st && STICKERS.find(x => x[0] === st[1]);
@@ -489,11 +484,9 @@ function cloudApply(data) { // 서버 세이브로 교체하고 다시 시작
   location.reload();
 }
 function cloudGroupHtml() {
-  if (!Cloud.enabled) return '';
-  const u = Cloud.user();
-  return `<div class="setting-group"><h3>서버 저장</h3>` + (u
-    ? `<div class="srow fontrow"><span><b>${esc(u)}</b> 로그인됨</span></div><div class="row-gap"><button data-act="cloud-push">지금 저장</button><button data-act="cloud-pull">서버에서 불러오기</button><button data-act="cloud-logout">로그아웃</button></div><p class="tiny">진행은 20초 정도마다 자동으로 서버에 저장돼요.${_cloudBlocked ? ' (⚠ 다른 기기가 먼저 저장해 자동 저장이 멈춰 있어요)' : ''}</p>`
-    : `<div class="srow fontrow"><span>아이디</span><input id="clId" autocomplete="username" maxlength="16"></div><div class="srow fontrow"><span>비밀번호</span><input id="clPw" type="password" autocomplete="current-password" maxlength="64"></div><div class="row-gap"><button class="primary" data-act="cloud-login">로그인</button><a class="btn-link" href="signup.html">가입</a></div>`) + `</div>`;
+  const u = Cloud.enabled && Cloud.user();
+  if (!u) return '';
+  return `<div class="setting-group"><h3>서버 저장</h3><div class="cloudrow"><span><b>${esc(u)}</b> 로그인됨</span><button data-act="cloud-push">저장</button><button data-act="cloud-pull">서버 불러오기</button></div><p class="tiny">진행은 20초 정도마다 자동으로 서버에 저장돼요.${_cloudBlocked ? ' (⚠ 다른 기기가 먼저 저장해 자동 저장이 멈춰 있어요)' : ''}</p></div>`;
 }
 async function cloudAfterLogin() { // 로그인 직후: 서버에 세이브가 있으면 어느 쪽을 쓸지 묻는다
   const s = await Cloud.pull();
@@ -515,12 +508,12 @@ function openSettings() {
     `<div class="snd-card"><div class="snd-title">${icon('graphic_eq')} 효과음</div><div class="snd-pair">${snd('clickOn', 'ads_click', '클릭음', st.clickOn)}${snd('alertOn', 'notifications_active', '알림음', st.alertOn)}</div>` +
     `<div class="snd-slider">${icon('volume_down')}<input id="sfxVolume" type="range" min="0" max="100" value="${st.sfxVolume}" aria-label="효과음 크기"><b id="sfxValue">${st.sfxVolume}%</b></div></div></div>` +
     `<div class="setting-group"><h3>표시</h3>${sw('cursorOn', '사용자 지정 커서', st.cursor)}<div class="srow fontrow"><span>글자 크기</span><select id="fontSize">${opt('s', '작게', st.fontSize)}${opt('m', '보통', st.fontSize)}${opt('l', '크게', st.fontSize)}${opt('xl', '아주 크게', st.fontSize)}</select></div></div>` +
-    `<div class="setting-group"><h3>튜토리얼</h3><div class="row-gap"><button data-act="tutorial-replay">튜토리얼 다시 보기</button><a class="btn-link" href="signup.html">가입 페이지</a></div></div>` +
+    `<div class="setting-group"><h3>튜토리얼</h3><div class="row-gap"><button data-act="tutorial-replay">튜토리얼 다시 보기</button></div></div>` +
     cloudGroupHtml() +
-    `<div class="setting-group"><h3>개발자</h3>${window.DEV ? `<div class="row-gap"><span class="tiny">개발자 도구가 켜져 있습니다.</span><button data-act="dev-open">개발자 도구 열기</button><button data-act="bug-list">버그 리포트 보기</button></div>` : `<div class="srow fontrow"><span>개발자 코드</span><input id="devCode" type="password" autocomplete="off" maxlength="40" placeholder="운영자만 사용"><button data-act="dev-unlock">확인</button></div>`}</div>` +
     `<div class="setting-group"><h3>알림</h3>${sw('notifyOn', '다른 탭을 보고 있을 때 행동 완료 알림', st.notify)}${sw('guildAlertOn', '길드 채팅 알림 (새 메시지가 오면 알림음과 알림창)', st.guildAlert)}</div>` +
     `<div class="setting-group"><h3>테마</h3><div class="srow theme"><select id="themeSelect">${opt('light', '라이트', st.theme)}${opt('dark', '다크', st.theme)}${opt('custom', '사용자 설정', st.theme)}</select>` +
-    `<span id="customOpts" class="${st.theme === 'custom' ? '' : 'hidden'}"><select id="customBase">${opt('light', '라이트 기반', st.customBase)}${opt('dark', '다크 기반', st.customBase)}</select><input id="customAccent" type="color" value="${esc(st.customAccent)}" title="강조 색상"></span></div></div>`,
+    `<span id="customOpts" class="${st.theme === 'custom' ? '' : 'hidden'}"><select id="customBase">${opt('light', '라이트 기반', st.customBase)}${opt('dark', '다크 기반', st.customBase)}</select><input id="customAccent" type="color" value="${esc(st.customAccent)}" title="강조 색상"></span></div></div>` +
+    (window.DEV ? `<details class="setting-group dev-fold" id="devFold"><summary>개발자</summary><div class="row-gap"><span class="tiny">개발자 도구가 켜져 있습니다.</span><button data-act="dev-open">개발자 도구 열기</button><button data-act="bug-list">버그 리포트 보기</button></div></details>` : ''),
     ['<button data-act="close">취소</button>', '<button class="primary" data-act="settings-save">저장</button>'], true);
 }
 
@@ -840,12 +833,6 @@ const A = {
     if (err) { toast(err); sfx('error'); return; }
     renderProfile(); renderBuffs(true); addLog(`서브잡에 가입했습니다: ${state.subjob.name}`); sfx('ok'); toast('서브잡에 가입했습니다.'); openJob();
   },
-  'dev-unlock': async () => {
-    let ok = false;
-    try { ok = await devUnlock($('#devCode').value); } catch (e) { toast('개발자 도구 파일을 불러오지 못했습니다.'); return; }
-    if (!ok) { toast('코드가 올바르지 않습니다.'); sfx('error'); return; }
-    sfx('ok'); toast('개발자 도구가 켜졌습니다.'); renderAction(); renderCraft(); openSettings();
-  },
   'dev-open': () => openDevPanel(),
   'bug-send': async () => {
     const body = cleanText($('#bugText').value, BUG_MAX);
@@ -1164,8 +1151,24 @@ $('#prevPage').onclick = () => { state.page--; renderInventory(); };
 $('#nextPage').onclick = () => { state.page++; renderInventory(); };
 $$('[data-side]').forEach(b => { b.onclick = () => { state.side = b.dataset.side; renderSide(); save(); }; });
 $$('[data-chat]').forEach(b => { b.onclick = () => { state.chatTab = b.dataset.chat; renderChat(); save(); }; });
+const canNotice = () => typeof devOn === 'function' && devOn();
+async function postNotice(body) {
+  const head = cleanText($('#noticeHead').value, 20) || '공지';
+  try {
+    if (Cloud.enabled && Cloud.user()) { await Cloud.postNotice(head, body); await syncNotices(); }
+    else { state.chats['알림'] = [...state.chats['알림'], [head, body]].slice(-200); renderChat(); }
+    sfx('ok');
+  } catch (e) { toast('공지를 올리지 못했어요. 관리자 계정인지 확인해 주세요.'); sfx('error'); }
+}
+/* 서버 공지: 관리자가 올린 공지를 모두에게 보여 준다 (지난 공지는 최근 30개) */
+async function syncNotices() {
+  if (!(Cloud.enabled && Cloud.user())) return;
+  let rows; try { rows = await Cloud.listNotices(); } catch (e) { return; }
+  state.chats['알림'] = [...NOTICE_FEED(), ...rows.slice().reverse().map(r => [cleanText(r.head, 20), cleanText(r.body, 300)])];
+  if ($('#chatFeed')) renderChat();
+}
 function sendChat(val) {
-  if (state.chatTab === '알림') { toast('알림 채널은 공지만 받을 수 있어요.'); sfx('error'); return; }
+  if (state.chatTab === '알림') { if (canNotice()) postNotice(val); else { toast('알림 채널은 공지만 받을 수 있어요.'); sfx('error'); } return; }
   if (state.chatTab === '길드' && !state.guild) { toast('길드가 없습니다. 위의 버튼으로 길드를 만들거나 가입하세요.'); sfx('error'); return; }
   state.chats[state.chatTab] = [...state.chats[state.chatTab], ['나', val]].slice(-200);
   state.flags.chatted = true;
@@ -1635,6 +1638,7 @@ function init() {
   clock();
   setInterval(() => { tick(); clock(); }, 1000);
   checkUpdate(); setInterval(checkUpdate, 5 * 60 * 1000);
+  syncNotices(); setInterval(syncNotices, 5 * 60 * 1000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) checkUpdate(); });
 }
 if (!(Cloud.enabled && !Cloud.user())) init(); // 서버 연결 중 로그인 전이면 게임을 시작하지 않는다 (가입 페이지로 이동 중)

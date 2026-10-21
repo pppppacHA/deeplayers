@@ -5,7 +5,6 @@
 
 /* ---------- 상수 ---------- */
 const SAVE_KEY = 'deeplayer-ui';
-const DEV_CODE_HASH = 'f562ed73daf5486203f6db9c77ae3812e775ba702c99738cd4b7ebaac3d6e5bb'; // 개발자 코드의 SHA-256 (원문은 코드에 없다). 클라이언트 검사라 실서비스에서는 서버 권한이 필요하다
 const SAVE_VERSION = 8;        // 저장 구조가 바뀌면 올린다 (이전 버전 저장은 무시됨)
 const DEFAULT_LOCATION = '본부';
 const BASE_BAG_CAPACITY = 24;  // 기본 가방 칸 수 (장비/소모품/재료 합계)
@@ -26,6 +25,7 @@ const BGM_FILE = 'audio/bgm.mp3'; // 배경음악 파일. 로드에 실패하면
 const BGM_DEFAULT_VOLUME = 25;
 const FONT_SCALES = { s: 0.92, m: 1, l: 1.15, xl: 1.3 }; // 글자 크기 배율 (설정 > 표시)
 const COLLAPSE_LOSS = .1, COLLAPSE_LOSS_MAX = 80; // 쓰러져 구조될 때 잃는 CR (보유액의 10%, 최대 80)
+const BATTLE_HIT = .03;       // 몬스터가 한 번 공격할 때 맞을 기본 확률 (민첩으로 줄어든다). 전투 한 번에 여러 번 공격하므로 '한 번이라도 다칠' 확률은 이보다 훨씬 높다
 const BATTLE_HP_CAP = 4;      // 일반 전투 1회에서 잃는 HP 상한. 특별한 전투는 몬스터에 hpCap을 따로 지정한다
 const ZONE_TRIP_SEC = 60;     // 이동장치에서 위험구역(지상)으로 내려가는 데 걸리는 시간(초): 1분
 const DUNGEON_STEP_SP = 1;     // 미궁에서 한 칸 이동할 때 기력 소모

@@ -7,7 +7,8 @@ const Cloud = (() => {
   const on = () => !!(CLOUD.url && CLOUD.key);
   const rd = () => { try { const s = JSON.parse(localStorage.getItem(SKEY)); return s && s.access ? s : null; } catch (e) { return null; } };
   const wr = s => { try { s ? localStorage.setItem(SKEY, JSON.stringify(s)) : localStorage.removeItem(SKEY); } catch (e) { /* 저장 불가 */ } };
-  const kor = m => /invalid_invite/.test(m) ? '초대코드가 올바르지 않거나 정원이 찼어요.' : /already registered|already been registered/i.test(m) ? '이미 사용 중인 아이디예요.' : /invalid login/i.test(m) ? '아이디 또는 비밀번호가 맞지 않아요.' : /rate|too many/i.test(m) ? '시도가 너무 많아요. 잠시 뒤에 다시 해 주세요.' : '서버 요청에 실패했어요. 잠시 뒤에 다시 시도해 주세요.';
+  const kor = m => /invalid_invite|Database error saving new user/i.test(m) ? '초대코드가 올바르지 않거나 정원이 찼어요. (계속 안 되면 서버의 초대코드 등록을 확인해 주세요)' : /signups? (are )?(not allowed|disabled)/i.test(m) ? '지금은 가입이 막혀 있어요. (서버의 가입 허용 설정 확인 필요)' : kor0(m);
+  const kor0 = m => /invalid_invite/.test(m) ? '초대코드가 올바르지 않거나 정원이 찼어요.' : /already registered|already been registered/i.test(m) ? '이미 사용 중인 아이디예요.' : /invalid login/i.test(m) ? '아이디 또는 비밀번호가 맞지 않아요.' : /rate|too many/i.test(m) ? '시도가 너무 많아요. 잠시 뒤에 다시 해 주세요.' : `서버 요청에 실패했어요. 잠시 뒤에 다시 시도해 주세요. (${String(m).slice(0, 90)})`;
   async function call(path, body, token) {
     const r = await fetch(base() + path, { method: 'POST', headers: { 'Content-Type': 'application/json', apikey: CLOUD.key, Authorization: 'Bearer ' + (token || CLOUD.key) }, body: JSON.stringify(body || {}) });
     let j = null; try { j = await r.json(); } catch (e) { /* 본문 없음 */ }
@@ -35,6 +36,8 @@ const Cloud = (() => {
     async submitBug(body, ctx) { await call('/rest/v1/rpc/submit_bug', { p_body: body, p_ctx: ctx }, await token()); },
     async listBugs() { return (await call('/rest/v1/rpc/list_bugs', {}, await token())) || []; },
     async deleteBug(id) { await call('/rest/v1/rpc/delete_bug', { p_id: id }, await token()); },
+    async postNotice(head, body) { await call('/rest/v1/rpc/post_notice', { p_head: head, p_body: body }, await token()); },
+    async listNotices() { return (await call('/rest/v1/rpc/list_notices', {}, await token())) || []; },
     async isAdmin() { return (await call('/rest/v1/rpc/is_admin', {}, await token())) === true; },
     /* → { rev, data, at } | null(서버에 세이브 없음) */
     async pull() { const j = await call('/rest/v1/rpc/pull_save', {}, await token()); if (j) { const s = rd(); if (s) { s.rev = j.rev; wr(s); } } return j; },

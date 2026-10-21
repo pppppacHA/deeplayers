@@ -1,7 +1,10 @@
-/* 개발자 도구 — 설정의 '개발자 코드'가 맞을 때만 불러온다 (ui.js devUnlock). 미리보기 빌드에는 처음부터 들어 있다.
+/* 개발자 도구 — 서버의 관리자 계정으로 로그인했을 때만 불러온다 (ui.js loadDevScript). 미리보기 빌드에는 처음부터 들어 있다.
    ※ 브라우저에서 도는 코드라 누구나 파일을 열어 볼 수 있다. 일반 유저에게 숨기는 용도이며, 진짜 권한 검사는 서버가 해야 한다. (SECURITY.md) */
 window.DEV = true;
-devBtn = () => `<button class="dev-btn" data-act="dev-finish" title="개발자 전용: 시간 걸리는 행동을 바로 끝냅니다">${icon('bolt')} 즉시 완료 (DEV)</button>`;
+/* 개발자 모드 켜기/끄기: 끄면 '즉시 완료' 같은 개발자 표시가 사라지고 알림 채널에 공지를 쓸 수도 없다 (설정은 이 브라우저에 기억) */
+var _devMode = (() => { try { return localStorage.getItem('deeplayer-devmode') !== '0'; } catch (e) { return true; } })();
+function devOn() { return !!window.DEV && _devMode !== false; }
+devBtn = () => !devOn() ? '' : `<button class="dev-btn" data-act="dev-finish" title="개발자 전용: 시간 걸리는 행동을 바로 끝냅니다">${icon('bolt')} 즉시 완료 (DEV)</button>`;
 
 const devRefresh = () => { renderProfile(); renderBars(); renderBuffs(true); renderBag(); renderMapHead(); renderMap(); renderAction(); renderSide(); save(); };
 A['dev-finish'] = () => {
@@ -12,7 +15,7 @@ A['dev-finish'] = () => {
 };
 function openDevPanel() {
   const items = Object.keys(ITEMS).map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('');
-  modal('개발자 도구', `<p class="tiny">디버깅용입니다. 눌러서 바로 적용돼요.</p>` +
+  modal('개발자 도구', `<div class="row-gap"><span class="tiny">개발자 모드: <b>${devOn() ? '켜짐' : '꺼짐'}</b> — 끄면 즉시 완료 표시와 공지 쓰기가 숨겨져요.</span><button data-act="dev-mode">${devOn() ? '끄기' : '켜기'}</button></div><p class="tiny">디버깅용입니다. 눌러서 바로 적용돼요.</p>` +
     `<div class="setting-group"><h3>상태</h3><div class="row-gap"><button data-act="dev-finish">행동 즉시 완료</button><button data-act="dev-heal">HP·기력 가득</button><button data-act="dev-hp1">HP 1로</button><button data-act="dev-sp0">기력 0으로</button></div></div>` +
     `<div class="setting-group"><h3>성장</h3><div class="row-gap"><button data-act="dev-money">CR +1000</button><button data-act="dev-level">레벨 +1</button><button data-act="dev-rank">다음 등급으로 승급</button></div></div>` +
     `<div class="setting-group"><h3>아이템</h3><div class="row-gap"><select id="devItem">${items}</select><input id="devQty" type="number" min="1" max="99" value="5" style="width:64px"><button data-act="dev-give">지급</button></div></div>` +
@@ -20,6 +23,7 @@ function openDevPanel() {
     `<div class="setting-group"><h3>저장</h3><div class="row-gap"><button data-act="dev-export">저장 데이터 복사</button></div></div>`, [btnClose], true);
 }
 Object.assign(A, {
+  'dev-mode': () => { _devMode = !_devMode; try { localStorage.setItem('deeplayer-devmode', _devMode ? '1' : '0'); } catch (e) { /* 저장 불가 */ } renderAction(); renderChat(); openDevPanel(); toast(_devMode ? '개발자 모드를 켰습니다.' : '개발자 모드를 껐습니다.'); },
   'dev-heal': () => { state.vitals.hp = state.vitals.hpMax; state.vitals.sp = state.vitals.spMax; devRefresh(); toast('HP·기력을 채웠습니다.'); },
   'dev-hp1': () => { state.vitals.hp = 1; devRefresh(); toast('HP를 1로 만들었습니다.'); },
   'dev-sp0': () => { state.vitals.sp = 0; devRefresh(); toast('기력을 0으로 만들었습니다.'); },
