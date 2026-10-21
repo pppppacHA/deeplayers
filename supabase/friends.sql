@@ -397,3 +397,80 @@ revoke all on function public.guild_apply(bigint) from public, anon;
 revoke all on function public.guild_answer(bigint, boolean) from public, anon;
 revoke all on function public.guild_cancel(bigint) from public, anon;
 revoke all on function public.guild_leave() from public, anon;
+
+
+-- ===== 프로필 이미지 (64px 작은 이미지만 서버에 둔다) + 월드/길드 채팅 =====
+create table if not exists public.avatars (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  img text not null,
+  updated_at timestamptz not null default now()
+);
+alter table public.avatars enable row level security;   -- 정책 없음 = 직접 접근 불가
+
+create or replace function public.set_avatar(p_img text) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if auth.uid() is null then raise exception 'no_auth'; end if;
+  if p_img is null or p_img = '' then delete from public.avatars where user_id = auth.uid(); return; end if;
+  if char_length(p_img) > 20000 or p_img !~ '^data:image/(webp|jpeg|png);base64,[A-Za-z0-9+/=]+$' then raise exception 'bad_img'; end if;
+  insert into public.avatars(user_id, img) values (auth.uid(), p_img)
+  on conflict (user_id) do update set img = excluded.img, updated_at = now();
+end $$;
+
+-- 이름 → 이미지. 이름은 캐릭터 이름 기준 (최대 40명)
+create or replace function public.get_avatars(p_names text[]) returns jsonb
+language sql security definer set search_path = public as $$
+  select coalesce(jsonb_object_agg(s.data->'character'->>'name', a.img), '{}'::jsonb)
+  from public.saves s join public.avatars a on a.user_id = s.user_id
+  where s.data->'character'->>'name' = any (p_names[1:40]);
+$$;
+
+create table if not exists public.chat_msgs (
+  id bigint generated always as identity primary key,
+  channel text not null,          -- 'world' 또는 'g<길드번호>'
+  user_id uuid references auth.users(id) on delete set null,
+  name text not null,
+  body text not null,
+  created_at timestamptz not null default now()
+);
+create index if not exists chat_msgs_c on public.chat_msgs(channel, id);
+alter table public.chat_msgs enable row level security;
+
+-- 채널 이름 풀기: 'world' / 'guild'(내 길드). 길드가 없으면 null
+create or replace function public.chat_channel(p_ch text) returns text
+language sql security definer set search_path = public as $$
+  select case when p_ch = 'world' then 'world'
+              when p_ch = 'guild' then (select 'g' || guild_id::text from public.guild_members where user_id = auth.uid())
+              else null end;
+$$;
+
+create or replace function public.chat_send(p_channel text, p_body text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare me uuid := auth.uid(); ch text; nm text;
+begin
+  if me is null then raise exception 'no_auth'; end if;
+  ch := public.chat_channel(p_channel);
+  if ch is null then return jsonb_build_object('ok', false, 'msg', 'no_channel'); end if;
+  if p_body is null or char_length(trim(p_body)) < 1 or char_length(p_body) > 200 then return jsonb_build_object('ok', false, 'msg', 'bad_text'); end if;
+  if (select count(*) from public.chat_msgs where user_id = me and created_at > now() - interval '10 seconds') >= 6 then return jsonb_build_object('ok', false, 'msg', 'too_fast'); end if;
+  select coalesce(nullif(data->'character'->>'name', ''), split_part((select email from auth.users where id = me), '@', 1)) into nm from public.saves where user_id = me;
+  insert into public.chat_msgs(channel, user_id, name, body) values (ch, me, coalesce(nm, '?'), trim(p_body));
+  if random() < .02 then delete from public.chat_msgs where created_at < now() - interval '3 days'; end if;
+  return jsonb_build_object('ok', true);
+end $$;
+
+-- p_after 보다 새로운 메시지 (처음엔 p_after=0 → 최근 40개). 오래된 것부터
+create or replace function public.chat_fetch(p_channel text, p_after bigint) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare ch text;
+begin
+  if auth.uid() is null then raise exception 'no_auth'; end if;
+  ch := public.chat_channel(p_channel);
+  if ch is null then return '[]'::jsonb; end if;
+  return coalesce((select jsonb_agg(x order by x.id) from (
+    select id, name, body, user_id as uid, created_at as at from public.chat_msgs
+    where channel = ch and id > coalesce(p_after, 0) order by id desc limit 40) x), '[]'::jsonb);
+end $$;
+
+revoke all on function public.set_avatar(text), public.get_avatars(text[]), public.chat_channel(text), public.chat_send(text, text), public.chat_fetch(text, bigint) from public, anon;
+grant execute on function public.set_avatar(text), public.get_avatars(text[]), public.chat_send(text, text), public.chat_fetch(text, bigint) to authenticated;

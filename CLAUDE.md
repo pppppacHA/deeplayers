@@ -90,3 +90,7 @@ STUB_ICONS=1 python3 tests/smoke.py   # 아이콘 폰트를 못 받는 환경(�
 - 도박성 선택지(`GAMBLES`, kind `gamble`): 상점가·본부·개인실·이동장치·캠프 칸. 80% 좋은 일/20% 나쁜 일(`GAMBLE_WIN`), 즉시 결과, 장소별 1시간에 한 번(`state.gambleAt`), 판돈이 있으면 CR 부족 시 불가. 손실 CR은 보유량 이하로 제한.
 - 알림 탭 글쓰기: 서버 `admins` 표 등록 계정이면 `view.isAdmin`(개발자 도구 없이)으로 가능. 실제 권한은 서버 `post_notice`가 검사.
 - 스테이터스 2페이지: 공격력/방어력/모의전투 3칸(1페이지와 같은 크기, `view.statH`). 친구 목록은 2열(`#friendList`).
+- 서버 채팅: 월드/길드 탭은 로그인 시 서버(`chat_msgs`, RPC `chat_send/chat_fetch`)로 연결된다. `chatPoll()`이 6초마다 새 글만 가져오고(`view.chatLast`), 길드 채널은 서버에서 내 길드로 풀린다. 서버가 없거나 로그아웃이면 예전처럼 로컬 전용. 알림은 공지 전용 그대로. `supabase/friends.sql` **전체를 다시 실행**해야 한다.
+- 대원 아이콘: 프로필 이미지를 64px로 줄여 서버 `avatars`에 올린다(`syncMyAvatar`, 바꾸거나 지울 때·접속 때). `avatarOf(이름)`이 채팅·친구창·길드 목록에 이미지(없으면 기본 얼굴)를 그리고, 모르는 이름은 `get_avatars`로 한 번에 가져와 10분 캐시(`view.avatars`).
+- 지역 칭호: `LIT_TITLES` — 지역의 걸을 수 있는 칸을 모두 밝히면(`zoneFullyLit`) '○○을 밝힌 자'(고요한 숲/파도 해안/용암계곡/붉은 협곡/눈보라 설원).
+- 글자 크기: 설명류 +1px, 확인창의 예상 시간·보상·소모는 13px 굵게, 설정은 제목 14/항목 13/설명 12.

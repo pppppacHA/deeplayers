@@ -12,7 +12,7 @@ def rect(pg, sel):
 def check(n, c, info=None):
     print(('ok  ' if c else 'FAIL'), n, '' if c else info)
     if not c: fails.append(n)
-server = {'rev': 0, 'data': None, 'pushes': [], 'sent': [], 'incoming': [], 'results': [], 'answers': [], 'acks': [], 'friends': [], 'mails': [], 'inmail': [], 'mack': [], 'props': [], 'tb': {'incoming': [], 'sent': [], 'results': []}, 'tans': [], 'tack': [], 'gcalls': [], 'ginfo': {'guild': None, 'incoming': [], 'sent': []}}
+server = {'chat': [], 'chatsent': [], 'avatars': {}, 'avq': [], 'setav': [], 'rev': 0, 'data': None, 'pushes': [], 'sent': [], 'incoming': [], 'results': [], 'answers': [], 'acks': [], 'friends': [], 'mails': [], 'inmail': [], 'mack': [], 'props': [], 'tb': {'incoming': [], 'sent': [], 'results': []}, 'tans': [], 'tack': [], 'gcalls': [], 'ginfo': {'guild': None, 'incoming': [], 'sent': []}}
 pg_name = ['테스터']
 def api(route):
     req = route.request; u = req.url; h = {'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'content-type': 'application/json'}
@@ -42,6 +42,10 @@ def api(route):
     if '/rpc/guild_apply' in u: server['gcalls'].append(['apply', body]); return route.fulfill(headers=h, body=json.dumps({'ok': True}))
     if '/rpc/guild_answer' in u: server['gcalls'].append(['answer', body]); server['ginfo']['incoming'] = []; return route.fulfill(headers=h, body=json.dumps({'ok': True, 'joined': True}))
     if '/rpc/guild_leave' in u: server['gcalls'].append(['leave', body]); server['ginfo']['guild'] = None; return route.fulfill(headers=h, body='null')
+    if '/rpc/chat_fetch' in u: return route.fulfill(headers=h, body=json.dumps([m for m in server['chat'] if m['id'] > body.get('p_after', 0)]))
+    if '/rpc/chat_send' in u: server['chatsent'].append(body); return route.fulfill(headers=h, body=json.dumps({'ok': True}))
+    if '/rpc/get_avatars' in u: server['avq'].append(body.get('p_names')); return route.fulfill(headers=h, body=json.dumps({n: server['avatars'][n] for n in body.get('p_names', []) if n in server['avatars']}))
+    if '/rpc/set_avatar' in u: server['setav'].append(body.get('p_img')); return route.fulfill(headers=h, body='null')
     if '/rpc/is_admin' in u: return route.fulfill(headers=h, body='true')
     if '/rpc/pull_save' in u:
         return route.fulfill(headers=h, body=json.dumps(None if server['data'] is None else {'rev': server['rev'], 'data': server['data'], 'at': '2026-10-21T03:00:00Z'}))
@@ -51,7 +55,7 @@ def api(route):
         return route.fulfill(headers=h, body=json.dumps({'ok': True, 'rev': server['rev']}))
     route.fulfill(status=404, headers=h, body='{}')
 with sync_playwright() as p:
-    b = p.chromium.launch(); pg = b.new_page()
+    b = p.chromium.launch(); pg = b.new_page(); pg.on('pageerror', lambda e: print('PAGEERR', str(e)[:200]))
     pg.route('**/fonts.*/**', lambda r: r.abort())
     pg.route('https://x.supabase.co/**', api)
     def patch(r):
@@ -142,6 +146,31 @@ with sync_playwright() as p:
     pg.fill('#guildQ', '새'); pg.click('[data-act="guild-find-player"]'); pg.wait_for_timeout(400); pg.click('[data-act="guild-invite-req"]'); pg.wait_for_timeout(400)
     check('guild_invite_sent', ['invite', {'p_to': '44444444-4444-4444-4444-444444444444'}] in server['gcalls'], [server['gcalls'], pg.inner_text('#modalBody')[:300]])
     pg.evaluate("closeModal()")
+    # ---------- 채팅 서버 연결 / 프로필 이미지 ----------
+    PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
+    server['avatars'] = {'하늘': PNG}
+    server['chat'] = [{'id': 1, 'name': '하늘', 'body': '안녕하세요', 'uid': '11111111-1111-1111-1111-111111111111', 'at': '2026-10-21T09:00:00Z'}, {'id': 2, 'name': '<b>해커</b>', 'body': '<img src=x onerror=alert(1)>', 'uid': '22222222-2222-2222-2222-222222222222', 'at': '2026-10-21T09:00:05Z'}]
+    pg.evaluate("view.avatars={};view.avq=0;state.chatTab='월드';renderChat();chatPoll()"); pg.wait_for_timeout(900)
+    check('world_chat_shows_server_messages', '안녕하세요' in pg.inner_text('#chatFeed') and pg.locator('#chatFeed .msg').count() == 2, pg.inner_text('#chatFeed'))
+    check('chat_is_escaped', pg.locator('#chatFeed img[src="x"]').count() == 0 and pg.locator('#chatFeed b').count() == 0)
+    check('chat_shows_sender_profile_image', pg.locator('#chatFeed .msg-ava img').count() == 1 and any('하늘' in q for q in server['avq']), [server['avq'], pg.evaluate('JSON.stringify(view.avatars)'), pg.inner_html('#chatFeed')[:400]])
+    server['chat'].append({'id': 3, 'name': '하늘', 'body': '새 메시지', 'uid': '11111111-1111-1111-1111-111111111111', 'at': '2026-10-21T09:01:00Z'})
+    pg.evaluate("chatPoll()"); pg.wait_for_timeout(700)
+    check('chat_poll_appends_only_new', pg.locator('#chatFeed .msg').count() == 3 and pg.evaluate("view.chatLast['월드']") == 3)
+    pg.evaluate("sendChat('반가워요')"); pg.wait_for_timeout(600)
+    check('chat_send_goes_to_server', server['chatsent'] and server['chatsent'][-1] == {'p_channel': 'world', 'p_body': '반가워요'}, server['chatsent'])
+    pg.evaluate("state.chatTab='길드';renderChat();chatPoll()"); pg.wait_for_timeout(500)
+    pg.evaluate("sendChat('길드 인사')"); pg.wait_for_timeout(500)
+    check('guild_chat_uses_guild_channel', server['chatsent'][-1] == {'p_channel': 'guild', 'p_body': '길드 인사'}, server['chatsent'])
+    pg.evaluate("state.chatTab='월드';renderChat()")
+    pg.evaluate("(p=>{localStorage.setItem(AVATAR_KEY,p)})(arguments[0])") if False else pg.evaluate("p=>localStorage.setItem(AVATAR_KEY,p)", PNG)
+    pg.evaluate("syncMyAvatar()"); pg.wait_for_timeout(700)
+    check('my_avatar_uploaded_small', server['setav'] and server['setav'][-1].startswith('data:image/') and len(server['setav'][-1]) < 20000, [str(x)[:40] for x in server['setav']])
+    pg.evaluate("document.querySelector('[data-act=\"avatar-clear\"]')") ; pg.evaluate("A['avatar-clear']()"); pg.wait_for_timeout(500)
+    check('my_avatar_removal_synced', server['setav'][-1] == '')
+    pg.evaluate("view.avatars={};state.friends=['하늘'];openFriends(true)"); pg.wait_for_timeout(900)
+    check('friend_list_shows_profile_image', pg.locator('#friendList .round-avatar img').count() == 1)
+    pg.evaluate("state.friends=[];closeModal()")
     pg.evaluate("openSettings()"); pg.click('[data-act="cloud-pull"]'); pg.wait_for_timeout(1000)
     check('pull_replaces_local_and_reloads', pg.evaluate("state.money") == 4242, pg.evaluate("state.money"))
     pg.evaluate("document.querySelector('#tutorial').classList.add('hidden')")

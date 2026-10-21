@@ -834,7 +834,7 @@ textarea#mailBody{width:100%;min-height:80px;resize:vertical}
 
 /* ---------- 설정 창 글자 크기 통일: 제목 13px · 항목 12px · 설명 11px ---------- */
 .setting-group h3,.dev-fold>summary{font-size:calc(13px*var(--fs));font-weight:800;letter-spacing:0}
-.setting-group .srow>span,.setting-group .srow label,.setting-group .switch,.setting-group .snd-switch,.setting-group .snd-title,.setting-group .snd-slider b,.setting-group select,.setting-group .check,.setting-group button,.setting-group input{font-size:calc(12px*var(--fs))}
+.setting-group .srow>span,.setting-group .srow label,.setting-group .switch,.setting-group .snd-switch,.setting-group .snd-title,.setting-group .snd-slider b,.setting-group select,.setting-group .check,.setting-group button,.setting-group input{font-size:calc(13px*var(--fs))}
 .setting-group .snd-switch span,.setting-group .snd-title{font-weight:700}
 .setting-group .tiny,.setting-group .cloudrow span.tiny{font-size:calc(11px*var(--fs));line-height:1.45}
 .setting-group .cloudrow span{font-size:calc(12px*var(--fs))}
@@ -857,3 +857,21 @@ textarea#mailBody{width:100%;min-height:80px;resize:vertical}
 #friendList .nearby-row strong,#friendList .nearby-row small{overflow-wrap:anywhere}
 #friendList .nearby-row button{padding:2px 7px;font-size:calc(11px*var(--fs))}
 #friendList .empty{grid-column:1/-1}
+
+/* 대원 프로필 이미지 */
+.round-avatar,.msg-ava{overflow:hidden}
+.round-avatar img,.msg-ava img{width:100%;height:100%;object-fit:cover;display:block}
+/* 설명 글자를 전체적으로 살짝 키우고, 예상 시간·보상·소모 같은 핵심 정보는 더 크게 */
+.tiny{font-size:calc(11px*var(--fs))}
+.nearby-row small,.quest-row small{font-size:calc(10px*var(--fs))}
+.recipe small,.cstat small{font-size:calc(11px*var(--fs))}
+.action-confirm-inline p{font-size:calc(12px*var(--fs));line-height:1.5}
+.action-confirm-inline small{font-size:calc(13px*var(--fs));font-weight:700;line-height:1.45;margin-top:4px}
+.action-confirm-inline small.odds{font-size:calc(12px*var(--fs));font-weight:600}
+.action-confirm-inline small.repeat-note{font-size:calc(12px*var(--fs));font-weight:500}
+.reward-chip{font-size:calc(12px*var(--fs));padding:3px 9px}
+.last-result p{font-size:calc(12px*var(--fs));line-height:1.5}
+.run-meta{font-size:calc(12px*var(--fs))}
+.setting-group h3,.dev-fold>summary{font-size:calc(14px*var(--fs))}
+.setting-group .tiny,.setting-group .cloudrow span.tiny{font-size:calc(12px*var(--fs))}
+.setting-group .cloudrow span{font-size:calc(13px*var(--fs))}

@@ -1584,6 +1584,9 @@ with sync_playwright() as p:
         const {m,runs}=battleRuns(act,a),line=battleSlotLine(m,runs,0,5,act).text,res=resolveAction(id,1,0,act).text;
         if(runs[0].win){wins++;ok=ok&&line.includes('쓰러뜨렸다')&&res.includes('1승');}else ok=ok&&!line.includes('쓰러뜨렸다')&&res.includes('1패');}
       Object.assign(state,JSON.parse(bak));return ok&&wins>0&&wins<60})()"""))
+    check('lit_title_on_full_map', ev(pg, """(()=>{const bak=JSON.stringify(state);const z=DANGER_ZONES[2];const before=zoneFullyLit(z.id);
+      z.map.forEach((row,y)=>[...row].forEach((c,x)=>{if(c!=='#'&&c!=='.')state.explored[z.id][x+','+y]=1}));
+      const got=checkTitles();const ok=!before&&zoneFullyLit(z.id)&&got.includes('용암계곡을 밝힌 자')&&!state.titles.includes('고요한 숲을 밝힌 자');Object.assign(state,JSON.parse(bak));state.titles=JSON.parse(bak).titles;return ok})()"""))
     check('battle_log_one_line_per_minute', ev(pg, "BATTLE_LOG_SEC")== 60)
     check('difficulty_rises_with_distance', ev(pg, """(()=>{const z=DANGER_ZONES[0],a=Object.values(ACTIONS).find(x=>x.kind==='battle'),e=entranceDist(z);
       const ds=Object.keys(e.d).map(k=>{const [x,y]=k.split(',').map(Number);return tileDifficulty(z,x,y)});

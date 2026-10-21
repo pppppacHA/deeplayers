@@ -64,6 +64,10 @@ const Cloud = (() => {
     async guildAnswer(id, accept) { return await call('/rest/v1/rpc/guild_answer', { p_id: id, p_accept: !!accept }, await token()); },
     async guildCancel(id) { await call('/rest/v1/rpc/guild_cancel', { p_id: id }, await token()); },
     async guildLeave() { await call('/rest/v1/rpc/guild_leave', {}, await token()); },
+    async setAvatar(img) { await call('/rest/v1/rpc/set_avatar', { p_img: img || '' }, await token()); },
+    async getAvatars(names) { return (await call('/rest/v1/rpc/get_avatars', { p_names: names.slice(0, 40) }, await token())) || {}; },
+    async chatSend(channel, body) { return await call('/rest/v1/rpc/chat_send', { p_channel: channel, p_body: body }, await token()); },
+    async chatFetch(channel, after) { return (await call('/rest/v1/rpc/chat_fetch', { p_channel: channel, p_after: after || 0 }, await token())) || []; },
     async isAdmin() { return (await call('/rest/v1/rpc/is_admin', {}, await token())) === true; },
     /* → { rev, data, at } | null(서버에 세이브 없음) */
     async pull() { const j = await call('/rest/v1/rpc/pull_save', {}, await token()); if (j) { const s = rd(); if (s) { s.rev = j.rev; wr(s); } } return j; },

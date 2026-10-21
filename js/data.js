@@ -591,6 +591,8 @@ const MONSTER_KINDS = ['이능 몬스터', '짐승'];
 const STICKERS = [['인사', 'waving_hand'], ['확인', 'thumb_up'], ['감사', 'favorite'], ['웃음', 'sentiment_very_satisfied'], ['응원', 'celebration'], ['주의', 'warning'], ['슬픔', 'sentiment_dissatisfied'], ['잠깐', 'hourglass_top']];
 
 /* 칭호: [이름, 달성 조건 문장, 조건 함수]. 한 번 달성하면 계속 가진다 (state.titles). 프로필에서 조건과 획득 여부를 볼 수 있다 */
+/* 지역 지도를 모두 밝히면 얻는 칭호 (이름 + '을 밝힌 자') */
+const LIT_TITLES = { '제1구역': '고요한 숲', '제2구역': '파도 해안', '제3구역': '용암계곡', '제4구역': '붉은 협곡', '제5구역': '눈보라 설원' };
 const TITLE_DEFS = [
   ['신입 능력자', '기본 칭호', () => true],
   ['재탄생자', '한 번 죽음을 맞이하고 클론으로 다시 깨어난다', () => state.deaths >= 1],
@@ -603,7 +605,8 @@ const TITLE_DEFS = [
   ['새싹 농부', '농장에서 작물을 수확해 도감에 등록한다', () => Object.keys(CROPS).some(n => state.codex.items[n])],
   ['길들이는 자', '지상에서 펫을 길들인다', () => state.pets.length > 0],
   ['동물 친구', '펫을 3종 이상 모은다', () => state.pets.length >= 3],
-  ['견습 장인', '서브잡 레벨 3에 도달한다', () => !!state.subjob && state.subjob.level >= 3]
+  ['견습 장인', '서브잡 레벨 3에 도달한다', () => !!state.subjob && state.subjob.level >= 3],
+  ...Object.entries(LIT_TITLES).map(([zid, nm]) => [`${nm}을 밝힌 자`, `${zid}의 지도를 끝까지 모두 밝힌다`, () => zoneFullyLit(zid)])
 ];
 const TITLES = TITLE_DEFS.map(t => t[0]);
 const TRADE_DAILY = 3; // 주위 대원과의 물건 교환은 하루 3회

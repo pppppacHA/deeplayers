@@ -1356,6 +1356,11 @@ function claimExpedition(i) {
 }
 
 /* ---------- 칭호 ---------- */
+/* 지역의 걸을 수 있는 칸을 전부 밝혔는지 */
+function zoneFullyLit(zid) {
+  const z = DANGER_ZONES.find(x => x.id === zid), ex = state.explored && state.explored[zid]; if (!z || !ex) return false;
+  return z.map.every((row, y) => [...row].every((c, x) => c === '#' || c === '.' || ex[`${x},${y}`]));
+}
 /* 조건을 채운 칭호를 얻는다. 새로 얻은 칭호 이름들 */
 function checkTitles() {
   if (!state.created) return [];
