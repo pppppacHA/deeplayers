@@ -291,7 +291,7 @@ with sync_playwright() as p:
     # ---------- 스테이터스 / 스탯 포인트 ----------
     names = ev(pg, "[...document.querySelectorAll('.stat-head b')].map(b=>b.textContent)")
     check('six_stats_named', names == ['근력', '민첩', '지능', '의지', '감각', '행운'], names)
-    effs = ev(pg, "[...document.querySelectorAll('.stat-eff')].map(e=>e.innerText)")
+    effs = ev(pg, "[...document.querySelectorAll('.stat-eff')].map(e=>e.innerText.replace(/\s+/g,' '))")
     check('effects_show_new_bonuses', '공격력 증가 +10.8%' in effs[0] and '전투 중 다칠 확률 -' in effs[1] and '채집 대성공 확률' in effs[2] and '희귀 채집 확률' in effs[3] and '제작 시간 -' in effs[4] and '제작 대성공 확률' in effs[5], effs)
     check('no_speed_or_exp_bonus_text', all('행동 시간' not in e and '경험치' not in e and '행동시간' not in e for e in effs))
     pg.hover('.stat >> nth=0'); pg.wait_for_timeout(150)
@@ -303,7 +303,7 @@ with sync_playwright() as p:
     ev(pg, "gainExp(600);renderProfile();renderBars();renderStatus()")
     check('max_level_30', ev(pg, "MAX_LEVEL")== 30 and ev(pg, "(()=>{const l=state.character.level,e=state.vitals.exp;state.character.level=30;const u=gainExp(999);const r=[u,state.character.level];state.character.level=l;state.vitals.exp=e;return r.join()})()")== '0,30')
     check('level_up_gives_point', ev(pg, "state.statPoints")== 1 and ev(pg, "state.character.level")== 13 and pg.locator('.stat-plus').count() == 6)
-    check('no_buff_section_when_none', pg.locator('.fx-list').count() == 0 and pg.locator('.buff-icon').count() == 0)
+    check('no_buff_section_when_none', pg.locator('.fx-list').count() == 0 and pg.locator('.buff-icon:not(.weather)').count() == 0 and pg.locator('.buff-icon.weather').count() == 1)
 
     # ---------- 탭 병합 / 장비 ----------
     check('three_left_tabs', ev(pg, "[...document.querySelectorAll('[data-ltab]')].map(b=>b.textContent)") == ['장비', '소지품', '제작'])
@@ -533,15 +533,15 @@ with sync_playwright() as p:
     check('rest_30min_done', pg.locator('[data-act="claim"]').count() == 1 and ev(pg, "!state.pending"))
     pg.click('[data-act="claim"]'); pg.wait_for_timeout(100)
     check('rest_restores_sp', ev(pg, "state.vitals.sp")== sp_before_rest + 10)
-    check('rest_heals_and_buffs', ev(pg, "state.vitals.hp")> 50 and pg.locator('.buff-icon.buff').count() == 1 and pg.locator('.fx-row').count() == 0)
+    check('rest_heals_and_buffs', ev(pg, "state.vitals.hp")> 50 and pg.locator('.buff-icon.buff:not(.weather)').count() == 1 and pg.locator('.fx-row').count() == 0)
     pg.hover('.buff-icon'); pg.wait_for_timeout(150)
     check('buff_tooltip_with_time', '충분한 휴식' in text(pg, '#tooltip') and '남은 시간' in text(pg, '#tooltip'))
     pg.mouse.move(700, 400)
-    bi = rect(pg, '.buff-icon'); pf = rect(pg, '.panel-title:has(#buffIcons)')
+    bi = rect(pg, '.buff-icon:last-child'); pf = rect(pg, '.panel-title:has(#buffIcons)')
     check('buff_icon_top_right', bi['r'] > pf['r'] - 40 and bi['y'] < pf['y'] + 30)
     check('wil_buff_applied', ev(pg, "totalStats().wil")== 22)
     ff(310)
-    check('buff_expires', pg.locator('.buff-icon').count() == 0 and pg.locator('.fx-list').count() == 0)
+    check('buff_expires', pg.locator('.buff-icon:not(.weather)').count() == 0 and pg.locator('.fx-list').count() == 0)
     ev(pg, "state.vitals.hp=20;state.vitals.sp=10;renderBars()")
     pg.click('#choices button:has-text("잠자기")'); pg.wait_for_timeout(60)
     check('sleep_confirm_6h', '6시간' in text(pg, '.action-confirm-inline') and '완전 회복' in text(pg, '.action-confirm-inline'))
@@ -851,7 +851,7 @@ with sync_playwright() as p:
     check('chat_tabs_world_guild_notice', ev(pg, "[...document.querySelectorAll('[data-chat]')].map(b=>b.textContent)")== ['월드', '길드', '알림'] and ev(pg, "state.chatTab")== '월드' and ev(pg, "Object.keys(state.chats).join()")== '월드,길드,알림' and ev(pg, "typeof state.party")== 'undefined')
     check('guild_bar_hidden_on_world', pg.locator('#guildBar').is_hidden() and pg.locator('#chatForm').is_visible())
     pg.click('[data-chat="알림"]'); pg.wait_for_timeout(60)
-    check('notice_tab_read_only', pg.locator('#chatForm').is_hidden() and pg.locator('#noticeNote').is_visible() and pg.locator('#chatFeed .msg').count() == ev(pg, "POSTS['공지'].length") and '서버 공지' in text(pg, '#chatFeed'))
+    check('notice_tab_read_only', pg.locator('#chatForm').is_hidden() and pg.locator('#noticeNote').is_visible() and pg.locator('#chatFeed .msg').count() == ev(pg, "POSTS['공지'].length") and '점검 일정' in text(pg, '#chatFeed'))
     n0 = ev(pg, "state.chats['알림'].length"); ev(pg, "sendChat('몰래 쓰기')")
     check('notice_cannot_send', ev(pg, "state.chats['알림'].length")== n0 and ev(pg, "state.chats['월드'].every(m=>m[1]!=='몰래 쓰기')"))
     pg.click('[data-chat="길드"]'); pg.wait_for_timeout(60)
@@ -930,7 +930,7 @@ with sync_playwright() as p:
     pg.click('#avatarButton'); check('char_options_reopen', not pg.locator('#cFriend').is_checked() and not pg.locator('#cGuild').is_checked())
     check('profile_locked_24h_after_edit', pg.locator('#cName').is_disabled() and pg.locator('#cAbility').is_disabled() and pg.locator('#cFriend').is_disabled() and pg.locator('[data-act="char-save"]').is_disabled() and '24시간' in text(pg, '#modalBody') and ev(pg, "profileLockLeft()")> 23 * 3600e3 and pg.locator('.tchip').first.is_enabled())
     sf, sg2 = rect(pg, 'label.switch:has(#cFriend) i'), rect(pg, 'label.switch:has(#cFriend) > span'); sg3 = rect(pg, 'label.switch:has(#cGuild) i')
-    check('switch_next_to_label', sf['x'] - sg2['r'] < 40 and abs(sf['x'] - sg3['x']) < 2, [sf, sg2, sg3])
+    check('switch_next_to_label', sf['x'] - sg2['r'] < 40 and sg3['x'] > sf['x'] + 40 and abs(sf['y'] - sg3['y']) < 4, [sf, sg2, sg3])
     pg.click('[data-act="close"]')
     ev(pg, "state.profileEditAt=nowMs()-24*3600e3-1000"); pg.click('#avatarButton'); pg.wait_for_timeout(60)
     check('profile_unlocks_after_24h', not pg.locator('#cAbility').is_disabled() and not pg.locator('[data-act="char-save"]').is_disabled())
@@ -942,7 +942,7 @@ with sync_playwright() as p:
     h = rect(pg, '#modal')['h']
     check('settings_compact', h < 800 and ev(pg, "[...document.querySelectorAll('#modalBody h3')].map(e=>e.textContent)") in (['소리', '표시', '튜토리얼', '알림', '테마'], ['저장', '소리', '표시', '튜토리얼', '알림', '테마'], ['소리', '표시', '튜토리얼', '알림', '테마', '저장'], ['소리', '표시', '저장', '튜토리얼', '알림', '테마'], ['소리', '표시', '튜토리얼', '저장', '알림', '테마'], ['소리', '표시', '튜토리얼', '알림', '저장', '테마']), h)
     tr_, md_ = rect(pg, '[data-act="tutorial-replay"]'), rect(pg, '#modalBody')
-    check('tutorial_replay_button_right', tr_['r'] > md_['r'] - 40 and tr_['x'] > md_['x'] + md_['w'] / 2, [tr_, md_])
+    check('tutorial_replay_button_left', tr_['x'] < md_['x'] + 60, [tr_, md_])
     check('local_save_load_buttons', pg.locator('[data-act="local-save"]').count() == 1 and pg.locator('[data-act="local-load"]').count() == 1)
     with pg.expect_download() as dl_:
         pg.click('[data-act="local-save"]')
@@ -1586,8 +1586,18 @@ with sync_playwright() as p:
       Object.assign(state,JSON.parse(bak));return ok&&wins>0&&wins<60})()"""))
     ev(pg, "view.statusPage=1;renderStatus()"); pg.click('#statusBody .mock-card'); pg.wait_for_timeout(100)
     check('mock_card_whole_box_is_button', pg.locator('#mockMon').count() == 1); ev(pg, "closeModal();view.statusPage=0;renderStatus()")
+    check('weather_rules', ev(pg, """(()=>{const kinds=new Set();let okRule=true;for(let d=0;d<60;d++){const w=todayWeather(1.8e12+d*86400000);kinds.add(w.name);const bak=nowMs;okRule=okRule&&(w.wet===(w.name==='비'||w.name==='눈'));}
+      const w0=todayWeather(1.8e12),w1=todayWeather(1.8e12+3600000);return okRule&&kinds.size>=3&&w0.name===todayWeather(1.8e12+1000).name&&typeof weatherFx().gather==='number'&&(weatherFx().gather>0)!==(weatherFx().atk>0)})()"""))
+    check('weather_buff_icon_shown', pg.locator('.buff-icon.weather').count() == 1)
+    pg.evaluate("sendChat = ((o) => (v) => { window.__lastChat = v; })(sendChat)"); pg.click('#diceBtn'); pg.wait_for_timeout(50)
+    check('dice_button_rolls_1_to_6', ev(pg, "(()=>{const m=/주사위를 굴렸어요: ([1-6])$/.exec(window.__lastChat||'');return !!m})()"), ev(pg, "window.__lastChat"))
+    ev(pg, "state.leftTab='INVENTORY';renderLeftTab()"); ih = rect(pg, '#viewInv')['h']
+    ev(pg, "state.leftTab='CRAFT';renderLeftTab()"); ch_ = rect(pg, '#viewCraft')['h']
+    check('craft_tab_same_height_as_inventory', abs(ih - ch_) < 3 and ev(pg, "document.querySelector('#leftMeta').textContent")== '', [ih, ch_])
+    ev(pg, "state.leftTab='EQUIP';renderLeftTab()")
+    check('settings_no_sfx_title', ev(pg, "(openSettings(),!document.querySelector('.snd-title'))")); ev(pg, "closeModal()")
     check('lit_title_on_full_map', ev(pg, """(()=>{const bak=JSON.stringify(state);const z=DANGER_ZONES[2];const before=zoneFullyLit(z.id);
-      z.map.forEach((row,y)=>[...row].forEach((c,x)=>{if(c!=='#'&&c!=='.')state.explored[z.id][x+','+y]=1}));
+      z.map.forEach((row,y)=>[...row].forEach((c,x)=>{if(c!=='#'&&c!=='.'){state.explored[z.id]=state.explored[z.id]||{};state.explored[z.id][x+','+y]=1}}));
       const got=checkTitles();const ok=!before&&zoneFullyLit(z.id)&&got.includes('용암계곡을 밝힌 자')&&!state.titles.includes('고요한 숲을 밝힌 자');Object.assign(state,JSON.parse(bak));state.titles=JSON.parse(bak).titles;return ok})()"""))
     check('battle_log_one_line_per_minute', ev(pg, "BATTLE_LOG_SEC")== 60)
     check('difficulty_rises_with_distance', ev(pg, """(()=>{const z=DANGER_ZONES[0],a=Object.values(ACTIONS).find(x=>x.kind==='battle'),e=entranceDist(z);

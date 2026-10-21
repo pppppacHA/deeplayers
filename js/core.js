@@ -313,6 +313,18 @@ function totalStats() {
 function effects(t = totalStats()) {
   return { atk: Math.min(.5, t.str * .006), evade: Math.min(.5, t.agi * .005), ggreat: Math.min(.5, t.int * .006), rare: Math.min(.5, t.wil * .005), craftTime: Math.min(.5, t.sen * .006 + jobFx().craftTime), craftGreat: Math.min(.5, t.luk * .006) };
 }
+/* ---- 오늘의 날씨 (한국 시간 하루마다 바뀐다): 비·눈이 오는 날은 채집·채굴·낚시 재료 획득 확률 +, 그렇지 않은 날은 사냥 공격력 + ---- */
+const WEATHERS = [
+  { name: '맑음', icon: 'wb_sunny', wet: false, p: .4 }, { name: '흐림', icon: 'cloud', wet: false, p: .3 },
+  { name: '비', icon: 'rainy', wet: true, p: .2 }, { name: '눈', icon: 'weather_snowy', wet: true, p: .1 }
+];
+const WEATHER_GATHER = .15, WEATHER_ATK = .1;
+function todayWeather(now = nowMs()) {
+  const day = Math.floor((now + 9 * 3600000) / 86400000), r = seededRng(day * 7919 + 17)(); let acc = 0, w = WEATHERS[0];
+  for (const x of WEATHERS) { acc += x.p; if (r < acc) { w = x; break; } }
+  return { ...w, desc: w.wet ? `${w.name} 오는 날: 채집·채굴·낚시로 재료를 얻을 확률 +${WEATHER_GATHER * 100}%p` : `${w.name}인 날: 사냥 공격력 +${WEATHER_ATK * 100}%` };
+}
+const weatherFx = () => { const w = todayWeather(); return { gather: w.wet ? WEATHER_GATHER : 0, atk: w.wet ? 0 : WEATHER_ATK }; };
 const modText = mods => Object.entries(mods).map(([k, v]) => `${STAT_DEFS.find(d => d.key === k).name} ${v > 0 ? '+' : ''}${v}`);
 const weaponAtk = () => (state.equipment['무기'] && ITEMS[state.equipment['무기']].atk) || 0;
 
@@ -411,7 +423,7 @@ function actionPreview(id, mi = 0) {
     if (a.kind === 'gather') {
       const h = a.hazard;
       costs.push(`${h.text} 사고 시 HP -${h.hp[0]}~${h.hp[1]} (회당 ${Math.round(h.chance * 100)}%)`);
-      const find = GATHER_FIND * repeatChance(n0 + 1);
+      const find = Math.min(1, GATHER_FIND + weatherFx().gather) * repeatChance(n0 + 1);
       const odds = `재료 획득 ${pct(find)} (빈손 ${pct(1 - find)}) · 대성공(2배) ${pct(fx.ggreat)}${a.rare ? ` · 희귀 ${a.rare} ${pct(.05 + fx.rare)}` : ''} · 사고로 다칠 확률 ${pct(h.chance)} (안 다칠 확률 ${pct(1 - h.chance)})`;
       return { time, gain: `${a.items.join(' / ')} 회당 1~3개 · EXP +6/회 (총 ${rng(cMin * 6, cMax * 6)})`, cost: costs.join(' · '), note, odds };
     }
@@ -727,7 +739,7 @@ function mockRound(m, st, r = Math.random) {
 }
 /* 전투 시뮬레이션 (실시간 아님). hp0에서 시작해 { win, rounds, lost, rs }.
    rnd 가 시드 난수면 같은 결과가 나온다: 진행 중 전투 묘사와 최종 결과가 같은 계산에서 나온다. rs = 라운드별 기록 */
-const battleSnap = () => { const fx = effects(); return { atk: fx.atk, evade: fx.evade, wa: weaponAtk(), top: topCombatStat() }; };
+const battleSnap = () => { const fx = effects(); return { atk: fx.atk + weatherFx().atk, evade: fx.evade, wa: weaponAtk(), top: topCombatStat() }; };
 function simulateBattle(m, hp0, rnd = Math.random, bs = battleSnap()) {
   const dmg = (3 + bs.wa) * (1 + bs.atk), jitter = () => .85 + rnd() * .3, hitP = Math.min(.5, BATTLE_HIT * (m.hit || 1) * (1 - bs.evade)), cap = m.hpCap || BATTLE_HP_CAP;
   const mhp0 = Math.round(m.hp * (.6 + rnd() * .9)); let hp = hp0, mhp = mhp0, rounds = 0, lost = 0; const rs = [];
@@ -790,7 +802,7 @@ function resolveAction(id, cycles = 1, spPaid = 0, act = null) {
   const rep0 = repeatCount(id);
   for (let i = 0; i < cycles; i++) {
     if (i > 0 && state.vitals.hp + r.hp <= HP_RETREAT) { stop = `HP가 ${HP_RETREAT} 이하로 떨어져 중단했습니다.`; break; }
-    const great = a.kind === 'gather' && chance(fx.ggreat), mult = great ? 2 : 1, keep = chance((a.kind === 'gather' ? GATHER_FIND : 1) * repeatChance(rep0 + i + 1));
+    const great = a.kind === 'gather' && chance(fx.ggreat), mult = great ? 2 : 1, keep = chance((a.kind === 'gather' ? Math.min(1, GATHER_FIND + weatherFx().gather) : 1) * repeatChance(rep0 + i + 1));
     if (!keep) lowered++;
     if (great) greats++;
     if (a.kind === 'gather') {

@@ -905,3 +905,38 @@ textarea#mailBody{width:100%;min-height:80px;resize:vertical}
 .trade-row>span{flex:none;width:5.6em;white-space:nowrap}
 .trade-row>select,.trade-row>input:not([type=number]){flex:1 1 0;min-width:0;width:auto}
 .trade-row>input[type=number]{flex:none;width:58px}
+/* 행동 확인창: 보상·위험 내용도 단어와 같은 색 */
+.action-confirm-inline small.gain,.action-confirm-inline small.gain b{color:var(--good)}
+.action-confirm-inline small.risk,.action-confirm-inline small.risk b{color:var(--danger-text)}
+/* 스테이터스 카드: 1행 이름 · 2행 효과 · 3행 퍼센트 */
+.stat-eff span.eff-l{display:block}
+.stat-eff b.eff-v{display:block;margin-top:1px;font-size:calc(14px*var(--fs));font-weight:800;color:var(--accent-2);font-variant-numeric:tabular-nums}
+.mock-card{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:2px}
+.mock-card .stat-head{justify-content:center;gap:6px}
+.mock-card .stat-plus{display:inline-grid;margin:0;border:0;background:none}
+.mock-card .stat-eff,.mock-card .stat-eff span{text-align:center}
+/* 스테이터스 카드는 세로를 컴팩트하게 (글자도 조금 작게) */
+.stat-grid{gap:3px}
+.stat{padding:2px 6px}
+.stat-head b{font-size:calc(11.5px*var(--fs))}
+.stat-head small{font-size:calc(8.5px*var(--fs))}
+.stat-val{font-size:calc(12px*var(--fs))}
+.stat-eff{margin-top:0;line-height:1.2;font-size:calc(10px*var(--fs))}
+.stat-eff span.eff-l{font-size:calc(10px*var(--fs))}
+.stat-eff b.eff-v{font-size:calc(12px*var(--fs));margin-top:0}
+.stat-plus{width:17px;height:17px}
+/* 넓은 화면: 로그는 시간에 이어 글이 칸 폭을 끝까지 쓰며 줄줄이 흐른다 */
+@media (min-width:1201px){
+  .log-row{display:block}
+  .log-row time{display:inline;margin-right:6px}
+  .log-row p{display:inline}
+}
+/* 창 맨 위 설명 글(버그 리포트 등)의 위쪽 여백 줄이기 */
+.modal-body>p.tiny:first-child,.modal-body>p:first-child{margin-top:0}
+.modal-body>textarea#bugText{margin-top:4px}
+/* 설정·프로필 정리 */
+.sw-cols{display:grid;grid-template-columns:1fr 1fr;gap:2px 14px}
+.sw-cols .switch.near{justify-content:space-between}.sw-cols .switch.near>span{min-width:0}
+.pf-row{margin-top:7px}
+#diceBtn{flex:none}
+.sw-cols .switch.near{justify-content:flex-start;gap:10px}

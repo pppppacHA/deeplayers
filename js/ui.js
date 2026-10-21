@@ -87,6 +87,7 @@ function allBuffs() {
   const list = activeBuffs(), p = activePet(), j = state.subjob;
   if (p && petFed(p)) list.push({ id: `펫 · ${PET_SPECIES[p.id].name}`, type: 'buff', icon: 'pets', desc: `함께 다니는 펫. 타일 이동 시간 -${Math.round(petBuff(p) * 100)}%`, endAt: p.fedAt + PET_FED_MS });
   if (j) list.push({ id: `서브잡 · ${j.name}`, type: 'buff', icon: 'work', desc: jobActive() ? `Lv.${j.level} ${jobFxText()}` : `Lv.${j.level} 오늘 납품을 마치면 적용: ${jobFxText(true)}`, endAt: jobActive() ? j.lastAt + JOB_DAY_MS : 0 });
+  { const w = todayWeather(); list.push({ id: `날씨 · ${w.name}`, type: 'buff', icon: w.icon, desc: w.desc, endAt: 0, weather: true }); }
   return list;
 }
 /* 아이템 툴팁 문장: 설명 + 서브잡 태그 + 판매가 */
@@ -96,14 +97,14 @@ function renderBuffs(force) {
   if (!force && sig === renderBuffs.sig) return;
   renderBuffs.sig = sig;
   $('#buffIcons').innerHTML = list.map(b =>
-    `<button class="buff-icon ${b.type}" data-tip-title="${esc(b.id)}" data-tip-desc="${esc(b.desc)}" ${b.endAt ? `data-tip-end="${b.endAt}"` : ''} aria-label="${esc(b.id)}">${icon(b.icon)}</button>`).join('');
+    `<button class="buff-icon ${b.type}${b.weather ? ' weather' : ''}" data-tip-title="${esc(b.id)}" data-tip-desc="${esc(b.desc)}" ${b.endAt ? `data-tip-end="${b.endAt}"` : ''} aria-label="${esc(b.id)}">${icon(b.icon)}</button>`).join('');
   renderStatus();
 }
 function combatPageHtml() { // 스테이터스 2페이지: 공격력 / 방어력 / 모의전투 (1페이지와 같은 칸 크기)
-  const t = totalStats(), fx = effects(t), wa = weaponAtk(), eff = (3 + wa) * (1 + fx.atk), hit = BATTLE_HIT * (1 - fx.evade);
+  const t = totalStats(), fx = effects(t), wa = weaponAtk(), eff = (3 + wa) * (1 + fx.atk + weatherFx().atk), hit = BATTLE_HIT * (1 - fx.evade);
   return '<div class="stat-grid">' +
-    `<div class="stat" data-tip-title="공격력" data-tip-desc="기본 3 + 무기 ${wa}에 근력 보정 +${round1(fx.atk * 100)}%가 곱해집니다."><div class="stat-head"><b>공격력</b><span class="stat-val">${round1(eff)}</span></div><div class="stat-eff"><span>무기 ${esc(state.equipment['무기'] || '맨손')}</span></div></div>` +
-    `<div class="stat" data-tip-title="방어력" data-tip-desc="몬스터의 한 번 공격이 맞을 확률입니다. 기본 ${round1(BATTLE_HIT * 100)}%에서 민첩 보정 -${round1(fx.evade * 100)}%."><div class="stat-head"><b>방어력</b><span class="stat-val">${round1(hit * 100)}%</span></div><div class="stat-eff"><span>피격 확률</span></div></div>` +
+    `<div class="stat" data-tip-title="공격력" data-tip-desc="기본 3 + 무기 ${wa}에 근력 보정 +${round1(fx.atk * 100)}%가 곱해집니다."><div class="stat-head"><b>공격력</b></div><div class="stat-eff"><span class="eff-l">무기 ${esc(state.equipment['무기'] || '맨손')}</span><b class="eff-v">${round1(eff)}</b></div></div>` +
+    `<div class="stat" data-tip-title="방어력" data-tip-desc="몬스터의 한 번 공격이 맞을 확률입니다. 기본 ${round1(BATTLE_HIT * 100)}%에서 민첩 보정 -${round1(fx.evade * 100)}%."><div class="stat-head"><b>방어력</b></div><div class="stat-eff"><span class="eff-l">피격 확률</span><b class="eff-v">${round1(hit * 100)}%</b></div></div>` +
     `<button class="stat span2 mock-card" data-act="extras-open" data-tip-title="모의전투" data-tip-desc="상대를 골라 전투를 구경해 보세요. 실제 진행에는 영향이 없어요."><div class="stat-head"><b>모의전투</b><span class="stat-plus">${icon('sports_martial_arts')}</span></div><div class="stat-eff"><span>연습 상대와 겨뤄 보기</span></div></button>` +
     '</div>';
 }
@@ -116,7 +117,7 @@ function renderStatus() {
   badge.classList.toggle('hidden', !pts);
   $('#statusBody').innerHTML = '<div class="stat-grid">' + STAT_DEFS.map(d => {
     const bonus = t[d.key] - state.stats[d.key];
-    const eff = d.fx.map(([k, label, sign, unit]) => `<span>${label} <b>${sign}${round1(fx[k] * 100)}${unit}</b></span>`).join('');
+    const eff = d.fx.map(([k, label, sign, unit]) => `<span class="eff-l">${label}</span><b class="eff-v">${sign}${round1(fx[k] * 100)}${unit}</b>`).join('');
     return `<div class="stat" data-tip-title="${d.name} · ${d.fx[0][1]}" data-tip-desc="${esc(d.tip)}"><div class="stat-head"><b>${d.name}</b><small>${d.en}</small><span class="stat-val">${state.stats[d.key]}${bonus ? `<em class="${bonus < 0 ? 'neg' : ''}">${bonus > 0 ? '+' : ''}${bonus}</em>` : ''}</span>` +
       `${pts ? `<button class="stat-plus" data-act="stat-up" data-stat="${d.key}" title="포인트 사용">${icon('add')}</button>` : ''}</div><div class="stat-eff">${eff}</div></div>`;
   }).join('') + '</div>';
@@ -125,14 +126,22 @@ function renderStatus() {
 
 /* ---------- 왼쪽 탭: 장비 / 인벤토리 / 제작 ---------- */
 const LEFT_TITLES = { EQUIP: ['장비', 'checkroom'], INVENTORY: ['소지품', 'backpack'], CRAFT: ['제작', 'construction'] };
+function invHeight() { // 소지품 탭을 보여 줬을 때의 세로 길이
+  const vs = ['#viewInv', '#viewCraft', '#viewEquip'].map(q => $(q)), was = vs.map(v => v.classList.contains('hidden')), cr = vs[1];
+  const keep = cr.style.height; cr.style.height = ''; vs[1].classList.add('hidden'); vs[2].classList.add('hidden'); vs[0].classList.remove('hidden');
+  const h = Math.round(vs[0].getBoundingClientRect().height);
+  vs.forEach((v, i) => v.classList.toggle('hidden', was[i])); cr.style.height = keep;
+  return h || 0;
+}
 function renderLeftTab() {
   $$('[data-ltab]').forEach(b => b.classList.toggle('active', b.dataset.ltab === state.leftTab));
   $('#viewEquip').classList.toggle('hidden', state.leftTab !== 'EQUIP');
   $('#viewInv').classList.toggle('hidden', state.leftTab !== 'INVENTORY');
   $('#viewCraft').classList.toggle('hidden', state.leftTab !== 'CRAFT');
   const [name, ic] = LEFT_TITLES[state.leftTab];
+  { const cr = $('#viewCraft'); const h = state.leftTab === 'CRAFT' ? invHeight() : 0; cr.style.height = h ? h + 'px' : ''; cr.style.flex = h ? '0 0 auto' : ''; } // 제작 탭도 소지품 탭과 같은 세로 길이
   $('#leftTitle').textContent = name; $('#leftTitleIcon').textContent = ic;
-  $('#leftMeta').textContent = state.leftTab === 'INVENTORY' ? `${usedSlots()} / ${bagCapacity()}` : state.leftTab === 'CRAFT' ? `${RECIPES.filter(recipeKnown).length}종` : `${Object.values(state.equipment).filter(Boolean).length} / ${EQUIP_SLOTS.length}`;
+  $('#leftMeta').textContent = state.leftTab === 'INVENTORY' ? `${usedSlots()} / ${bagCapacity()}` : state.leftTab === 'CRAFT' ? '' : `${Object.values(state.equipment).filter(Boolean).length} / ${EQUIP_SLOTS.length}`;
 }
 function equipSlotHtml(slot, big) {
   const n = state.equipment[slot], it = n && ITEMS[n];
@@ -458,7 +467,7 @@ function renderSide() {
   if (state.side === '주위 대원') {
     $('#sideView').innerHTML = NEARBY_PLAYERS.map(([n, s]) =>
       `<div class="nearby-row"><div class="round-avatar">${icon('person')}</div><div class="grow"><strong>${esc(n)}</strong><small>${esc(LOCATIONS[state.location].name)} · ${esc(s)}</small></div><button data-act="player" data-player="${esc(n)}">정보</button><button data-act="trade-open" data-player="${esc(n)}">교환</button></div>`).join('') +
-      (NEARBY_PLAYERS.length ? '' : '<div class="empty">주위에 다른 대원이 없습니다.</div>') + '<p class="tiny">같은 장소에 있는 대원은 서버 연결 후에 표시됩니다.</p>';
+      (NEARBY_PLAYERS.length ? '' : '<div class="empty">주위에 다른 대원이 없습니다.</div>') ;
     return;
   }
   const order = [...mine].sort((a, b) => (questProgress(b).ready ? 1 : 0) - (questProgress(a).ready ? 1 : 0)); // 완수 가능한 임무를 맨 위로 (같으면 원래 순서)
@@ -601,10 +610,10 @@ function openSettings() {
   modal('환경 설정',
     `<div class="setting-group"><h3>소리</h3>` +
     `<div class="snd-card">${snd('bgmOn', 'music_note', '배경음악', st.bgmOn)}<div class="snd-slider">${icon('volume_down')}<input id="bgmVolume" type="range" min="0" max="100" value="${st.bgmVolume}" aria-label="배경음악 크기"><b id="bgmValue">${st.bgmVolume}%</b></div></div>` +
-    `<div class="snd-card"><div class="snd-title">${icon('graphic_eq')} 효과음</div><div class="snd-pair">${snd('clickOn', 'ads_click', '클릭음', st.clickOn)}${snd('alertOn', 'notifications_active', '알림음', st.alertOn)}</div>` +
+    `<div class="snd-card"><div class="snd-pair">${snd('clickOn', 'ads_click', '클릭음', st.clickOn)}${snd('alertOn', 'notifications_active', '알림음', st.alertOn)}</div>` +
     `<div class="snd-slider">${icon('volume_down')}<input id="sfxVolume" type="range" min="0" max="100" value="${st.sfxVolume}" aria-label="효과음 크기"><b id="sfxValue">${st.sfxVolume}%</b></div></div></div>` +
     `<div class="setting-group"><h3>표시</h3>${sw('cursorOn', '사용자 지정 커서', st.cursor)}<div class="srow fontrow"><span>글자 크기</span><select id="fontSize">${opt('s', '작게', st.fontSize)}${opt('m', '보통', st.fontSize)}${opt('l', '크게', st.fontSize)}${opt('xl', '아주 크게', st.fontSize)}</select></div></div>` +
-    `<div class="setting-group"><h3>튜토리얼</h3><div class="row-gap end"><button data-act="tutorial-replay">튜토리얼 다시 보기</button></div></div>` +
+    `<div class="setting-group"><h3>튜토리얼</h3><div class="row-gap"><button data-act="tutorial-replay">튜토리얼 다시 보기</button></div></div>` +
     cloudGroupHtml() +
     `<div class="setting-group"><h3>알림</h3>${sw('notifyOn', '다른 탭을 보고 있을 때 행동 완료 알림', st.notify)}${sw('guildAlertOn', '길드 채팅 알림 (새 메시지가 오면 알림음과 알림창)', st.guildAlert)}</div>` +
     `<div class="setting-group"><h3>테마</h3><div class="srow theme"><select id="themeSelect">${opt('light', '라이트', st.theme)}${opt('dark', '다크', st.theme)}${opt('custom', '사용자 설정', st.theme)}</select>` +
@@ -748,7 +757,7 @@ function openFriends(noPoll) {
   const list = state.friends.map(n => `<div class="nearby-row"><div class="round-avatar">${avatarOf(n)}</div><div class="grow"><strong>${esc(n)}</strong><small>${esc((samplePlayer(n) || ['', '온라인'])[1])}</small></div>${Cloud.enabled && Cloud.user() ? `<button data-act="ftrade-open" data-name="${esc(n)}">교환</button>` : ''}<button data-act="friend-remove" data-name="${esc(n)}">삭제</button></div>`).join('');
   modal('친구', `<div class="search-row"><input id="friendSearch" placeholder="대원 이름으로 검색" aria-label="대원 검색"><button data-act="friend-search">검색</button></div><div id="friendResult"></div><div id="friendInbox">${inboxHtml()}</div>` +
     `<div class="choice-label">친구 ${state.friends.length}/${FRIEND_MAX}</div><div id="friendList">${list || '<div class="empty">아직 친구가 없습니다. 주위 대원의 정보 창이나 검색으로 추가하세요.</div>'}</div>` +
-    `<p class="tiny">서버에 로그인하면 이름으로 다른 대원을 찾을 수 있어요. 메일은 친구에게만 보낼 수 있어요. (메일·교환 등은 아직 서버와 연결되지 않았어요)</p>`, [btnClose]);
+    `<p class="tiny">서버에 로그인하면 이름으로 다른 대원을 찾을 수 있어요. 메일은 친구에게만 보낼 수 있어요.</p>`, [btnClose]);
   if (!noPoll) friendPoll();
 }
 const mailItemRow = () => {
@@ -1447,7 +1456,7 @@ function openProfile(keepScroll) {
   // 이미 열려 있는 입력칸에 쓴 내용은 창을 다시 그려도 지우지 않는다
   const dr = $('#cName') ? { ab: $('#cAbility').value, name: $('#cName').value, age: $('#cAge').value, kw: $('#cKeywords').value, desc: $('#cAbilityDesc').value, fr: $('#cFriend').checked, gu: $('#cGuild').checked } : null;
   const lock = profileLockLeft(), dis = lock > 0 ? 'disabled' : '';
-  const row = (label, inner) => `<div class="srow fontrow"><span>${label}</span>${inner}</div>`;
+  const row = (label, inner) => `<div class="srow fontrow pf-row"><span>${label}</span>${inner}</div>`;
   modal('프로필', `<div class="profile-card"><button class="avatar big ${img ? '' : 'empty'}" data-act="avatar-pick" title="이미지 변경" aria-label="프로필 이미지 변경">${img ? `<img src="${esc(img)}" alt="프로필">` : icon('add_a_photo')}<span class="avatar-edit">${icon('photo_camera')}</span></button>` +
     `<div class="pc-info"><div class="title-chip" id="pcTitle">${esc(c.title)}</div><strong>${esc(c.name || '-')}</strong><div class="char-meta">LV.${c.level}　${esc(c.rank)}등급　${c.age}세</div><div class="char-tags">${esc(tags)}</div>${state.subjob ? `<div class="char-job">${esc(`서브잡 · ${state.subjob.name} Lv.${state.subjob.level}`)}</div>` : ''}</div></div>` +
     `<div class="pc-ability"><b>${icon('bolt')} 이능력 · ${esc(c.ability || '미설정')}</b><p>${esc(c.abilityDesc || '이능력 설명이 없습니다.')}</p></div>` +
@@ -1460,7 +1469,7 @@ function openProfile(keepScroll) {
     row('나이', `<input id="cAge" ${dis} type="number" min="${AGE_MIN}" max="${AGE_MAX}" value="${esc(dr ? dr.age : c.age)}">`) +
     row('키워드', `<input id="cKeywords" maxlength="60" ${dis} placeholder="쉼표로 구분 (예: 과묵, 정찰)" value="${esc(dr ? dr.kw : c.keywords)}">`) +
     row('이능력 설명', `<textarea id="cAbilityDesc" maxlength="300" ${dis} placeholder="어떤 능력인지 자유롭게 적어 주세요">${esc(dr ? dr.desc : c.abilityDesc)}</textarea>`) +
-    `${sw('cFriend', '친구 추가 허용', dr ? dr.fr : c.allowFriend, 'near', dis)}${sw('cGuild', '길드 초대 허용', dr ? dr.gu : c.allowGuild, 'near', dis)}</div>` +
+    `<div class="sw-cols">${sw('cFriend', '친구 추가 허용', dr ? dr.fr : c.allowFriend, 'near', dis)}${sw('cGuild', '길드 초대 허용', dr ? dr.gu : c.allowGuild, 'near', dis)}</div></div>` +
     `<p class="tiny">사진 버튼을 눌러 이미지를 고르면 ${AVATAR_PX}px로 자동 압축됩니다. (png·jpg·webp·gif)</p>`,
     [btnClose, `<button data-act="avatar-clear" ${img ? '' : 'disabled'}>이미지 삭제</button>`, `<button class="primary" data-act="char-save" ${dis}>저장</button>`]);
   $('#modalBody').scrollTop = st0;
@@ -1650,7 +1659,7 @@ function openTrade(name, keepScroll) {
     (offers.length ? `<div class="srow fontrow trade-row"><span>내가 줄 물건</span><select id="tradeGive">${uniq.map(n => `<option value="${esc(n)}">${esc(n)} (${countItem(n)})</option>`).join('')}</select><input id="tradeGiveQty" type="number" min="1" value="1" style="width:64px"></div>` +
       `<div class="srow fontrow trade-row"><span>받을 물건</span><select id="tradeWant">${offers.map(([n, q]) => `<option value="${esc(n)}">${esc(n)} (최대 ${q})</option>`).join('')}</select><input id="tradeWantQty" type="number" min="1" value="1" style="width:64px"></div>`
       : '<div class="empty">상대가 내놓은 물건이 없습니다.</div>') +
-    '<p class="tiny">지금은 서버가 없어 상대의 물건은 테스트용으로만 존재합니다. 실제 대원과의 교환은 서버 연결 후 열립니다.</p>';
+    '';
   modal(`${name}님과 교환`, body, [btnClose, `<button class="primary" data-act="trade-do" data-player="${esc(name)}" ${offers.length && tradesLeft() ? '' : 'disabled'}>교환하기</button>`], true);
   $('#modalBody').scrollTop = st0;
 }
@@ -1755,16 +1764,16 @@ async function openGuildOnline(keepForm) {
   const incHtml = inc.length ? '<div class="choice-label">받은 요청</div>' + guildReqRows(inc.map(r => ({ ...r, text: r.kind === 'invite' ? `${r.name} 길드장의 초대` : `${r.name} 대원의 가입 신청` })), r => `<button class="primary" data-act="guild-answer" data-id="${r.id}" data-yes="1">수락</button><button data-act="guild-answer" data-id="${r.id}">거절</button>`) : '';
   const sentHtml = sent.length ? '<div class="choice-label">보낸 요청 (상대가 수락해야 해요)</div>' + guildReqRows(sent.map(r => ({ ...r, text: r.kind === 'invite' ? `${r.name} 대원에게 초대 보냄` : `${r.guild}에 가입 신청함` })), r => `<button data-act="guild-cancel" data-id="${r.id}">취소</button>`) : '';
   if (!g) {
-    modal('길드', `<p class="tiny">길드를 만들면 길드장이 되어 대원을 초대할 수 있어요. 이미 있는 길드에는 가입 신청을 보내고 길드장이 수락하면 가입돼요.</p>` +
-      `<div class="form-row"><label>길드 이름</label><input id="guildName" maxlength="${GUILD_NAME_MAX}" placeholder="${GUILD_NAME_MIN}~${GUILD_NAME_MAX}자" value="${esc(defaultGuildName())}"></div>` + incHtml + sentHtml +
-      `<div class="choice-label">길드 찾기</div><div class="search-row"><input id="guildQ" placeholder="길드 이름으로 검색" value="${esc(dr.s)}"><button data-act="guild-find">검색</button></div><div id="guildFound"></div>`,
+    modal('길드', `<div class="search-row"><input id="guildQ" placeholder="길드 이름으로 검색" aria-label="길드 검색" value="${esc(dr.s)}"><button data-act="guild-find">검색</button></div><div id="guildFound"></div>` + incHtml + sentHtml +
+      `<div class="choice-label">길드 만들기</div><div class="form-row"><label>길드 이름</label><input id="guildName" maxlength="${GUILD_NAME_MAX}" placeholder="${GUILD_NAME_MIN}~${GUILD_NAME_MAX}자" value="${esc(defaultGuildName())}"></div>` +
+      `<p class="tiny">길드를 만들면 길드장이 되어 대원을 초대할 수 있어요. 이미 있는 길드에는 가입 신청을 보내고 길드장이 수락하면 가입돼요.</p>`,
       [btnClose, '<button class="primary" data-act="guild-create">길드 만들기</button>']);
     return;
   }
   const mem = (g.members || []).map(m => ({ uid: m.uid, name: cleanText(m.name, 12), master: !!m.master }));
-  modal(`길드 · ${cleanText(g.name, GUILD_NAME_MAX)}`, `<p class="tiny">${mem.length}/${GUILD_MAX}명 · ${g.master ? '길드장입니다. 대원을 초대하거나 가입 신청을 수락할 수 있어요.' : '길드원입니다.'}</p>` +
-    '<div class="member-grid">' + mem.map(m => `<div class="member-row"><div class="round-avatar">${avatarOf(m.name)}</div><div class="grow"><strong>${esc(m.name)}</strong><small>${m.master ? '길드장' : '길드원'}${m.uid === Cloud.userUid ? ' (나)' : ''}</small></div></div>`).join('') + '</div>' + incHtml + sentHtml +
-    (g.master ? `<div class="choice-label">초대하기</div><div class="search-row"><input id="guildQ" placeholder="대원 이름으로 검색" value="${esc(dr.s)}"><button data-act="guild-find-player">검색</button></div><div id="guildFound"></div>` : ''),
+  modal(`길드 · ${cleanText(g.name, GUILD_NAME_MAX)}`, (g.master ? `<div class="search-row"><input id="guildQ" placeholder="대원 이름으로 검색" aria-label="대원 검색" value="${esc(dr.s)}"><button data-act="guild-find-player">검색</button></div><div id="guildFound"></div>` : '') + incHtml + sentHtml +
+    `<div class="choice-label">길드원 ${mem.length}/${GUILD_MAX}</div><div class="member-grid">` + mem.map(m => `<div class="member-row"><div class="round-avatar">${avatarOf(m.name)}</div><div class="grow"><strong>${esc(m.name)}</strong><small>${m.master ? '길드장' : '길드원'}${m.uid === Cloud.userUid ? ' (나)' : ''}</small></div></div>`).join('') + '</div>' +
+    `<p class="tiny">${g.master ? '길드장입니다. 위 검색으로 대원을 초대하거나 가입 신청을 수락할 수 있어요.' : '길드원입니다.'}</p>`,
     [btnClose, `<button class="danger" data-act="guild-leave">${g.master ? '길드 해산' : '길드 탈퇴'}</button>`]);
 }
 function openGuild() {
@@ -1773,7 +1782,7 @@ function openGuild() {
   if (!g) {
     modal('길드', `<p class="tiny">길드를 만들면 길드장이 되어 다른 대원를 초대할 수 있어요.</p>` +
       `<div class="form-row"><label>길드 이름</label><input id="guildName" maxlength="${GUILD_NAME_MAX}" placeholder="${GUILD_NAME_MIN}~${GUILD_NAME_MAX}자" value="${esc(defaultGuildName())}"></div>` +
-      `<div class="choice-label">가입할 수 있는 길드</div><div class="empty">지금 가입할 수 있는 길드가 없습니다. 다른 길드는 서버 연결 후에 나타납니다.</div>`,
+      `<div class="choice-label">가입할 수 있는 길드</div><div class="empty">지금 가입할 수 있는 길드가 없습니다.</div>`,
       [btnClose, '<button class="primary" data-act="guild-create">길드 만들기</button>']);
     return;
   }
@@ -1798,6 +1807,7 @@ function setTray(open) {
   tray.classList.toggle('hidden', !open);
   $('#emojiBtn').classList.toggle('active', open);
 }
+$('#diceBtn').onclick = () => { sendChat(`🎲 주사위를 굴렸어요: ${1 + Math.floor(Math.random() * 6)}`); setTray(false); };
 $('#emojiBtn').onclick = () => setTray($('#stickerTray').classList.contains('hidden'));
 $('#clearLog').onclick = () => { state.logs = []; renderLogs(); save(); };
 
