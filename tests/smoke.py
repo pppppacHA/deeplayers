@@ -60,6 +60,10 @@ with sync_playwright() as p:
             body = re.sub(r"\{ hash: '[0-9a-f]{64}', max: 50 \}", "{ hash: '" + hashlib.sha256(UCODE.encode()).hexdigest() + "', max: 50 }", body)
         route.fulfill(body=body, content_type='application/javascript; charset=utf-8')
     ctx.route('**/js/auth.js', _auth_js)
+    def _cloud_js(route): # 테스트는 서버 없이 돌린다 (실제 주소·키가 들어 있어도 비워서 서버 연결·가입 페이지 이동을 끈다)
+        import re
+        route.fulfill(body=re.sub(r"const CLOUD = \{[^}]*\};", "const CLOUD = { url: '', key: '' };", (ROOT / 'js' / 'cloud.js').read_text(encoding='utf8')), content_type='application/javascript; charset=utf-8')
+    ctx.route('**/js/cloud.js', _cloud_js)
     pg.clock.install()
 
     def load(clear=False):

@@ -3,12 +3,13 @@
 const CLOUD = { url: 'https://gpqfhophmjzwgarizpbw.supabase.co', key: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdwcWZob3BobWp6d2dhcml6cGJ3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI1NTU2MjgsImV4cCI6MjEwODEzMTYyOH0.lo_KOTLArUIVqS1ECQRBiD73PelM-dEdzaFiQeMn1r8' };
 const Cloud = (() => {
   const SKEY = 'deeplayer-cloud', FAKE = '@deeplayer.game';
+  const base = () => { try { return new URL(CLOUD.url).origin; } catch (e) { return ''; } }; // 주소 뒤에 /rest/v1/ 같은 경로가 붙어 있어도 주소 부분만 쓴다
   const on = () => !!(CLOUD.url && CLOUD.key);
   const rd = () => { try { const s = JSON.parse(localStorage.getItem(SKEY)); return s && s.access ? s : null; } catch (e) { return null; } };
   const wr = s => { try { s ? localStorage.setItem(SKEY, JSON.stringify(s)) : localStorage.removeItem(SKEY); } catch (e) { /* 저장 불가 */ } };
   const kor = m => /invalid_invite/.test(m) ? '초대코드가 올바르지 않거나 정원이 찼어요.' : /already registered|already been registered/i.test(m) ? '이미 사용 중인 아이디예요.' : /invalid login/i.test(m) ? '아이디 또는 비밀번호가 맞지 않아요.' : /rate|too many/i.test(m) ? '시도가 너무 많아요. 잠시 뒤에 다시 해 주세요.' : '서버 요청에 실패했어요. 잠시 뒤에 다시 시도해 주세요.';
   async function call(path, body, token) {
-    const r = await fetch(CLOUD.url.replace(/\/$/, '') + path, { method: 'POST', headers: { 'Content-Type': 'application/json', apikey: CLOUD.key, Authorization: 'Bearer ' + (token || CLOUD.key) }, body: JSON.stringify(body || {}) });
+    const r = await fetch(base() + path, { method: 'POST', headers: { 'Content-Type': 'application/json', apikey: CLOUD.key, Authorization: 'Bearer ' + (token || CLOUD.key) }, body: JSON.stringify(body || {}) });
     let j = null; try { j = await r.json(); } catch (e) { /* 본문 없음 */ }
     if (!r.ok) throw new Error((j && (j.msg || j.message || j.error_description || j.error)) || String(r.status));
     return j;
@@ -47,4 +48,4 @@ const Cloud = (() => {
 })();
 
 /* 서버가 켜져 있는데 로그인하지 않았다면 가입/로그인 페이지부터 보여 준다 */
-if (Cloud.enabled && !Cloud.user() && document.body && !document.body.classList.contains('signup-body')) location.replace('signup.html');
+if (Cloud.enabled && !Cloud.user() && document.body && !document.body.classList.contains('signup-body')) { document.documentElement.style.visibility = 'hidden'; location.replace('signup.html'); } // 로그인 전에는 튜토리얼 등 게임 화면이 잠깐도 보이지 않게 한다

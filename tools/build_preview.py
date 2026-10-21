@@ -17,6 +17,7 @@ def js(name):
     if name == 'data':
         t = t.replace("'audio/bgm.mp3'", "'" + bgm + "'")
     if name == 'cloud':
+        t = re.sub(r"const CLOUD = \{[^}]*\};", "const CLOUD = { url: '', key: '' };", t)  # 미리보기는 서버에 연결하지 않는다
         t = t.replace("location.replace('signup.html')", 'void 0')
     if name == 'ui':
         t = t.replace('<a class="btn-link" href="signup.html">가입 페이지</a>', '').replace('<a class="btn-link" href="signup.html">가입</a>', '').replace("location.href = 'signup.html'", "location.reload()")

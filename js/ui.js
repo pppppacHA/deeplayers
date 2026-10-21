@@ -1637,7 +1637,7 @@ function init() {
   checkUpdate(); setInterval(checkUpdate, 5 * 60 * 1000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) checkUpdate(); });
 }
-init();
+if (!(Cloud.enabled && !Cloud.user())) init(); // 서버 연결 중 로그인 전이면 게임을 시작하지 않는다 (가입 페이지로 이동 중)
 
 /* 길드 메시지 수신 화면 처리: 알림이 켜져 있으면 알림음과 토스트 */
 function onGuildMessage(name, text) {

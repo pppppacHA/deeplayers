@@ -31,9 +31,10 @@ with sync_playwright() as p:
     pg.route('**/fonts.*/**', lambda r: r.abort())
     pg.route('https://x.supabase.co/**', api)
     def patch(r):
-        res = r.fetch(); r.fulfill(response=res, body=res.text().replace("const CLOUD = { url: '', key: '' };", "const CLOUD = { url: 'https://x.supabase.co', key: 'k' };"))
+        res = r.fetch(); r.fulfill(response=res, body=__import__('re').sub(r"const CLOUD = \{[^}]*\};", "const CLOUD = { url: 'https://x.supabase.co/rest/v1/', key: 'k' };", res.text()))
     pg.route('**/js/cloud.js', patch)
     pg.goto(URL); pg.wait_for_timeout(700)
+    check('gate_no_tutorial_before_signup', pg.evaluate("typeof state==='undefined'||document.querySelector('#tutorial')===null||document.querySelector('#tutorial').classList.contains('hidden')") or pg.url.endswith('signup.html'))
     check('gate_redirects_to_signup_when_logged_out', pg.url.endswith('signup.html'), pg.url)
     check('signup_page_has_tabs', pg.locator('#suTabs:not(.hidden)').count() == 1 and pg.locator('#suForm:not(.hidden)').count() == 1 and pg.locator('#liForm.hidden').count() == 1)
     pg.click('[data-su="login"]')
