@@ -26,7 +26,7 @@
 - 이동·입장·퇴장·타일·채집·전투는 `askAction` 확인창을 거친다. 시간이 걸리지 않는 행동은 누르면 바로 실행된다: 조사(`A.choice`가 `startAction` 직행), 임무 수주/상점(kind `board`/`shop`, 창을 바로 연다).
 - 구역 활동 패널(`#actionMain`/`#choices`)은 내용만큼 늘어나며 스크롤이 생기지 않는다(`.action-panel{flex:0 0 auto}`). 확인/취소 버튼이 항상 보여야 한다.
 - 로그(`addLog`)는 특별한 사건만 남긴다: 임무 수주/완수, 길드 생성, 이벤트·대성공·사고·패배·희귀 획득·레벨 업·가방 부족이 있는 행동 결과, 제작 대성공. 채팅·이동·행동 시작은 남기지 않는다.
-- 시간: 공중 이동 0분(기력 `MOVE_SP_*`), 지상 타일 1칸 `DUNGEON_STEP_SEC`=180초(3분)+기력 1(험난한 지형 `ROUGH_EXTRA_SEC`: 들어가는 칸마다 +2분/+3분), 채집/전투 1회 300~480초, 조사는 시간 0(칸마다 12시간에 한 번). 제작은 `state.crafting`(별도 작업, 다른 행동과 동시).
+- 시간: 공중 이동 0분(기력 `MOVE_SP_*`), 지상 타일 1칸 `DUNGEON_STEP_SEC`=60초(1분)+기력 1(험난한 지형도 같음, `ROUGH_EXTRA_SEC`는 0), 채집 1회 5분, 전투 1회 6분(고정), 조사는 시간 0(칸마다 12시간에 한 번). 제작은 `state.crafting`(별도 작업, 다른 행동과 동시).
 - 스테이터스 효과(`effects()`): 근력=공격력 증가(`atk`, 전투 데미지 배율→사냥 성공 확률), 민첩=피격 감소, 지능=채집 대성공, 의지=희귀 채집, 감각=제작 시간 단축, 행운=제작 대성공.
 - 타일(`a~e`=`terrains[0..4]`)마다 재료·희귀템·몬스터·설명이 다르다. 채집 선택지는 재료마다 문구가 다르고(`GATHER_VERBS`: '나무를 벤다' 등, 아이콘은 `GATHER_KINDS` 방식별), 칸마다 지형 재료 중 0~2개만 나타난다(`tileGatherIds`, 입장 시드 `dungeon.seed`로 정해져 같은 칸은 같은 결과). 전투 문구는 몬스터별('…의 흔적을 쫓는다').
 - **반복/재설정**: 같은 행동(`state.repeats[id]={n,at}`)을 4번째 이상 반복하면 아이템 획득 확률이 떨어진다(`repeatChance`, 경험치는 그대로). 12시간 뒤 초기화. 조사는 `state.invAt[구역,x,y]` 기준 12시간 뒤 다시 가능.
@@ -81,3 +81,4 @@ STUB_ICONS=1 python3 tests/smoke.py   # 아이콘 폰트를 못 받는 환경(�
 - 레시피: 건조 식량=민물고기, 구운 고기=짐승 고기만. 버프/디버프는 스테이터스 제목줄 아이콘으로만 표시.
 - 프로필 수정: 이능력 이름 포함, 첫 수정은 바로, 이후 24시간 간격(`state.profileEditAt`, `profileLockLeft()`; 칭호 제외). 전투 승리 확률은 최대 99%(`BATTLE_MAX_WIN_MISS`). 설정에 로컬 저장/불러오기(세이브 .json 파일: `{game,version,savedAt,data}`), 튜토리얼 다시 보기 버튼은 오른쪽.
 - 친구 찾기: 서버 로그인 시 `Cloud.searchPlayers`(RPC `search_players`, `supabase/friends.sql` 을 한 번 실행해야 함)로 `saves`의 캐릭터 이름을 검색. 결과는 `REMOTE_PLAYERS`에 담아 `addFriend` 가능. 메일·교환·길드 초대는 아직 서버 미연결.
+- 서버 소셜(모두 `supabase/friends.sql`, 로그인 시): 친구 신청→상대 수락(`friend_reqs`/`friendships`), 메일(`mails`, 친구에게만, 받으면 `receiveServerMail`), 교환(`trades`, 제안 때 내 물건을 맡기고 수락/거절/취소/3일 만료 시 메일로 지급·반환), 길드(`guilds`/`guild_members`/`guild_reqs`: 초대→초대받은 사람 수락, 가입 신청→길드장 수락; 서버가 기준이라 `guildSyncState`가 state.guild를 맞춤). `friendPoll()`이 60초마다 가져온다. 길드 채팅은 아직 서버 미연결.

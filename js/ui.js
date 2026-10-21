@@ -316,7 +316,7 @@ function previewOf(id, mi) {
   const m = state.dungeon && view.target ? planMove(...view.target) : { err: '이동할 수 없습니다.' };
   if (m.err) return m;
   const z = zoneOf(state.dungeon.zone), info = tileInfo(z, tileOf(z, ...view.target));
-  return { time: `${Math.round(m.sec / 6) / 10}분 (${m.steps}칸${m.rough ? ` · 험난한 지형 ${m.rough}칸 포함` : ''})`, gain: `${info.name} 도착`, cost: `기력 -${m.sp}`, desc: `${info.name} — ${info.desc}` };
+  return { time: `${fmtDur(m.sec)} (${m.steps}칸${m.rough ? ` · 험난한 지형 ${m.rough}칸 포함` : ''})`, gain: `${info.name} 도착`, cost: `기력 -${m.sp}`, desc: `${info.name} — ${info.desc}` };
 }
 function renderAction() {
   const loc = LOCATIONS[state.location], main = $('#actionMain'), panel = $('#actionPanel');
@@ -344,7 +344,7 @@ function renderAction() {
     return `<div class="last-result"><div class="lr-head"><strong>${icon('assignment_turned_in')} 결과 · ${esc(ACTIONS[id].title)}</strong><button data-act="claim" aria-label="닫기">${icon('close')}</button></div><p>${esc(r.text)}</p>` +
       `<div class="reward-list">${chipList(gain)}${loss.map(c => `<span class="reward-chip bad">${esc(c)}</span>`).join('')}</div></div>`; })() : '';
   const tinfo = d && tileInfo(zoneOf(d.zone), tileOf(zoneOf(d.zone), d.x, d.y));
-  let html = d ? `<h3>${icon('explore')} ${esc(loc.name)} · ${esc(tinfo.name)}</h3><p>${esc(tinfo.desc)}</p><p class="tiny">가고 싶은 타일을 누르면 이동 확인창이 뜹니다. 한 칸에 ${DUNGEON_STEP_SEC / 60}분(험난한 지형은 +2~3분) · 기력 ${DUNGEON_STEP_SP}이 듭니다.</p>`
+  let html = d ? `<h3>${icon('explore')} ${esc(loc.name)} · ${esc(tinfo.name)}</h3><p>${esc(tinfo.desc)}</p><p class="tiny">가고 싶은 타일을 누르면 이동 확인창이 뜹니다. 한 칸에 ${DUNGEON_STEP_SEC / 60}분 · 기력 ${DUNGEON_STEP_SP}이 듭니다.</p>`
     : `<h3>${esc(loc.name)}</h3><p>${loc.danger ? '입장하면 타일 미궁을 탐색할 수 있습니다.' : '행동을 선택하면 예상 시간과 보상을 먼저 확인할 수 있습니다.'}</p>`;
   if (view.phase === 'confirm') {
     const a = ACTIONS[view.id], todo = a.kind === 'todo', multi = a.kind === 'gather' || a.kind === 'battle', pv = previewOf(view.id, view.mult);
@@ -578,11 +578,76 @@ function openSystem(name) {
 }
 
 /* ---------- 친구 / 메일 ---------- */
-function openFriends() {
-  const list = state.friends.map(n => `<div class="nearby-row"><div class="round-avatar">${icon(speakerIcon(n))}</div><div class="grow"><strong>${esc(n)}</strong><small>${esc((samplePlayer(n) || ['', '온라인'])[1])}</small></div><button data-act="friend-remove" data-name="${esc(n)}">삭제</button></div>`).join('');
-  modal('친구', `<div class="search-row"><input id="friendSearch" placeholder="대원 이름으로 검색" aria-label="대원 검색"><button data-act="friend-search">검색</button></div><div id="friendResult"></div>` +
+let _inboxN = -1, _tradeN = -1, _guildN = -1, _polling = false;
+const itemsText = list => list.map(([n, q]) => `${n} ×${q}`).join(', ');
+const inboxHtml = () => {
+  let h = (view.inbox && view.inbox.length)
+    ? `<div class="choice-label">받은 친구 신청 ${view.inbox.length}건</div>` + view.inbox.map(r => `<div class="nearby-row"><div class="round-avatar">${icon(speakerIcon(r.name))}</div><div class="grow"><strong>${esc(r.name)}</strong><small>친구 신청을 보냈어요</small></div><button class="primary" data-act="friend-accept" data-id="${r.id}">수락</button><button data-act="friend-decline" data-id="${r.id}">거절</button></div>`).join('') : '';
+  if (view.tIn && view.tIn.length) h += `<div class="choice-label">받은 교환 제안 ${view.tIn.length}건</div>` + view.tIn.map(r => `<div class="nearby-row"><div class="round-avatar">${icon('swap_horiz')}</div><div class="grow"><strong>${esc(r.name)}</strong><small>${esc(`줌: ${itemsText(r.give)} ↔ 요청: ${itemsText(r.want)}`)}</small></div><button class="primary" data-act="ftrade-accept" data-id="${r.id}">수락</button><button data-act="ftrade-decline" data-id="${r.id}">거절</button></div>`).join('');
+  if (view.tOut && view.tOut.length) h += `<div class="choice-label">내가 보낸 교환 제안 ${view.tOut.length}건 (물건은 맡겨 둔 상태)</div>` + view.tOut.map(r => `<div class="nearby-row"><div class="round-avatar">${icon('hourglass_top')}</div><div class="grow"><strong>${esc(r.name)}</strong><small>${esc(`내가 줌: ${itemsText(r.give)} ↔ 받을 것: ${itemsText(r.want)}`)}</small></div><button data-act="ftrade-cancel" data-id="${r.id}">취소</button></div>`).join('');
+  return h;
+};
+const sid9 = v => intIn(v, 1, 9e15, 0);
+async function friendPoll() { // 서버에서 친구 신청·메일·교환 소식을 가져온다
+  if (!Cloud.enabled || !Cloud.user() || !state.created || _polling) return;
+  _polling = true;
+  try {
+    let changed = false, newMail = 0;
+    try { // 친구 신청 / 결과
+      const ib = await Cloud.friendInbox();
+      view.inbox = (ib.incoming || []).map(r => ({ id: sid9(r.id), name: cleanText(r.name, 12) })).filter(r => r.id && r.name);
+      for (const r of ib.results || []) {
+        const n = cleanText(r.name, 12), id = sid9(r.id); if (!id) continue;
+        if (r.status === 'accepted') { const err = addFriendAccepted(n); toast(err ? `${n} 대원이 수락했지만 ${err}` : `${n} 대원이 친구 신청을 수락했어요.`); }
+        else toast(`${n} 대원이 친구 신청을 거절했어요.`);
+        changed = true; try { await Cloud.ackFriendReq(id); } catch (e) { /* 다음에 다시 */ }
+      }
+      if (view.inbox.length > Math.max(_inboxN, 0)) toast(`친구 신청이 ${view.inbox.length}건 와 있어요. (친구 창에서 확인)`);
+      _inboxN = view.inbox.length;
+    } catch (e) { /* 서버 준비 전 */ }
+    try { // 서버 친구 목록(메일·교환 주소)
+      const fl = await Cloud.listFriends(); view.friendUid = {};
+      for (const f of fl) { const n = cleanText(f.name, 12); if (n && /^[0-9a-f-]{36}$/i.test(f.uid)) { view.friendUid[n] = f.uid; if (!state.friends.includes(n)) { addFriendAccepted(n); changed = true; } } }
+    } catch (e) { /* 서버 준비 전 */ }
+    try { // 메일
+      const ml = await Cloud.fetchMail(), ids = [];
+      for (const m of ml) {
+        const id = sid9(m.id); if (!id) continue;
+        receiveServerMail(cleanText(m.name, 12) || '?', cleanText(m.subject, 30) || '(제목 없음)', cleanText(m.body, 300), m.items); ids.push(id); newMail++;
+      }
+      if (ids.length) { await Cloud.ackMail(ids); renderMailBadge(); toast(`새 메일 ${ids.length}통이 도착했어요.`); }
+    } catch (e) { /* 서버 준비 전 */ }
+    try { // 교환
+      const tb = await Cloud.tradeInbox(), fix = r => ({ id: sid9(r.id), name: cleanText(r.name, 12), give: cleanItemList(r.give, 3), want: cleanItemList(r.want, 3) });
+      view.tIn = (tb.incoming || []).map(fix).filter(r => r.id && r.give.length && r.want.length);
+      view.tOut = (tb.sent || []).map(fix).filter(r => r.id);
+      for (const r0 of tb.results || []) {
+        const r = fix(r0); if (!r.id) continue;
+        if (r0.status === 'accepted') receiveServerMail(`교환 · ${r.name}`.slice(0, 12), '교환 성사', `${r.name} 대원이 교환을 수락했어요. 받은 물건을 수령하세요.`, r.want);
+        else receiveServerMail(`교환 · ${r.name}`.slice(0, 12), '교환 취소', `${r.name} 대원과의 교환이 성사되지 않았어요. 맡겨 둔 물건을 돌려받으세요.`, r.give);
+        toast(r0.status === 'accepted' ? `${r.name} 대원과의 교환이 성사됐어요. 메일함에서 수령하세요.` : `${r.name} 대원과의 교환이 취소됐어요. 메일함에서 물건을 돌려받으세요.`);
+        changed = true; try { await Cloud.ackTrade(r.id); } catch (e) { /* 다음에 다시 */ }
+      }
+      if (view.tIn.length > Math.max(_tradeN, 0)) toast(`교환 제안이 ${view.tIn.length}건 와 있어요. (친구 창에서 확인)`);
+      _tradeN = view.tIn.length;
+    } catch (e) { /* 서버 준비 전 */ }
+    try { // 길드
+      const gi = await Cloud.guildInfo(); guildSyncState(gi);
+      const n = (gi.incoming || []).length;
+      if (n > Math.max(_guildN, 0)) toast(`길드 요청이 ${n}건 와 있어요. (길드 창에서 확인)`);
+      _guildN = n;
+    } catch (e) { /* 서버 준비 전 */ }
+    if (changed || newMail) { renderMailBadge(); if ($('#friendInbox')) openFriends(true); }
+    else if ($('#friendInbox')) $('#friendInbox').innerHTML = inboxHtml();
+  } finally { _polling = false; }
+}
+if (Cloud.enabled) { setTimeout(friendPoll, 5000); setInterval(friendPoll, 60000); }
+function openFriends(noPoll) {
+  const list = state.friends.map(n => `<div class="nearby-row"><div class="round-avatar">${icon(speakerIcon(n))}</div><div class="grow"><strong>${esc(n)}</strong><small>${esc((samplePlayer(n) || ['', '온라인'])[1])}</small></div>${Cloud.enabled && Cloud.user() ? `<button data-act="ftrade-open" data-name="${esc(n)}">교환</button>` : ''}<button data-act="friend-remove" data-name="${esc(n)}">삭제</button></div>`).join('');
+  modal('친구', `<div class="search-row"><input id="friendSearch" placeholder="대원 이름으로 검색" aria-label="대원 검색"><button data-act="friend-search">검색</button></div><div id="friendResult"></div><div id="friendInbox">${inboxHtml()}</div>` +
     `<div class="choice-label">친구 ${state.friends.length}/${FRIEND_MAX}</div><div id="friendList">${list || '<div class="empty">아직 친구가 없습니다. 주위 대원의 정보 창이나 검색으로 추가하세요.</div>'}</div>` +
     `<p class="tiny">서버에 로그인하면 이름으로 다른 대원을 찾을 수 있어요. 메일은 친구에게만 보낼 수 있어요. (메일·교환 등은 아직 서버와 연결되지 않았어요)</p>`, [btnClose]);
+  if (!noPoll) friendPoll();
 }
 const mailItemRow = () => {
   const have = Object.values(state.inventory).flat().filter(s => s.n !== MAIL_SHIP_ITEM);
@@ -900,7 +965,49 @@ const A = {
   },
   'job-quit': () => { if (!view.quitAsk) { view.quitAsk = true; openJob(true); return; } view.quitAsk = false; quitSubjob(); renderProfile(); renderBuffs(true); toast('서브잡을 그만두었습니다.'); openJob(); },
   'guild-open': () => openGuild(),
-  'guild-create': () => {
+  'guild-find': async () => {
+    const q = cleanText($('#guildQ').value, GUILD_NAME_MAX); if (!q) { $('#guildFound').innerHTML = '<p class="tiny">검색어를 입력하세요.</p>'; return; }
+    try {
+      const list = await Cloud.guildSearch(q);
+      $('#guildFound').innerHTML = list.length ? list.map(r => `<div class="member-row"><div class="round-avatar">${icon('groups')}</div><div class="grow"><strong>${esc(cleanText(r.name, GUILD_NAME_MAX))}</strong><small>${esc(`길드장 ${cleanText(r.master, 12)} · ${intIn(r.count, 0, GUILD_MAX, 0)}/${GUILD_MAX}명`)}</small></div><button data-act="guild-apply" data-id="${intIn(r.id, 1, 9e15, 0)}">가입 신청</button></div>`).join('') : '<p class="tiny">찾는 길드가 없어요.</p>';
+    } catch (e) { toast('검색하지 못했어요.'); }
+  },
+  'guild-find-player': async () => {
+    const q = cleanText($('#guildQ').value, 12); if (!q) { $('#guildFound').innerHTML = '<p class="tiny">검색어를 입력하세요.</p>'; return; }
+    try {
+      const UID = /^[0-9a-f-]{36}$/i, list = (await Cloud.searchGuildTargets(q)).filter(r => r && UID.test(r.uid) && r.name);
+      $('#guildFound').innerHTML = list.length ? list.map(r => `<div class="member-row"><div class="round-avatar">${icon('person')}</div><div class="grow"><strong>${esc(cleanText(r.name, 12))}</strong><small>${esc(`Lv.${intIn(r.level, 1, MAX_LEVEL, 1)} ${'FEDCBAS'.includes(r.rank) ? r.rank : 'F'}등급`)}</small></div><button data-act="guild-invite-req" data-uid="${esc(r.uid)}" data-name="${esc(cleanText(r.name, 12))}">초대</button></div>`).join('') : '<p class="tiny">초대할 수 있는 대원이 없어요. (이미 길드가 있거나 길드 초대를 막아 둔 대원은 나오지 않아요)</p>';
+    } catch (e) { toast('검색하지 못했어요.'); }
+  },
+  'guild-invite-req': async el => {
+    el.disabled = true;
+    try { const r = await Cloud.guildInvite(el.dataset.uid); if (r && r.ok) { sfx('ok'); toast(`${el.dataset.name} 대원에게 길드 초대를 보냈어요. 수락하면 가입돼요.`); openGuildOnline(true); return; }
+      el.disabled = false; sfx('error'); toast({ full: '길드가 가득 찼어요.', limit: '대기 중인 초대가 너무 많아요. (최대 10건)', target_in_guild: '이미 길드가 있는 대원이에요.', not_found: '초대할 수 없는 대원이에요.', not_master: '길드장만 초대할 수 있어요.' }[r && r.msg] || '초대하지 못했어요.');
+    } catch (e) { el.disabled = false; toast('초대하지 못했어요.'); }
+  },
+  'guild-apply': async el => {
+    el.disabled = true;
+    try { const r = await Cloud.guildApply(+el.dataset.id); if (r && r.ok) { sfx('ok'); toast('가입 신청을 보냈어요. 길드장이 수락하면 가입돼요.'); openGuildOnline(true); return; }
+      el.disabled = false; sfx('error'); toast({ full: '길드가 가득 찼어요.', limit: '대기 중인 신청이 너무 많아요. (최대 5건)', in_guild: '이미 길드에 속해 있어요.', not_found: '없는 길드예요.' }[r && r.msg] || '신청하지 못했어요.');
+    } catch (e) { el.disabled = false; toast('신청하지 못했어요.'); }
+  },
+  'guild-answer': async el => {
+    try { const r = await Cloud.guildAnswer(+el.dataset.id, !!el.dataset.yes);
+      if (r && r.ok) { sfx('ok'); toast(r.joined ? '길드 가입이 이루어졌어요.' : '거절했어요.'); } else { sfx('error'); toast({ in_guild: '이미 길드에 속해 있어서 수락할 수 없어요.', full: '길드가 가득 찼어요.', gone: '이미 처리된 요청이에요.' }[r && r.msg] || '처리하지 못했어요.'); }
+      openGuildOnline();
+    } catch (e) { toast('처리하지 못했어요.'); }
+  },
+  'guild-cancel': async el => { try { await Cloud.guildCancel(+el.dataset.id); openGuildOnline(true); } catch (e) { toast('취소하지 못했어요.'); } },
+  'guild-create': async () => {
+    if (guildOnline()) {
+      const name = cleanText($('#guildName').value, GUILD_NAME_MAX);
+      if (name.length < GUILD_NAME_MIN) { toast(`길드 이름은 ${GUILD_NAME_MIN}~${GUILD_NAME_MAX}자로 입력하세요.`); sfx('error'); return; }
+      try { const r = await Cloud.guildCreate(name);
+        if (!r || !r.ok) { sfx('error'); toast({ dup: '이미 있는 길드 이름이에요.', in_guild: '이미 길드에 속해 있어요.', bad_name: `길드 이름은 ${GUILD_NAME_MIN}~${GUILD_NAME_MAX}자로 입력하세요.` }[r && r.msg] || '길드를 만들지 못했어요.'); return; }
+        sfx('levelup'); addLog(`길드 「${name}」을(를) 만들었습니다.`); toast('길드를 만들었습니다.'); openGuildOnline();
+      } catch (e) { toast('길드를 만들지 못했어요. 서버에 friends.sql 을 실행했는지 확인해 주세요.'); }
+      return;
+    }
     const err = createGuild($('#guildName').value);
     if (err) { toast(err); sfx('error'); return; }
     renderChat(); openGuild(); sfx('levelup'); addLog(`길드 「${state.guild.name}」을(를) 만들었습니다.`); toast('길드를 만들었습니다.');
@@ -910,7 +1017,9 @@ const A = {
     if (err) { toast(err); sfx('error'); return; }
     renderChat(); openGuild(); sfx('ok'); toast(`${el.dataset.name}님이 길드에 들어왔습니다.`);
   },
-  'guild-leave': () => { const m = state.guild.master; leaveGuild(); renderChat(); openGuild(); toast(m ? '길드를 해산했습니다.' : '길드를 탈퇴했습니다.'); },
+  'guild-leave': async () => {
+    if (guildOnline()) { try { const m = state.guild && state.guild.master; await Cloud.guildLeave(); state.guild = null; state.chats['길드'] = [['시스템', '길드 채널은 길드에 가입하거나 만든 뒤 사용할 수 있습니다.']]; save(); renderChat(); toast(m ? '길드를 해산했습니다.' : '길드를 탈퇴했습니다.'); openGuildOnline(); } catch (e) { toast('처리하지 못했어요.'); } return; }
+    const m = state.guild.master; leaveGuild(); renderChat(); openGuild(); toast(m ? '길드를 해산했습니다.' : '길드를 탈퇴했습니다.'); },
   tile: el => {
     if (state.active || state.pending) { toast(state.pending ? '먼저 결과를 확인하세요.' : '행동이 진행 중이라 이동할 수 없습니다.'); sfx('error'); return; }
     const x = +el.dataset.x, y = +el.dataset.y, m = planMove(x, y);
@@ -1069,11 +1178,64 @@ const A = {
     renderBag(); renderMailBadge(); sfx('ok'); toast('첨부 아이템을 받았습니다.'); openMail(true);
   },
   'mail-add-row': () => { if ($$('.mail-item').length < MAIL_ITEM_KINDS) $('#mailItems').insertAdjacentHTML('beforeend', mailItemRow()); },
-  'mail-send': () => {
+  'mail-send': async () => {
     const items = $$('.mail-item').map(r => [r.querySelector('select').value, +r.querySelector('input').value]).filter(r => r[0]);
-    const err = sendMail($('#mailTo').value, $('#mailSubject').value, $('#mailBody').value, items);
+    const to = $('#mailTo').value, subject = $('#mailSubject').value, body = $('#mailBody').value, online = Cloud.enabled && Cloud.user();
+    const uid = online ? (view.friendUid || {})[to] : null;
+    if (online && !uid && state.friends.includes(to)) { toast('친구 정보를 서버에서 가져오는 중이에요. 잠시 뒤 다시 보내 주세요.'); friendPoll(); return; }
+    const had = items.filter(r => r[0] && ITEMS[r[0]]).map(([n, q]) => [n, intIn(q, 1, 99, 1)]), ship = countItem(MAIL_SHIP_ITEM);
+    const err = sendMail(to, subject, body, items);
     if (err) { toast(err); sfx('error'); return; }
-    renderBag(); sfx('ok'); toast(`메일을 보냈습니다.${items.length ? ' (운송장치 1개 사용)' : ''} 곧 답장이 올 거예요.`); view.mailTab = '받은 메일함'; openMail();
+    if (online) { // 서버로 실제 전달 (실패하면 아이템을 돌려준다)
+      const sent = cleanItemList(had);
+      try {
+        const r = await Cloud.sendMail(uid, cleanText(subject, 30), cleanText(body, 300), sent);
+        if (!r || !r.ok) throw new Error(r && r.msg);
+      } catch (e) {
+        if (sent.length) { addItem(MAIL_SHIP_ITEM, 1); sent.forEach(([n, q]) => addItem(n, q)); }
+        renderBag(); save(); sfx('error');
+        toast(e && e.message === 'full' ? '상대의 메일함이 가득 차서 보낼 수 없어요.' : e && e.message === 'not_friend' ? '서버에서 친구로 확인되지 않아요.' : '메일을 보내지 못했어요. 서버에 friends.sql 을 실행했는지 확인해 주세요.'); return;
+      }
+      renderBag(); sfx('ok'); toast(`메일을 보냈습니다.${sent.length ? ' (운송장치 1개 사용)' : ''}`); view.mailTab = '받은 메일함'; openMail(); return;
+    }
+    renderBag(); sfx('ok'); toast(`메일을 보냈습니다.${items.length ? ' (운송장치 1개 사용)' : ''} (서버에 로그인하지 않아 실제로는 전달되지 않아요)`); view.mailTab = '받은 메일함'; openMail();
+  },
+  'ftrade-open': el => openFriendTrade(el.dataset.name),
+  'ftrade-send': async el => {
+    const name = el.dataset.name, uid = (view.friendUid || {})[name], give = $('#ftGive').value, want = $('#ftWant').value.trim();
+    const gq = intIn($('#ftGiveQty').value, 1, 99, 0), wq = intIn($('#ftWantQty').value, 1, 99, 0);
+    if (!uid) { toast('친구 정보를 서버에서 가져오는 중이에요. 잠시 뒤 다시 시도해 주세요.'); friendPoll(); return; }
+    if (!tradesLeft()) { toast(`오늘은 교환 제안을 모두 보냈습니다. (하루 ${TRADE_DAILY}회)`); sfx('error'); return; }
+    if (!ITEMS[give] || !gq || !ITEMS[want] || !wq || want === MAIL_SHIP_ITEM || give === MAIL_SHIP_ITEM) { toast('교환할 물건과 수량을 확인하세요. (받을 물건은 목록에서 고르세요)'); sfx('error'); return; }
+    if (countItem(give) < gq) { toast(`${give}이(가) 모자랍니다.`); sfx('error'); return; }
+    el.disabled = true; removeItem(give, gq); // 제안하는 동안 물건을 맡긴다
+    try {
+      const r = await Cloud.proposeTrade(uid, [[give, gq]], [[want, wq]]);
+      if (!r || !r.ok) throw new Error(r && r.msg);
+      state.trades = { day: todayKey(), n: (state.trades.day === todayKey() ? state.trades.n : 0) + 1 }; save();
+      renderBag(); sfx('ok'); toast(`${name} 대원에게 교환을 제안했어요. 물건은 맡겨 두며, 거절·취소되면 메일로 돌아와요.`); friendPoll(); openFriends(true);
+    } catch (e) {
+      addItem(give, gq); renderBag(); el.disabled = false; sfx('error');
+      toast({ limit: '대기 중인 제안이 너무 많아요. (최대 5건)', busy: '상대에게 쌓인 제안이 너무 많아요.', not_friend: '서버에서 친구로 확인되지 않아요.' }[e && e.message] || '제안하지 못했어요. 서버에 friends.sql 을 실행했는지 확인해 주세요.');
+    }
+  },
+  'ftrade-accept': async el => {
+    const t = (view.tIn || []).find(x => x.id === +el.dataset.id); if (!t) return;
+    if (t.want.some(([n, q]) => countItem(n) < q)) { toast('요청받은 물건이 모자라요.'); sfx('error'); return; }
+    try {
+      const r = await Cloud.answerTrade(t.id, true);
+      if (!r || !r.ok) { toast('이미 처리된 제안이에요.'); friendPoll(); return; }
+      const give = cleanItemList(r.give, 3), want = cleanItemList(r.want, 3);
+      want.forEach(([n, q]) => removeItem(n, q));
+      receiveServerMail(`교환 · ${t.name}`.slice(0, 12), '교환 성사', `${t.name} 대원과의 교환이 성사됐어요. 받은 물건을 수령하세요.`, give);
+      view.tIn = view.tIn.filter(x => x.id !== t.id); renderBag(); renderMailBadge(); sfx('ok'); toast('교환이 성사됐어요. 메일함에서 물건을 수령하세요.'); addLog(`${t.name} 대원과 물건을 교환했습니다.`); openFriends(true);
+    } catch (e) { toast('처리하지 못했어요.'); }
+  },
+  'ftrade-decline': async el => {
+    try { await Cloud.answerTrade(+el.dataset.id, false); view.tIn = (view.tIn || []).filter(x => x.id !== +el.dataset.id); openFriends(true); } catch (e) { toast('처리하지 못했어요.'); }
+  },
+  'ftrade-cancel': async el => {
+    try { await Cloud.cancelTrade(+el.dataset.id); toast('제안을 취소했어요. 물건은 곧 메일로 돌아와요.'); friendPoll(); } catch (e) { toast('취소하지 못했어요.'); }
   },
   'friend-search': async () => {
     const v = cleanText($('#friendSearch').value, 12);
@@ -1083,10 +1245,10 @@ const A = {
       box.innerHTML = '<p class="tiny">찾는 중…</p>';
       try {
         const found = (await Cloud.searchPlayers(v)).filter(r => r && typeof r.name === 'string' && r.name && r.name !== state.character.name);
-        found.forEach(r => { REMOTE_PLAYERS[cleanText(r.name, 12)] = r.online ? '온라인' : '자리 비움'; });
+        const UID = /^[0-9a-f-]{36}$/i; found.forEach(r => { REMOTE_PLAYERS[cleanText(r.name, 12)] = r.online ? '온라인' : '자리 비움'; });
         if (!$('#friendResult')) return;
         $('#friendResult').innerHTML = found.length ? found.map(r => { const n = cleanText(r.name, 12), has = state.friends.includes(n);
-          return `<div class="nearby-row"><div class="round-avatar">${icon(speakerIcon(n))}</div><div class="grow"><strong>${esc(n)}</strong><small>${esc(`${REMOTE_PLAYERS[n]} · Lv.${intIn(r.level, 1, MAX_LEVEL, 1)} ${'FEDCBAS'.includes(r.rank) ? r.rank : 'F'}등급`)}</small></div><button data-act="friend-add" data-name="${esc(n)}" ${has ? 'disabled' : ''}>${has ? '친구' : '친구 추가'}</button></div>`; }).join('')
+          return `<div class="nearby-row"><div class="round-avatar">${icon(speakerIcon(n))}</div><div class="grow"><strong>${esc(n)}</strong><small>${esc(`${REMOTE_PLAYERS[n]} · Lv.${intIn(r.level, 1, MAX_LEVEL, 1)} ${'FEDCBAS'.includes(r.rank) ? r.rank : 'F'}등급`)}</small></div><button data-act="friend-req" data-uid="${esc(UID.test(r.uid) ? r.uid : '')}" data-name="${esc(n)}" ${has || !UID.test(r.uid) ? 'disabled' : ''}>${has ? '친구' : '친구 신청'}</button></div>`; }).join('')
           : '<p class="tiny">찾는 대원이 없어요. (이름 일부만 입력해도 돼요. 상대가 친구 추가를 막아 둔 경우에도 나오지 않아요)</p>';
       } catch (e) { if ($('#friendResult')) $('#friendResult').innerHTML = '<p class="tiny">검색하지 못했어요. 서버에 friends.sql 을 실행했는지 확인해 주세요.</p>'; }
       return;
@@ -1096,12 +1258,29 @@ const A = {
       ? `<div class="nearby-row"><div class="round-avatar">${icon(speakerIcon(v))}</div><div class="grow"><strong>${esc(v)}</strong><small>${esc(p[1])}</small></div><button data-act="friend-add" data-name="${esc(v)}" ${state.friends.includes(v) ? 'disabled' : ''}>${state.friends.includes(v) ? '친구' : '친구 추가'}</button></div>`
       : '<p class="tiny">대원을 찾을 수 없습니다. (서버에 로그인하면 다른 대원을 찾을 수 있어요)</p>';
   },
+  'friend-req': async el => {
+    const name = el.dataset.name; el.disabled = true;
+    try {
+      const r = await Cloud.sendFriendReq(el.dataset.uid);
+      if (r && r.ok && r.msg === 'auto') { addFriendAccepted(r.name || name); sfx('ok'); toast(`${name} 대원과 친구가 되었습니다.`); openFriends(); return; }
+      if (r && r.ok) { sfx('ok'); el.textContent = '신청함'; toast(`${name} 대원에게 친구 신청을 보냈어요. 상대가 수락하면 친구가 됩니다.`); return; }
+      el.disabled = false; sfx('error');
+      toast({ dup: '이미 신청했어요. 상대의 응답을 기다려 주세요.', busy: '상대의 응답이 아직 정리되지 않았어요. 잠시 뒤에 다시 시도해 주세요.', limit: '대기 중인 신청이 너무 많아요. (최대 10건)', not_found: '이 대원에게는 신청할 수 없어요.', self: '나에게는 신청할 수 없어요.' }[r && r.msg] || '신청하지 못했어요.');
+    } catch (e) { el.disabled = false; toast('신청하지 못했어요. 서버에 friends.sql 을 실행했는지 확인해 주세요.'); }
+  },
+  'friend-accept': async el => {
+    if (state.friends.length >= FRIEND_MAX) { toast(`친구는 ${FRIEND_MAX}명까지 둘 수 있습니다.`); sfx('error'); return; }
+    try { const r = await Cloud.answerFriendReq(+el.dataset.id, true); if (r && r.ok) { addFriendAccepted(r.name); sfx('ok'); toast(`${cleanText(r.name, 12)} 대원과 친구가 되었습니다.`); } view.inbox = (view.inbox || []).filter(x => x.id !== +el.dataset.id); openFriends(true); } catch (e) { toast('처리하지 못했어요.'); }
+  },
+  'friend-decline': async el => {
+    try { await Cloud.answerFriendReq(+el.dataset.id, false); view.inbox = (view.inbox || []).filter(x => x.id !== +el.dataset.id); openFriends(true); } catch (e) { toast('처리하지 못했어요.'); }
+  },
   'friend-add': el => {
     const err = addFriend(el.dataset.name);
     if (err) { toast(err); sfx('error'); return; }
     sfx('ok'); toast(`${el.dataset.name} 대원과 친구가 되었습니다.`); if ($('#friendList')) openFriends(); else closeModal();
   },
-  'friend-remove': el => { removeFriend(el.dataset.name); openFriends(); },
+  'friend-remove': el => { const uid = view.friendUid && view.friendUid[el.dataset.name]; removeFriend(el.dataset.name); if (uid && Cloud.enabled && Cloud.user()) Cloud.removeFriend(uid).catch(() => {}); if (view.friendUid) delete view.friendUid[el.dataset.name]; openFriends(true); },
   'codex-tab': el => { codexView.tab = el.dataset.codex; codexView.sub = null; $('#codexRoot').innerHTML = codexHtml(); },
   'codex-sub': el => { codexView.sub = el.dataset.sub || null; $('#codexRoot').innerHTML = codexHtml(); },
   'logout-ok': () => { closeModal(); if (Cloud.enabled && Cloud.user()) { if (_cloudTimer) { clearTimeout(_cloudTimer); _cloudTimer = 0; cloudAutoPush().finally(() => A['cloud-logout']()); } else A['cloud-logout'](); } else toast('서버 인증 기능은 아직 연결되지 않았습니다.'); },
@@ -1359,6 +1538,14 @@ function openTrade(name, keepScroll) {
   modal(`${name}님과 교환`, body, [btnClose, `<button class="primary" data-act="trade-do" data-player="${esc(name)}" ${offers.length && tradesLeft() ? '' : 'disabled'}>교환하기</button>`], true);
   $('#modalBody').scrollTop = st0;
 }
+function openFriendTrade(name) {
+  const mine = ['소모품', '재료', '장비'].flatMap(t => state.inventory[t]).map(s => s.n).filter(n => n !== MAIL_SHIP_ITEM), uniq = [...new Set(mine)];
+  const all = Object.keys(ITEMS).filter(n => n !== MAIL_SHIP_ITEM);
+  const body = `<p class="tiny">${esc(name)} 대원에게 교환을 제안합니다. 내가 줄 물건은 상대가 답할 때까지 맡겨 두고, 거절·취소·3일 만료 시 메일로 돌아와요. 하루 ${TRADE_DAILY}회까지 · 오늘 남은 횟수 <b>${tradesLeft()}회</b>. 장착 중인 장비는 줄 수 없어요.</p>` +
+    (uniq.length ? `<div class="srow fontrow"><span>내가 줄 물건</span><select id="ftGive">${uniq.map(n => `<option value="${esc(n)}">${esc(n)} (${countItem(n)})</option>`).join('')}</select><input id="ftGiveQty" type="number" min="1" max="99" value="1" style="width:64px"></div>` +
+      `<div class="srow fontrow"><span>받고 싶은 물건</span><input id="ftWant" list="ftItems" placeholder="아이템 이름" autocomplete="off"><input id="ftWantQty" type="number" min="1" max="99" value="1" style="width:64px"></div><datalist id="ftItems">${all.map(n => `<option value="${esc(n)}">`).join('')}</datalist>` : '<div class="empty">줄 수 있는 물건이 없습니다.</div>');
+  modal(`${name} 대원과 교환`, body, ['<button data-act="close">닫기</button>', `<button class="primary" data-act="ftrade-send" data-name="${esc(name)}" ${uniq.length && tradesLeft() ? '' : 'disabled'}>제안 보내기</button>`], true);
+}
 function openEnhance(keepScroll) {
   const st0 = keepScroll === true && $('#modalBody') ? $('#modalBody').scrollTop : 0, names = enchantables(), worn = new Set(Object.values(state.equipment));
   const rows = names.map(n => {
@@ -1392,7 +1579,46 @@ function openJob(keepScroll) {
     `<div class="row-gap"><button data-act="job-auto" ${cd || have < need ? 'disabled' : ''}>싼 것부터 채우기</button><button class="primary" data-act="job-deliver" ${cd || have < need ? 'disabled' : ''}>납품하기</button><button data-act="job-quit" class="${view.quitAsk ? 'danger' : ''}">${view.quitAsk ? '정말 그만두기 (레벨 초기화)' : '서브잡 그만두기'}</button></div>`, [btnClose], true);
   $('#modalBody').scrollTop = st;
 }
+/* ---- 서버 길드: 초대/가입 신청은 상대(또는 길드장)가 수락해야 이루어진다 ---- */
+const guildOnline = () => Cloud.enabled && !!Cloud.user();
+function guildSyncState(info) { // 서버의 길드 정보를 내 상태에 반영 (서버가 기준)
+  const sg = info && info.guild, was = state.guild;
+  if (!sg) { if (was) { state.guild = null; state.chats['길드'] = [['시스템', '길드 채널은 길드에 가입하거나 만든 뒤 사용할 수 있습니다.']]; save(); renderChat(); } return; }
+  const me = state.character.name, members = (sg.members || []).map(m => cleanText(m.name, 12)).filter(Boolean);
+  const mine = (sg.members || []).findIndex(m => m && m.uid === Cloud.userUid);
+  const others = members.filter((n, i) => i !== mine);
+  const next = { name: cleanText(sg.name, GUILD_NAME_MAX), master: !!sg.master, members: others.slice(0, GUILD_MAX - 1) };
+  if (!was || was.name !== next.name || was.master !== next.master || was.members.join() !== next.members.join()) {
+    const joined = !was || was.name !== next.name;
+    state.guild = next;
+    if (joined) state.chats['길드'] = [['시스템', `길드 「${next.name}」에 속해 있습니다.`]];
+    save(); renderChat();
+  }
+}
+const guildReqRows = (list, acts) => list.map(r => `<div class="member-row"><div class="round-avatar">${icon(r.kind === 'invite' ? 'mail' : 'person_add')}</div><div class="grow"><strong>${esc(r.kind === 'invite' ? r.guild : r.name)}</strong><small>${esc(r.text)}</small></div>${acts(r)}</div>`).join('');
+async function openGuildOnline(keepForm) {
+  let info; const dr = keepForm ? { s: ($('#guildQ') || {}).value || '' } : { s: '' };
+  try { info = await Cloud.guildInfo(); } catch (e) { toast('길드 정보를 가져오지 못했어요. 서버에 friends.sql 을 실행했는지 확인해 주세요.'); return; }
+  view.guildInfo = info; guildSyncState(info);
+  const clean = (a, kind) => (a || []).map(r => ({ id: intIn(r.id, 1, 9e15, 0), kind: r.kind === 'invite' ? 'invite' : 'apply', guild: cleanText(r.guild, GUILD_NAME_MAX), name: cleanText(r.name, 12) })).filter(r => r.id);
+  const inc = clean(info.incoming), sent = clean(info.sent), g = info.guild;
+  const incHtml = inc.length ? '<div class="choice-label">받은 요청</div>' + guildReqRows(inc.map(r => ({ ...r, text: r.kind === 'invite' ? `${r.name} 길드장의 초대` : `${r.name} 대원의 가입 신청` })), r => `<button class="primary" data-act="guild-answer" data-id="${r.id}" data-yes="1">수락</button><button data-act="guild-answer" data-id="${r.id}">거절</button>`) : '';
+  const sentHtml = sent.length ? '<div class="choice-label">보낸 요청 (상대가 수락해야 해요)</div>' + guildReqRows(sent.map(r => ({ ...r, text: r.kind === 'invite' ? `${r.name} 대원에게 초대 보냄` : `${r.guild}에 가입 신청함` })), r => `<button data-act="guild-cancel" data-id="${r.id}">취소</button>`) : '';
+  if (!g) {
+    modal('길드', `<p class="tiny">길드를 만들면 길드장이 되어 대원을 초대할 수 있어요. 이미 있는 길드에는 가입 신청을 보내고 길드장이 수락하면 가입돼요.</p>` +
+      `<div class="form-row"><label>길드 이름</label><input id="guildName" maxlength="${GUILD_NAME_MAX}" placeholder="${GUILD_NAME_MIN}~${GUILD_NAME_MAX}자" value="${esc(defaultGuildName())}"></div>` + incHtml + sentHtml +
+      `<div class="choice-label">길드 찾기</div><div class="search-row"><input id="guildQ" placeholder="길드 이름으로 검색" value="${esc(dr.s)}"><button data-act="guild-find">검색</button></div><div id="guildFound"></div>`,
+      [btnClose, '<button class="primary" data-act="guild-create">길드 만들기</button>']);
+    return;
+  }
+  const mem = (g.members || []).map(m => ({ uid: m.uid, name: cleanText(m.name, 12), master: !!m.master }));
+  modal(`길드 · ${cleanText(g.name, GUILD_NAME_MAX)}`, `<p class="tiny">${mem.length}/${GUILD_MAX}명 · ${g.master ? '길드장입니다. 대원을 초대하거나 가입 신청을 수락할 수 있어요.' : '길드원입니다.'}</p>` +
+    mem.map(m => `<div class="member-row"><div class="round-avatar">${icon('person')}</div><div class="grow"><strong>${esc(m.name)}</strong><small>${m.master ? '길드장' : '길드원'}${m.uid === Cloud.userUid ? ' (나)' : ''}</small></div></div>`).join('') + incHtml + sentHtml +
+    (g.master ? `<div class="choice-label">초대하기</div><div class="search-row"><input id="guildQ" placeholder="대원 이름으로 검색" value="${esc(dr.s)}"><button data-act="guild-find-player">검색</button></div><div id="guildFound"></div>` : ''),
+    [btnClose, `<button class="danger" data-act="guild-leave">${g.master ? '길드 해산' : '길드 탈퇴'}</button>`]);
+}
 function openGuild() {
+  if (guildOnline()) { openGuildOnline(); return; }
   const g = state.guild;
   if (!g) {
     modal('길드', `<p class="tiny">길드를 만들면 길드장이 되어 다른 대원를 초대할 수 있어요.</p>` +

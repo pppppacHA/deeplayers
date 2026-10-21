@@ -356,6 +356,7 @@ function battleOdds(m) {
 const BATTLE_MAX_WIN_MISS = .01; // 아무리 쉬운 상대여도 승리 확률은 최대 99%
 const PROFILE_EDIT_COOL_MS = 24 * 3600 * 1000;
 const profileLockLeft = () => Math.max(0, state.profileEditAt + PROFILE_EDIT_COOL_MS - nowMs()); // 남은 잠금 시간(ms), 0이면 수정 가능
+const fmtDur = sec => { sec = Math.round(sec); const m = Math.floor(sec / 60), r = sec % 60; return m ? (r ? `${m}분 ${r}초` : `${m}분`) : `${r}초`; };
 const fmtLong = ms => { const m = Math.ceil(ms / 60000); return m >= 60 ? `${Math.floor(m / 60)}시간 ${m % 60}분` : `${m}분`; };
 const pct = x => `${Math.round(x * 1000) / 10}%`;
 const monsterOf = a => a.monster || a.terrain.monster;
@@ -367,7 +368,7 @@ function actionPreview(id, mi = 0) {
   const costs = [], per = multi ? ` (${rng(cMin, cMax)}회 반복)` : '';
   const n0 = repeatCount(id), note = (a.kind === 'gather' || a.kind === 'battle') ? (n0 >= REPEAT_FREE ? `이 장소에서 이 행동을 ${n0}번 했습니다. 지금은 아이템 획득 확률이 ${Math.round(repeatChance(n0 + 1) * 100)}%로 떨어져 있어요. (12시간 뒤 초기화)` : `이 장소에서 같은 행동 ${n0}회 (${REPEAT_FREE + 1}번째부터 아이템 획득 확률 저하 · 12시간 뒤 초기화)`) : '';
   if (a.kind === 'gather' || a.kind === 'battle') {
-    const time = multi ? `${opt.label}${per}` : a.kind === 'gather' ? '5분' : '5~8분';
+    const time = multi ? `${opt.label}${per}` : a.kind === 'gather' ? '5분' : '6분';
     costs.push(`기력 -${rng(sp * cMin, sp * cMax)}`);
     if (state.vitals.hp <= 1) costs.push('⚠ HP가 1이라 다치면 죽습니다');
     if (a.kind === 'gather') {
@@ -694,7 +695,7 @@ const terrainIndex = ch => 'abcde'.indexOf(ch);
 /* 타일 정보 { name, desc, terrain } */
 function tileInfo(z, ch) {
   const ti = terrainIndex(ch);
-  if (ti >= 0) { const t = z.terrains[ti]; return { name: t.name, desc: t.desc + (t.rough ? ` (험난한 지형: 이 칸에 들어갈 때 이동 시간 +${ROUGH_EXTRA_SEC[t.rough] / 60}분)` : ''), terrain: t }; }
+  if (ti >= 0) { const t = z.terrains[ti]; return { name: t.name, desc: t.desc + (t.rough && ROUGH_EXTRA_SEC[t.rough] ? ` (험난한 지형: 이 칸에 들어갈 때 이동 시간 +${ROUGH_EXTRA_SEC[t.rough] / 60}분)` : ''), terrain: t }; }
   return { S: { name: '입구', desc: '구역으로 돌아갈 수 있는 입구입니다.' }, C: { name: '안전 캠프', desc: '지상 속 안전지대입니다. 안전하게 쉴 수 있습니다.' },
     E: { name: '이벤트 지점', desc: '무언가 일어날 것 같은 장소입니다.' } }[ch];
 }
@@ -1147,12 +1148,33 @@ function setTitle(name) {
 /* ---------- 친구 / 메일 ---------- */
 const samplePlayer = n => NEARBY_PLAYERS.find(p => p[0] === n);
 const REMOTE_PLAYERS = {}; // 서버 검색으로 찾은 대원 { 이름: '온라인' | '자리 비움' } (저장하지 않음)
+/* 서버에서 온 아이템 목록 [[이름, 수량]]을 믿지 않고 걸러낸다 */
+function cleanItemList(arr, max = 5) {
+  const out = [], seen = new Set();
+  for (const r of Array.isArray(arr) ? arr : []) {
+    if (!Array.isArray(r) || typeof r[0] !== 'string' || !ITEMS[r[0]] || seen.has(r[0]) || r[0] === MAIL_SHIP_ITEM) continue;
+    seen.add(r[0]); out.push([r[0], intIn(r[1], 1, 99, 1)]);
+    if (out.length >= max) break;
+  }
+  return out;
+}
+/* 서버에서 받은 메일/교환 결과를 메일함에 넣는다 */
+function receiveServerMail(from, subject, body, items) { pushMail(from, subject, body, cleanItemList(items)); save(); }
+/* 서버에서 상대가 수락한 친구를 목록에 넣는다. 성공하면 null, 아니면 사유 */
+function addFriendAccepted(name) {
+  name = cleanText(name, 12);
+  if (!name) return '이름이 올바르지 않습니다.';
+  if (state.friends.includes(name)) return null;
+  if (state.friends.length >= FRIEND_MAX) return `친구는 ${FRIEND_MAX}명까지 둘 수 있습니다.`;
+  state.friends.push(name); save();
+  return null;
+}
 /* 친구 추가. 온라인인 대원은 바로 수락하고, 자리 비움이면 응답이 없다. 성공하면 null, 아니면 사유 */
 function addFriend(name) {
   name = cleanText(name, 12);
   if (!state.created) return '먼저 캐릭터를 만드세요.';
-  const p = samplePlayer(name), remote = Object.prototype.hasOwnProperty.call(REMOTE_PLAYERS, name);
-  if (!p && !remote) return '대원을 찾을 수 없습니다. 검색으로 찾은 대원만 추가할 수 있어요.';
+  const p = samplePlayer(name);
+  if (!p) return '대원을 찾을 수 없습니다. (서버에 로그인하면 다른 대원을 찾아 친구 신청을 보낼 수 있어요)';
   if (state.friends.includes(name)) return '이미 친구입니다.';
   if (state.friends.length >= FRIEND_MAX) return `친구는 ${FRIEND_MAX}명까지 둘 수 있습니다.`;
   if (p && p[1] !== '온라인') return `${name} 대원은 자리 비움 상태라 응답이 없습니다.`;
