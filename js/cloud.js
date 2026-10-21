@@ -42,6 +42,7 @@ const Cloud = (() => {
     async searchPlayers(q) { return (await call('/rest/v1/rpc/search_players', { p_q: String(q || '').slice(0, 12) }, await token())) || []; },
     async sendFriendReq(uid) { return await call('/rest/v1/rpc/send_friend_req', { p_to: uid }, await token()); },
     async friendInbox() { return (await call('/rest/v1/rpc/friend_inbox', {}, await token())) || { incoming: [], results: [] }; },
+    async cancelFriendReq(id) { await call('/rest/v1/rpc/cancel_friend_req', { p_id: id }, await token()); },
     async answerFriendReq(id, accept) { return await call('/rest/v1/rpc/answer_friend_req', { p_id: id, p_accept: !!accept }, await token()); },
     async ackFriendReq(id) { await call('/rest/v1/rpc/ack_friend_req', { p_id: id }, await token()); },
     async listFriends() { return (await call('/rest/v1/rpc/list_friends', {}, await token())) || []; },

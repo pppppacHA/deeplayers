@@ -23,7 +23,7 @@ def api(route):
         return route.fulfill(status=400, headers=h, body=json.dumps({'error_description': 'Invalid login credentials'}))
     if '/rpc/search_players' in u and 'guild' not in u: return route.fulfill(headers=h, body=json.dumps([{'uid': '11111111-1111-1111-1111-111111111111', 'name': '미나', 'rank': 'E', 'level': '5', 'online': True}, {'uid': '22222222-2222-2222-2222-222222222222', 'name': '<img src=x onerror=alert(1)>', 'rank': 'F', 'level': '1', 'online': False}] if body.get('p_q') else []))
     if '/rpc/send_friend_req' in u: server['sent'].append(body.get('p_to')); return route.fulfill(headers=h, body=json.dumps({'ok': True, 'msg': 'sent', 'name': '미나'}))
-    if '/rpc/friend_inbox' in u: return route.fulfill(headers=h, body=json.dumps({'incoming': server['incoming'], 'results': server['results']}))
+    if '/rpc/friend_inbox' in u: return route.fulfill(headers=h, body=json.dumps({'incoming': server['incoming'], 'results': server['results'], 'sent': server.get('fsent', [])}))
     if '/rpc/answer_friend_req' in u: server['answers'].append([body.get('p_id'), body.get('p_accept')]); server['incoming'] = []; return route.fulfill(headers=h, body=json.dumps({'ok': True, 'name': '하늘'}))
     if '/rpc/ack_friend_req' in u: server['acks'].append(body.get('p_id')); server['results'] = []; return route.fulfill(headers=h, body='null')
     if '/rpc/list_friends' in u: return route.fulfill(headers=h, body=json.dumps(server['friends']))
@@ -84,11 +84,17 @@ with sync_playwright() as p:
     check('friend_request_button_label', pg.locator('#friendResult [data-act="friend-req"]').first.inner_text() == '친구 신청' and pg.locator('#friendResult [data-act="friend-add"]').count() == 0)
     pg.click('#friendResult [data-act="friend-req"] >> nth=0'); pg.wait_for_timeout(300)
     check('friend_request_sent_not_friend_yet', server['sent'] == ['11111111-1111-1111-1111-111111111111'] and not pg.evaluate("state.friends.includes('미나')"), server['sent'])
+    server['fsent'] = [{'id': 3, 'name': '미나'}]
+    pg.evaluate("openFriends()"); pg.wait_for_timeout(500)
+    check('sent_friend_requests_listed', '수락 대기' in pg.inner_text('#friendInbox') and '미나' in pg.inner_text('#friendInbox') and pg.locator('[data-act="friend-req-cancel"]').count() == 1)
+    server['fsent'] = []; pg.wait_for_timeout(900)
     # 받은 신청 → 수락해야 친구
     server['incoming'] = [{'id': 7, 'name': '하늘'}]
     pg.evaluate("openFriends()"); pg.wait_for_timeout(400)
     check('incoming_request_listed', pg.locator('#friendInbox [data-act="friend-accept"]').count() == 1 and '하늘' in pg.inner_text('#friendInbox') and not pg.evaluate("state.friends.includes('하늘')"))
+    check('friend_icon_dot_on_request', pg.locator('[data-system="친구"].has-dot').count() == 1)
     pg.click('#friendInbox [data-act="friend-accept"]'); pg.wait_for_timeout(400)
+    check('friend_icon_dot_cleared', pg.locator('[data-system="친구"].has-dot').count() == 0)
     check('accept_makes_friend', pg.evaluate("state.friends.includes('하늘')") and server['answers'] == [[7, True]], server['answers'])
     # 내가 보낸 신청이 수락됨 → 목록에 추가되고 결과 확인(ack)
     server['results'] = [{'id': 9, 'name': '미나', 'status': 'accepted'}]
@@ -124,8 +130,10 @@ with sync_playwright() as p:
     server['ginfo']['incoming'] = [{'id': 31, 'kind': 'invite', 'guild': '달빛길드', 'name': '하늘'}]
     pg.evaluate("openGuild()"); pg.wait_for_timeout(500)
     check('guild_invite_listed_needs_accept', pg.locator('[data-act="guild-answer"][data-yes="1"]').count() == 1 and pg.evaluate("state.guild") is None)
+    check('guild_icon_dot_on_invite', pg.locator('[data-system="길드"].has-dot').count() == 1)
     server['ginfo']['guild'] = {'id': 9, 'name': '달빛길드', 'master': False, 'members': [{'uid': 'x', 'name': '하늘', 'master': True}, {'uid': 'me2', 'name': '테스터', 'master': False}]}
     pg.click('[data-act="guild-answer"][data-yes="1"]'); pg.wait_for_timeout(600)
+    check('guild_icon_dot_cleared', pg.locator('[data-system="길드"].has-dot').count() == 0)
     check('guild_accept_syncs_state', ['answer', {'p_id': 31, 'p_accept': True}] in server['gcalls'] and pg.evaluate("state.guild && state.guild.name") == '달빛길드' and pg.evaluate("state.guild.master") is False, pg.evaluate("state.guild"))
     server['ginfo']['guild'] = {'id': 9, 'name': '달빛길드', 'master': True, 'members': [{'uid': 'me', 'name': '테스터', 'master': True}]}
     server['ginfo']['incoming'] = [{'id': 32, 'kind': 'apply', 'guild': '달빛길드', 'name': '새싹'}]

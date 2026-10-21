@@ -29,7 +29,7 @@ function modal(title, body, actions = [], small = false) {
   $('#modal').classList.toggle('small', small);
   $('#overlay').classList.add('open');
 }
-const closeModal = () => { $('#overlay').classList.remove('open'); applyTheme(); }; // 저장하지 않은 테마 미리보기는 되돌린다
+const closeModal = () => { if (view.mockTimer) { clearInterval(view.mockTimer); view.mockTimer = 0; } $('#overlay').classList.remove('open'); applyTheme(); }; // 저장하지 않은 테마 미리보기는 되돌린다
 const btnClose = '<button data-act="close">닫기</button>';
 
 /* ---------- 테마 ---------- */
@@ -99,7 +99,17 @@ function renderBuffs(force) {
     `<button class="buff-icon ${b.type}" data-tip-title="${esc(b.id)}" data-tip-desc="${esc(b.desc)}" ${b.endAt ? `data-tip-end="${b.endAt}"` : ''} aria-label="${esc(b.id)}">${icon(b.icon)}</button>`).join('');
   renderStatus();
 }
+function combatPageHtml() { // 스테이터스 2페이지: 공격력 / 방어력 / 모의전투 (1페이지와 같은 칸 크기)
+  const t = totalStats(), fx = effects(t), wa = weaponAtk(), eff = (3 + wa) * (1 + fx.atk), hit = BATTLE_HIT * (1 - fx.evade);
+  return '<div class="stat-grid">' +
+    `<div class="stat" data-tip-title="공격력" data-tip-desc="기본 3 + 무기 ${wa}에 근력 보정 +${round1(fx.atk * 100)}%가 곱해집니다."><div class="stat-head"><b>공격력</b><span class="stat-val">${round1(eff)}</span></div><div class="stat-eff"><span>무기 ${esc(state.equipment['무기'] || '맨손')}</span></div></div>` +
+    `<div class="stat" data-tip-title="방어력" data-tip-desc="몬스터의 한 번 공격이 맞을 확률입니다. 기본 ${round1(BATTLE_HIT * 100)}%에서 민첩 보정 -${round1(fx.evade * 100)}%."><div class="stat-head"><b>방어력</b><span class="stat-val">${round1(hit * 100)}%</span></div><div class="stat-eff"><span>피격 확률</span></div></div>` +
+    `<div class="stat span2" data-tip-title="모의전투" data-tip-desc="상대를 골라 전투를 구경해 보세요. 실제 진행에는 영향이 없어요."><div class="stat-head"><b>모의전투</b><button class="stat-plus" data-act="extras-open" title="모의 전투">${icon('sports_martial_arts')}</button></div><div class="stat-eff"><span>연습 상대와 겨뤄 보기</span></div></div>` +
+    '</div>';
+}
 function renderStatus() {
+  $$('#statusPager button').forEach(b => b.classList.toggle('on', +b.dataset.p === (view.statusPage || 0)));
+  if (view.statusPage === 1) { const h = view.statH; $('#statusBody').innerHTML = combatPageHtml(); if (h) $('#statusBody .stat-grid').style.minHeight = h + 'px'; $('#statPoints').classList.toggle('hidden', !state.statPoints); $('#statPoints').textContent = `남은 포인트 ${state.statPoints}`; return; }
   const t = totalStats(), fx = effects(t), pts = state.statPoints;
   const badge = $('#statPoints');
   badge.textContent = `남은 포인트 ${pts}`;
@@ -110,6 +120,7 @@ function renderStatus() {
     return `<div class="stat" data-tip-title="${d.name} · ${d.fx[0][1]}" data-tip-desc="${esc(d.tip)}"><div class="stat-head"><b>${d.name}</b><small>${d.en}</small><span class="stat-val">${state.stats[d.key]}${bonus ? `<em class="${bonus < 0 ? 'neg' : ''}">${bonus > 0 ? '+' : ''}${bonus}</em>` : ''}</span>` +
       `${pts ? `<button class="stat-plus" data-act="stat-up" data-stat="${d.key}" title="포인트 사용">${icon('add')}</button>` : ''}</div><div class="stat-eff">${eff}</div></div>`;
   }).join('') + '</div>';
+  const g = $('#statusBody .stat-grid'); if (g) view.statH = Math.round(g.getBoundingClientRect().height) || view.statH;
 }
 
 /* ---------- 왼쪽 탭: 장비 / 인벤토리 / 제작 ---------- */
@@ -177,7 +188,7 @@ async function loadDevScript() {
   return !!window.DEV;
 }
 /* 관리자 계정(서버 admins 표에 등록된 아이디)으로 로그인하면 개발자 코드 없이 개발자 도구가 켜진다 */
-if (Cloud.enabled && Cloud.user()) Cloud.isAdmin().then(ok => ok && loadDevScript()).then(on => { if (on) { renderAction(); renderCraft(); } }).catch(() => { /* 오프라인이면 일반 계정 */ });
+if (Cloud.enabled && Cloud.user()) Cloud.isAdmin().then(ok => { view.isAdmin = !!ok; if (ok && $('#chatFeed')) renderChat(); return ok && loadDevScript(); }).then(on => { if (on) { renderAction(); renderCraft(); } }).catch(() => { /* 오프라인이면 일반 계정 */ });
 function openCraftQty(i) {
   const rc = RECIPES[i], it = ITEMS[rc.out], max = maxCraft(rc);
   modal(`${rc.out} 제작`, `<div class="nearby-row"><div class="round-avatar">${icon(it.icon)}</div><div class="grow"><strong>${esc(rc.out)}</strong><small class="effect">${esc(itemEffect(rc.out))}</small></div></div>` +
@@ -215,21 +226,35 @@ function renderCraft() {
     const it = ITEMS[rc.out], ok = canCraft(rc) && !state.crafting;
     const mats = Object.entries(rc.mats).map(([n, q]) => `<span class="${countItem(n) >= q ? '' : 'lack'}">${esc(n)} ${countItem(n)}/${q}</span>`).join(' · ');
     return `<div class="recipe"><div class="round-avatar">${icon(it.icon)}</div><div class="grow"><strong>${esc(rc.out)} <em class="tag">${esc(craftCat(rc.out))}</em></strong><small class="effect">${esc(itemEffect(rc.out))}</small><small>제작 시간 ${fmtTime(craftSec(rc) * 1000)} · ${mats}</small></div><button class="primary" data-act="craft" data-index="${i}" ${ok ? '' : 'disabled'}>제작</button></div>`;
-  }).join('') + (() => { const n = RECIPES.filter(rc => !recipeKnown(rc)).length; return n ? `<div class="empty">개인실의 '단련'(3시간)으로 새 레시피를 배울 수 있어요. (남은 ${n}종 · 승급하면 후보가 늘어납니다)</div>` : ''; })() || '<div class="empty">레시피가 없습니다.</div>';
+  }).join('') + (() => { const n = RECIPES.filter(rc => !recipeKnown(rc)).length; return n ? `<div class="empty">개인실의 '단련'(1시간)으로 새 레시피를 배울 수 있어요. (남은 ${n}종 · 승급하면 후보가 늘어납니다)</div>` : ''; })() || '<div class="empty">레시피가 없습니다.</div>';
 }
 const renderBag = () => { renderEquip(); renderInventory(); renderCraft(); renderStatus(); renderLeftTab(); };
 
 /* ---------- 지도 / 구역 ---------- */
 function applyMapTransform() { $('#mapWorld').style.transform = state.dungeon ? (view.dpan.x || view.dpan.y || view.dzoom !== 1 ? `translate(${view.dpan.x}px,${view.dpan.y}px) scale(${view.dzoom})` : 'none') : `translate(${state.pan.x}px,${state.pan.y}px) scale(${state.zoom})`; }
+/* 재료 검색: 이름에 검색어가 들어 있는 재료를 얻을 수 있는 지형/구역을 찾는다 */
+const matTerrains = (z, q) => z.terrains.map((t, i) => [t, i]).filter(([t]) => [...t.gather, t.rare].some(n => n && n.toLowerCase().includes(q))).map(([t, i]) => i);
+const terrainMats = t => `[채집] ${t.gather.join(' · ')}${t.rare ? ` [희귀] ${t.rare}` : ''}`;
+const zoneMats = zid => { const z = DANGER_ZONES.find(x => x.id === zid); return z ? [...new Set(z.terrains.flatMap(t => [...t.gather, t.rare].filter(Boolean)))] : []; };
+function renderMapSearch(hits) { // 검색 결과 안내
+  const q = (view.mapQ || '').trim().toLowerCase(), box = $('#mapSearchInfo'); if (!box) return;
+  if (!q) { box.textContent = ''; return; }
+  if (state.dungeon) {
+    const z = zoneOf(state.dungeon.zone), ts = matTerrains(z, q).map(i => z.terrains[i].name);
+    box.textContent = ts.length ? `${ts.join(', ')} 지형 · 탐색한 ${hits}칸` : '이 구역에서는 찾을 수 없어요';
+  } else box.textContent = hits ? `${hits}곳 표시됨` : '표시할 구역이 없어요';
+}
 function renderMap() {
   $('#mapStage').classList.toggle('dungeon', !!state.dungeon); // 타일 지도에서는 지도 이동·확대 버튼을 숨긴다
   applyMapTransform();
   if (state.dungeon) { renderDungeon(); return; }
+  const mq = (view.mapQ || '').trim().toLowerCase(); let hlN = 0;
   const nodes = DANGER_NODES[state.location] ? [...MAP_NODES, DANGER_NODES[state.location]] : MAP_NODES;
   const byId = Object.fromEntries(nodes.map(n => [n.id, n]));
   const lines = nodes.flatMap(n => n.links.map(id => `<line class="node-line" x1="${n.x}" y1="${n.y}" x2="${byId[id].x}" y2="${byId[id].y}"/>`)).join('');
   $('#mapWorld').innerHTML = `<svg class="node-svg" viewBox="0 0 100 100" preserveAspectRatio="none">${lines}</svg>` +
-    nodes.map(n => `<button class="map-node ${n.danger ? 'danger' : ''} ${state.location === n.id ? 'current' : ''}" style="left:${n.x}%;top:${n.y}%" data-act="node" data-node="${esc(n.id)}" data-tip-title="${esc(LOCATIONS[n.id].name)}" data-tip-desc="${state.location === n.id ? '현재 위치' : (moveCost(n.id) ? `이동 기력 -${moveCost(n.id)}` : '이동 기력 소모 없음')}" aria-label="${esc(n.label)}"><span class="node-label">${esc(n.label)}</span></button>`).join('');
+    nodes.map(n => { const zm = zoneMats(n.id), hl = mq && zm.some(m => m.toLowerCase().includes(mq)); if (hl) hlN++; return `<button class="map-node ${n.danger ? 'danger' : ''} ${state.location === n.id ? 'current' : ''} ${hl ? 'hl' : ''}" style="left:${n.x}%;top:${n.y}%" data-act="node" data-node="${esc(n.id)}" data-tip-title="${esc(LOCATIONS[n.id].name)}" data-tip-desc="${esc((state.location === n.id ? '현재 위치' : (moveCost(n.id) ? `이동 기력 -${moveCost(n.id)}` : '이동 기력 소모 없음')) + (zm.length ? ` [재료] ${zm.join(' · ')}` : ''))}" aria-label="${esc(n.label)}"><span class="node-label">${esc(n.label)}</span></button>`; }).join('');
+  renderMapSearch(hlN);
 }
 
 /* 미궁: 보이는 칸만 그린다. 아무 칸이나 누르면 이동 확인창이 뜬다 (멀면 칸 수만큼 시간·기력이 든다) */
@@ -237,6 +262,7 @@ function renderDungeon() {
   refreshEvents(state.dungeon);
   if (view.dpanSeed !== state.dungeon.seed) { view.dpanSeed = state.dungeon.seed; view.dpan = { x: 0, y: 0 }; view.dzoom = 1; applyMapTransform(); } // 새 던전에 들어가면 이동 초기화
   const d = state.dungeon, z = zoneOf(d.zone), dest = state.active && state.active.path ? state.active.path[state.active.path.length - 1] : null;
+  const mq = (view.mapQ || '').trim().toLowerCase(); let hlCount = 0;
   const cells = z.map.map((row, y) => [...row].map((ch, x) => {
     if (ch === '.') return '<div class="tile void"></div>';
     if (!d.seen[`${x},${y}`]) return '<div class="tile unseen"></div>';
@@ -244,14 +270,16 @@ function renderDungeon() {
     const ti = terrainIndex(ch), info = tileInfo(z, ch), me = d.x === x && d.y === y;
     const evDone = ch === 'E' && d.done.includes(eventIndex(z, x, y)), going = dest && dest[0] === x && dest[1] === y;
     const glyph = me ? '<i class="pawn"></i>' : ch === 'S' ? icon('logout') : ch === 'C' ? icon('camping') : ch === 'E' ? icon(evDone ? 'check' : 'priority_high') : ti >= 0 ? icon(z.terrains[ti].icon) : '';
-    const cls = `tile floor ${ti >= 0 ? 't' + ti : ''} ${ch === 'C' ? 'camp' : ''} ${ch === 'E' ? 'ev' : ''} ${evDone ? 'done' : ''} ${ch === 'S' ? 'start' : ''} ${me ? 'me' : ''} ${going ? 'going' : ''}`;
-    const tip = `data-tip-title="${esc(info.name)}" data-tip-desc="${esc(info.desc)}"`;
+    const hl = ti >= 0 && mq && matTerrains(z, mq).includes(ti); if (hl) hlCount++;
+    const cls = `tile floor ${hl ? 'hl' : ''} ${ti >= 0 ? 't' + ti : ''} ${ch === 'C' ? 'camp' : ''} ${ch === 'E' ? 'ev' : ''} ${evDone ? 'done' : ''} ${ch === 'S' ? 'start' : ''} ${me ? 'me' : ''} ${going ? 'going' : ''}`;
+    const tip = `data-tip-title="${esc(info.name)}" data-tip-desc="${esc(info.desc + (info.terrain ? ' ' + terrainMats(info.terrain) : ''))}"`;
     return me ? `<div class="${cls}" ${tip}>${glyph}</div>` : `<button class="${cls} adj" data-act="tile" data-x="${x}" data-y="${y}" ${tip} aria-label="${esc(info.name)}">${glyph}</button>`;
   }).join('')).join('');
   const cols = Math.max(...z.map.map(r => r.length)), rows = z.map.length, st = $('.map-stage'), gap = 3;
   const sw = st ? st.clientWidth : 0, sh = st ? st.clientHeight : 0; // 지도가 무대에 꽉 차도록 타일 크기를 맞춘다 (최대 46px, 최소 20px)
   const tile = sw && sh ? Math.max(20, Math.min(46, Math.floor((sw - 16 - gap * (cols - 1)) / cols), Math.floor((sh - 16 - gap * (rows - 1)) / rows))) : 46;
   $('#mapWorld').innerHTML = `<div class="tile-board" style="--tile:${tile}px;grid-template-columns:repeat(${cols},var(--tile))">${cells}</div>`;
+  renderMapSearch(hlCount);
 }
 function renderMapHead() {
   const loc = LOCATIONS[state.location], d = state.dungeon;
@@ -292,11 +320,11 @@ function doMove() {
 const buffText = b => `${b} (${BUFFS[b].desc.split('. ')[1]}, 5분)`;
 /* 얻는 것 / 잃는 것(디메리트) */
 function rewardChips(r) {
-  return [...r.items.map(([n, q]) => `${n} ×${q}`), r.exp ? `EXP +${r.exp}` : '', r.money ? `CR +${r.money}` : '',
+  return [...r.items.map(([n, q]) => `${n} ×${q}`), r.exp ? `EXP +${r.exp}` : '', r.money > 0 ? `CR +${r.money}` : '',
     r.hp > 0 ? `HP +${r.hp}` : '', r.sp > 0 ? `기력 +${r.sp}` : '', r.buff && BUFFS[r.buff].type === 'buff' ? buffText(r.buff) : ''].filter(Boolean);
 }
 function costChips(r) {
-  return [r.spCost ? `기력 -${r.spCost}` : '', r.sp < 0 ? `기력 ${r.sp}` : '', r.hp < 0 ? `HP ${r.hp}` : '', r.buff && BUFFS[r.buff].type === 'debuff' ? buffText(r.buff) : ''].filter(Boolean);
+  return [r.spCost ? `기력 -${r.spCost}` : '', r.money < 0 ? `CR ${r.money}` : '', r.sp < 0 ? `기력 ${r.sp}` : '', r.hp < 0 ? `HP ${r.hp}` : '', r.buff && BUFFS[r.buff].type === 'debuff' ? buffText(r.buff) : ''].filter(Boolean);
 }
 const chipList = (list, cls = '') => list.map(c => `<span class="reward-chip ${cls}">${esc(c)}</span>`).join('') || '<span class="tiny">없음</span>';
 function choicesHtml(disabled) {
@@ -334,6 +362,7 @@ function renderAction() {
     const act = state.active, a = ACTIONS[act.id], rep = act.cycles > 1 ? ` · ${act.cycles}회 반복` : '';
     main.innerHTML = `<h3>${icon('hourglass_top')} 진행 중 · ${esc(a.title)}${rep}</h3><p>${esc(a.action)}</p>` +
       `<div class="progress"><span id="runBar"></span></div><div class="run-meta"><span id="runLeft"></span><span>창을 닫아도 시간은 흐릅니다</span></div>` +
+      (['battle', 'step', 'trip'].includes(a.kind) ? '<div class="battle-log" id="battleLog" aria-live="off"></div>' : '') +
       `<div class="reward-actions">${devBtn()}<button data-act="action-abort">중단</button></div>`;
     $('#choices').innerHTML = choicesHtml(true);
     updateRunning();
@@ -362,6 +391,11 @@ function updateRunning() {
   if (!a || !bar) return;
   bar.style.width = clamp((nowMs() - a.startAt) / (a.endAt - a.startAt) * 100, 0, 100) + '%';
   $('#runLeft').textContent = `남은 시간 ${fmtTime(a.endAt - nowMs())}`;
+  const bl = $('#battleLog'); // 전투 묘사 (1분에 한 줄, 전투가 끝나면 이 창과 함께 사라진다)
+  if (bl) {
+    const lines = activityLogFor(a).slice(-BATTLE_LOG_SHOW), sig = lines.map(l => l.text).join('|');
+    if (bl.dataset.sig !== sig) { bl.dataset.sig = sig; bl.innerHTML = lines.map(l => `<div class="bl ${l.kind}">${esc(l.text)}</div>`).join(''); bl.scrollTop = bl.scrollHeight; }
+  }
 }
 
 /* ---------- 행동 완료 알림 (탭을 보고 있지 않을 때) ---------- */
@@ -387,6 +421,7 @@ function tick() {
   if (resetBoardQuests()) { renderSide(); toast('수주한 임무가 24시간이 지나 리셋되었습니다.'); }
   farmRefresh();
   awardTitles();
+  newUnlocks().forEach(t => { addLog(t); toast(t); sfx('levelup'); notifyDone(t); });
   state.pets.forEach(p => { const k = p.id + (p.exp ? p.exp.at : 0); if (expReady(p) && !view.petBack[k]) { view.petBack[k] = true; toast(`${PET_SPECIES[p.id].name}이(가) ${p.exp.zone} 탐험에서 돌아왔어요. 개인실에서 수확물을 받으세요.`); sfx('done'); } });
   if (pruneMail()) renderMailBadge();
   if (renderMailBadge.n !== unreadMail()) { renderMailBadge.n = unreadMail(); renderMailBadge(); }
@@ -581,7 +616,8 @@ function openSystem(name) {
 let _inboxN = -1, _tradeN = -1, _guildN = -1, _polling = false;
 const itemsText = list => list.map(([n, q]) => `${n} ×${q}`).join(', ');
 const inboxHtml = () => {
-  let h = (view.inbox && view.inbox.length)
+  let h = (view.fOut && view.fOut.length) ? `<div class="choice-label">내가 보낸 친구 신청 ${view.fOut.length}건 (상대의 수락을 기다리는 중)</div>` + view.fOut.map(r => `<div class="nearby-row"><div class="round-avatar">${icon('hourglass_top')}</div><div class="grow"><strong>${esc(r.name)}</strong><small>수락 대기 중</small></div><button data-act="friend-req-cancel" data-id="${r.id}">취소</button></div>`).join('') : '';
+  h += (view.inbox && view.inbox.length)
     ? `<div class="choice-label">받은 친구 신청 ${view.inbox.length}건</div>` + view.inbox.map(r => `<div class="nearby-row"><div class="round-avatar">${icon(speakerIcon(r.name))}</div><div class="grow"><strong>${esc(r.name)}</strong><small>친구 신청을 보냈어요</small></div><button class="primary" data-act="friend-accept" data-id="${r.id}">수락</button><button data-act="friend-decline" data-id="${r.id}">거절</button></div>`).join('') : '';
   if (view.tIn && view.tIn.length) h += `<div class="choice-label">받은 교환 제안 ${view.tIn.length}건</div>` + view.tIn.map(r => `<div class="nearby-row"><div class="round-avatar">${icon('swap_horiz')}</div><div class="grow"><strong>${esc(r.name)}</strong><small>${esc(`줌: ${itemsText(r.give)} ↔ 요청: ${itemsText(r.want)}`)}</small></div><button class="primary" data-act="ftrade-accept" data-id="${r.id}">수락</button><button data-act="ftrade-decline" data-id="${r.id}">거절</button></div>`).join('');
   if (view.tOut && view.tOut.length) h += `<div class="choice-label">내가 보낸 교환 제안 ${view.tOut.length}건 (물건은 맡겨 둔 상태)</div>` + view.tOut.map(r => `<div class="nearby-row"><div class="round-avatar">${icon('hourglass_top')}</div><div class="grow"><strong>${esc(r.name)}</strong><small>${esc(`내가 줌: ${itemsText(r.give)} ↔ 받을 것: ${itemsText(r.want)}`)}</small></div><button data-act="ftrade-cancel" data-id="${r.id}">취소</button></div>`).join('');
@@ -595,6 +631,7 @@ async function friendPoll() { // 서버에서 친구 신청·메일·교환 소�
     let changed = false, newMail = 0;
     try { // 친구 신청 / 결과
       const ib = await Cloud.friendInbox();
+      view.fOut = (ib.sent || []).map(r => ({ id: sid9(r.id), name: cleanText(r.name, 12) })).filter(r => r.id && r.name);
       view.inbox = (ib.incoming || []).map(r => ({ id: sid9(r.id), name: cleanText(r.name, 12) })).filter(r => r.id && r.name);
       for (const r of ib.results || []) {
         const n = cleanText(r.name, 12), id = sid9(r.id); if (!id) continue;
@@ -635,14 +672,16 @@ async function friendPoll() { // 서버에서 친구 신청·메일·교환 소�
       const gi = await Cloud.guildInfo(); guildSyncState(gi);
       const n = (gi.incoming || []).length;
       if (n > Math.max(_guildN, 0)) toast(`길드 요청이 ${n}건 와 있어요. (길드 창에서 확인)`);
-      _guildN = n;
+      _guildN = n; view.guildIn = n;
     } catch (e) { /* 서버 준비 전 */ }
-    if (changed || newMail) { renderMailBadge(); if ($('#friendInbox')) openFriends(true); }
+    renderMailBadge();
+    if (changed || newMail) { if ($('#friendInbox')) openFriends(true); }
     else if ($('#friendInbox')) $('#friendInbox').innerHTML = inboxHtml();
   } finally { _polling = false; }
 }
 if (Cloud.enabled) { setTimeout(friendPoll, 5000); setInterval(friendPoll, 60000); }
 function openFriends(noPoll) {
+  renderMailBadge();
   const list = state.friends.map(n => `<div class="nearby-row"><div class="round-avatar">${icon(speakerIcon(n))}</div><div class="grow"><strong>${esc(n)}</strong><small>${esc((samplePlayer(n) || ['', '온라인'])[1])}</small></div>${Cloud.enabled && Cloud.user() ? `<button data-act="ftrade-open" data-name="${esc(n)}">교환</button>` : ''}<button data-act="friend-remove" data-name="${esc(n)}">삭제</button></div>`).join('');
   modal('친구', `<div class="search-row"><input id="friendSearch" placeholder="대원 이름으로 검색" aria-label="대원 검색"><button data-act="friend-search">검색</button></div><div id="friendResult"></div><div id="friendInbox">${inboxHtml()}</div>` +
     `<div class="choice-label">친구 ${state.friends.length}/${FRIEND_MAX}</div><div id="friendList">${list || '<div class="empty">아직 친구가 없습니다. 주위 대원의 정보 창이나 검색으로 추가하세요.</div>'}</div>` +
@@ -654,7 +693,12 @@ const mailItemRow = () => {
   const names = [...new Set(have.map(s => s.n))];
   return `<div class="mail-item row-gap"><select><option value="">(아이템 선택)</option>${names.map(n => `<option value="${esc(n)}">${esc(n)} (보유 ${countItem(n)})</option>`).join('')}</select><input type="number" min="1" max="99" value="1" aria-label="수량"></div>`;
 };
-function renderMailBadge() { const n = unreadMail(); $$('[data-system="메일"]').forEach(b => { b.classList.toggle('has-dot', n > 0); b.title = n ? `메일함 (새 소식 ${n})` : '메일함'; }); }
+function renderMailBadge() { // 메일 / 친구(신청·교환 제안) / 길드(초대·가입 신청) 아이콘에 새 소식 점을 단다
+  const set = (name, n, label) => $$(`[data-system="${name}"]`).forEach(b => { b.classList.toggle('has-dot', n > 0); b.title = n ? `${label} (새 소식 ${n})` : label; });
+  set('메일', unreadMail(), '메일함');
+  set('친구', ((view.inbox || []).length) + ((view.tIn || []).length), '친구');
+  set('길드', view.guildIn || 0, '길드');
+}
 function openMail(keepScroll) {
   const st = keepScroll ? $('#modalBody').scrollTop : 0, tab = view.mailTab || '받은 메일함', ship = countItem(MAIL_SHIP_ITEM);
   const tabs = `<div class="tabs flush">${['받은 메일함', '메일 보내기'].map(t => `<button class="${t === tab ? 'active' : ''}" data-act="mail-tab" data-tab="${t}">${t}</button>`).join('')}</div>`;
@@ -814,7 +858,7 @@ const A = {
     }
     else if (a.kind === 'enter') { enterDungeon(a.zone); resetPhase(); renderMapHead(); renderMap(); renderAction(); renderSide(); }
     else if (a.kind === 'leave') { leaveDungeon(); resetPhase(); renderMapHead(); renderMap(); renderAction(); }
-    else if (a.kind === 'investigate') { // 시간이 걸리지 않는 행동은 누르면 바로 실행한다
+    else if (a.kind === 'investigate' || a.kind === 'gamble') { // 시간이 걸리지 않는 행동은 누르면 바로 실행한다
       const msg = startAction(el.dataset.choice);
       if (msg) { toast(msg); sfx('error'); return; }
       renderBars(); renderAction(); sfx('ok');
@@ -964,6 +1008,9 @@ const A = {
     openJob();
   },
   'job-quit': () => { if (!view.quitAsk) { view.quitAsk = true; openJob(true); return; } view.quitAsk = false; quitSubjob(); renderProfile(); renderBuffs(true); toast('서브잡을 그만두었습니다.'); openJob(); },
+  'status-page': el => { view.statusPage = +el.dataset.p === 1 ? 1 : 0; renderStatus(); },
+  'extras-open': () => openMock(),
+  'mock-start': () => mockStart(),
   'guild-open': () => openGuild(),
   'guild-find': async () => {
     const q = cleanText($('#guildQ').value, GUILD_NAME_MAX); if (!q) { $('#guildFound').innerHTML = '<p class="tiny">검색어를 입력하세요.</p>'; return; }
@@ -1263,11 +1310,12 @@ const A = {
     try {
       const r = await Cloud.sendFriendReq(el.dataset.uid);
       if (r && r.ok && r.msg === 'auto') { addFriendAccepted(r.name || name); sfx('ok'); toast(`${name} 대원과 친구가 되었습니다.`); openFriends(); return; }
-      if (r && r.ok) { sfx('ok'); el.textContent = '신청함'; toast(`${name} 대원에게 친구 신청을 보냈어요. 상대가 수락하면 친구가 됩니다.`); return; }
+      if (r && r.ok) { sfx('ok'); el.textContent = '신청함'; toast(`${name} 대원에게 친구 신청을 보냈어요. 상대가 수락하면 친구가 됩니다.`); friendPoll(); return; }
       el.disabled = false; sfx('error');
       toast({ dup: '이미 신청했어요. 상대의 응답을 기다려 주세요.', busy: '상대의 응답이 아직 정리되지 않았어요. 잠시 뒤에 다시 시도해 주세요.', limit: '대기 중인 신청이 너무 많아요. (최대 10건)', not_found: '이 대원에게는 신청할 수 없어요.', self: '나에게는 신청할 수 없어요.' }[r && r.msg] || '신청하지 못했어요.');
     } catch (e) { el.disabled = false; toast('신청하지 못했어요. 서버에 friends.sql 을 실행했는지 확인해 주세요.'); }
   },
+  'friend-req-cancel': async el => { try { await Cloud.cancelFriendReq(+el.dataset.id); view.fOut = (view.fOut || []).filter(x => x.id !== +el.dataset.id); toast('친구 신청을 취소했어요.'); openFriends(true); } catch (e) { toast('취소하지 못했어요.'); } },
   'friend-accept': async el => {
     if (state.friends.length >= FRIEND_MAX) { toast(`친구는 ${FRIEND_MAX}명까지 둘 수 있습니다.`); sfx('error'); return; }
     try { const r = await Cloud.answerFriendReq(+el.dataset.id, true); if (r && r.ok) { addFriendAccepted(r.name); sfx('ok'); toast(`${cleanText(r.name, 12)} 대원과 친구가 되었습니다.`); } view.inbox = (view.inbox || []).filter(x => x.id !== +el.dataset.id); openFriends(true); } catch (e) { toast('처리하지 못했어요.'); }
@@ -1374,7 +1422,7 @@ $('#prevPage').onclick = () => { state.page--; renderInventory(); };
 $('#nextPage').onclick = () => { state.page++; renderInventory(); };
 $$('[data-side]').forEach(b => { b.onclick = () => { state.side = b.dataset.side; renderSide(); save(); }; });
 $$('[data-chat]').forEach(b => { b.onclick = () => { state.chatTab = b.dataset.chat; renderChat(); save(); }; });
-const canNotice = () => typeof devOn === 'function' && devOn();
+const canNotice = () => !!view.isAdmin || (typeof devOn === 'function' && devOn()); // 서버 관리자(admins 표)면 개발자 도구 없이도 공지를 쓸 수 있다. 실제 권한은 서버가 다시 검사한다
 async function postNotice(body) {
   const head = cleanText($('#noticeHead').value, 20) || '공지';
   try {
@@ -1538,6 +1586,39 @@ function openTrade(name, keepScroll) {
   modal(`${name}님과 교환`, body, [btnClose, `<button class="primary" data-act="trade-do" data-player="${esc(name)}" ${offers.length && tradesLeft() ? '' : 'disabled'}>교환하기</button>`], true);
   $('#modalBody').scrollTop = st0;
 }
+/* ---------- 추가 기능: 모의 전투 (실제 진행·보상에는 영향 없음) ---------- */
+function mockMonsters() {
+  const seen = new Set(), out = [];
+  for (const [id, a] of Object.entries(ACTIONS)) { if (a.kind !== 'battle') continue; const m = monsterBase(a); if (m && !seen.has(m.name)) { seen.add(m.name); out.push(m); } }
+  return out.sort((x, y) => x.hp * x.atk - y.hp * y.atk); // 위쪽이 약한 몬스터, 아래로 갈수록 강한 몬스터
+}
+function openMock() {
+  const ms = mockMonsters();
+  modal('추가 기능 · 모의 전투', `<p class="tiny">상대를 골라 전투를 구경해 보세요. 위쪽일수록 약하고 아래로 갈수록 강한 상대예요. 보상·HP·기력에는 영향이 없어요.</p>` +
+    `<div class="srow fontrow"><span>상대</span><select id="mockMon">${ms.map((m, i) => `<option value="${i}">${esc(m.name)} (HP ${m.hp})</option>`).join('')}</select></div>` +
+    `<div class="mock-bars"><div><small id="mockMe">나</small><div class="progress"><span id="mockMeBar" style="width:100%"></span></div></div><div><small id="mockEn">상대</small><div class="progress"><span id="mockEnBar" class="bad" style="width:100%"></span></div></div></div>` +
+    `<div class="battle-log mock" id="mockLog"><div class="bl-note">상대를 고르고 시작을 누르세요.</div></div>`,
+    [btnClose, '<button class="primary" data-act="mock-start">전투 시작</button>']);
+}
+function mockStart() {
+  if (view.mockTimer) { clearInterval(view.mockTimer); view.mockTimer = 0; }
+  const ms = mockMonsters(), m = ms[+$('#mockMon').value] || ms[0]; if (!m) return;
+  const st = { hp: Math.max(20, state.vitals.hpMax), mhp: m.hp * 2 }, hp0 = st.hp, mhp0 = st.mhp, log = $('#mockLog');
+  log.innerHTML = ''; let rounds = 0;
+  const add = (text, kind) => { log.insertAdjacentHTML('beforeend', `<div class="bl ${kind}">${esc(text)}</div>`); log.scrollTop = log.scrollHeight; };
+  const bars = () => { $('#mockMeBar').style.width = clamp(st.hp / hp0 * 100, 0, 100) + '%'; $('#mockEnBar').style.width = clamp(st.mhp / mhp0 * 100, 0, 100) + '%'; $('#mockMe').textContent = `나 ${Math.max(0, Math.round(st.hp))}/${hp0}`; $('#mockEn').textContent = `${m.name} ${Math.max(0, Math.round(st.mhp))}/${mhp0}`; };
+  add(`${m.name}와(과) 마주쳤다. 전투 시작!`, 'note'); bars();
+  $('[data-act="mock-start"]').disabled = true;
+  view.mockTimer = setInterval(() => {
+    if (!$('#mockLog')) { clearInterval(view.mockTimer); view.mockTimer = 0; return; }
+    rounds++; const l = mockRound(m, st); add(l.text, l.kind); bars();
+    if (st.mhp <= 0 || st.hp <= 0 || rounds >= 40) {
+      clearInterval(view.mockTimer); view.mockTimer = 0;
+      add(st.mhp <= 0 ? `${m.name}을(를) 쓰러뜨렸다! 모의 전투 승리.` : st.hp <= 0 ? '쓰러졌다… 모의 전투 패배.' : '승부가 나지 않은 채 전투가 끝났다.', 'note');
+      const b = $('[data-act="mock-start"]'); if (b) { b.disabled = false; b.textContent = '다시 하기'; }
+    }
+  }, 650);
+}
 function openFriendTrade(name) {
   const mine = ['소모품', '재료', '장비'].flatMap(t => state.inventory[t]).map(s => s.n).filter(n => n !== MAIL_SHIP_ITEM), uniq = [...new Set(mine)];
   const all = Object.keys(ITEMS).filter(n => n !== MAIL_SHIP_ITEM);
@@ -1599,7 +1680,7 @@ const guildReqRows = (list, acts) => list.map(r => `<div class="member-row"><div
 async function openGuildOnline(keepForm) {
   let info; const dr = keepForm ? { s: ($('#guildQ') || {}).value || '' } : { s: '' };
   try { info = await Cloud.guildInfo(); } catch (e) { toast('길드 정보를 가져오지 못했어요. 서버에 friends.sql 을 실행했는지 확인해 주세요.'); return; }
-  view.guildInfo = info; guildSyncState(info);
+  view.guildInfo = info; view.guildIn = (info.incoming || []).length; renderMailBadge(); guildSyncState(info);
   const clean = (a, kind) => (a || []).map(r => ({ id: intIn(r.id, 1, 9e15, 0), kind: r.kind === 'invite' ? 'invite' : 'apply', guild: cleanText(r.guild, GUILD_NAME_MAX), name: cleanText(r.name, 12) })).filter(r => r.id);
   const inc = clean(info.incoming), sent = clean(info.sent), g = info.guild;
   const incHtml = inc.length ? '<div class="choice-label">받은 요청</div>' + guildReqRows(inc.map(r => ({ ...r, text: r.kind === 'invite' ? `${r.name} 길드장의 초대` : `${r.name} 대원의 가입 신청` })), r => `<button class="primary" data-act="guild-answer" data-id="${r.id}" data-yes="1">수락</button><button data-act="guild-answer" data-id="${r.id}">거절</button>`) : '';
@@ -1674,6 +1755,8 @@ const endDrag = () => { if (drag) { const was = drag; drag = null; stage.classLi
 stage.addEventListener('pointerup', endDrag);
 stage.addEventListener('pointercancel', endDrag);
 const zoomBy = d => { if (state.dungeon) { view.dzoom = clamp(+(view.dzoom + d).toFixed(2), .65, 1.8); applyMapTransform(); return; } state.zoom = clamp(+(state.zoom + d).toFixed(2), .65, 1.8); applyMapTransform(); save(); };
+$('#mapSearch').addEventListener('input', e => { view.mapQ = e.target.value.slice(0, 12); renderMap(); });
+$('#mapSearch').addEventListener('pointerdown', e => e.stopPropagation());
 $('#zoomIn').onclick = () => zoomBy(.12);
 $('#zoomOut').onclick = () => zoomBy(-.12);
 $('#resetMap').onclick = () => { if (state.dungeon) { view.dpan = { x: 0, y: 0 }; view.dzoom = 1; applyMapTransform(); return; } state.zoom = 1; state.pan = { x: 0, y: 0 }; applyMapTransform(); save(); };

@@ -80,8 +80,16 @@ create or replace function public.friend_inbox() returns jsonb
 language sql security definer set search_path = public as $$
   select jsonb_build_object(
     'incoming', coalesce((select jsonb_agg(jsonb_build_object('id', id, 'name', from_name) order by id) from public.friend_reqs where to_uid = auth.uid() and status = 'pending'), '[]'::jsonb),
-    'results',  coalesce((select jsonb_agg(jsonb_build_object('id', id, 'name', to_name, 'status', status) order by id) from public.friend_reqs where from_uid = auth.uid() and status <> 'pending'), '[]'::jsonb));
+    'results',  coalesce((select jsonb_agg(jsonb_build_object('id', id, 'name', to_name, 'status', status) order by id) from public.friend_reqs where from_uid = auth.uid() and status <> 'pending'), '[]'::jsonb),
+    'sent',     coalesce((select jsonb_agg(jsonb_build_object('id', id, 'name', to_name) order by id) from public.friend_reqs where from_uid = auth.uid() and status = 'pending'), '[]'::jsonb));
 $$;
+
+-- 보낸 친구 신청 취소 (아직 답이 없을 때만)
+create or replace function public.cancel_friend_req(p_id bigint) returns void
+language sql security definer set search_path = public as $$
+  delete from public.friend_reqs where id = p_id and from_uid = auth.uid() and status = 'pending';
+$$;
+revoke all on function public.cancel_friend_req(bigint) from public, anon;
 
 create or replace function public.answer_friend_req(p_id bigint, p_accept boolean) returns jsonb
 language plpgsql security definer set search_path = public as $$

@@ -53,6 +53,7 @@ function hardenState(s) {
   c.ability = cleanText(c.ability, 20); c.abilityDesc = cleanText(c.abilityDesc, 300);
   c.level = intIn(c.level, 1, MAX_LEVEL, 1); c.rank = 'FEDCBAS'.includes(c.rank) ? c.rank : 'F';
   c.allowFriend = c.allowFriend !== false; c.allowGuild = c.allowGuild !== false;
+  s.unlockSeen = Object.fromEntries(Object.entries(s.unlockSeen && typeof s.unlockSeen === 'object' ? s.unlockSeen : {}).filter(([k, v]) => typeof k === 'string' && k.length < 30 && v === true));
   s.profileEditAt = intIn(s.profileEditAt, 0, 4e12, 0);
   s.deaths = intIn(s.deaths, 0, 99999, 0);
   s.money = intIn(s.money, 0, 999999999, 0); s.statPoints = intIn(s.statPoints, 0, 99, 0);
@@ -97,6 +98,7 @@ function hardenState(s) {
   if (g && typeof g === 'object' && cleanText(g.name, GUILD_NAME_MAX).length >= GUILD_NAME_MIN) {
     s.guild = { name: cleanText(g.name, GUILD_NAME_MAX), master: g.master === true, members: [...new Set((Array.isArray(g.members) ? g.members : []).map(n => cleanText(n, 12)).filter(Boolean))].slice(0, GUILD_MAX - 1) };
   } else s.guild = null;
+  s.gambleAt = Object.fromEntries(Object.entries(s.gambleAt && typeof s.gambleAt === 'object' ? s.gambleAt : {}).filter(([k, v]) => GAMBLES[k] && Number.isFinite(v)));
   s.invAt = Object.fromEntries(Object.entries(s.invAt && typeof s.invAt === 'object' ? s.invAt : {}).filter(([k, v]) => /^제\d구역,\d+,\d+$/.test(k) && Number.isFinite(v)).slice(0, 200));
   s.repeats = Object.fromEntries(Object.entries(s.repeats && typeof s.repeats === 'object' ? s.repeats : {}).filter(([k, v]) => ACTIONS[k.split('@')[0]] && v && Number.isFinite(v.at)).map(([k, v]) => [k, { n: intIn(v.n, 0, 9999, 0), at: v.at }]));
   s.trades = { day: /^\d{4}-\d{2}-\d{2}$/.test((s.trades || {}).day) ? s.trades.day : '', n: intIn((s.trades || {}).n, 0, 99, 0) };
@@ -354,12 +356,47 @@ function battleOdds(m) {
   return { win: Math.min(99, Math.round(win / N * 100)), hurt: Math.round(hurt / N * 100) };
 }
 const BATTLE_MAX_WIN_MISS = .01; // 아무리 쉬운 상대여도 승리 확률은 최대 99%
+/* 새로 열린 콘텐츠 알림: 승급 시험을 받을 수 있게 되거나 레벨로 열리는 콘텐츠가 열리면 한 번만 알려 준다. [문구, ...] */
+const LEVEL_CONST = { SUBJOB_MIN_LV: () => SUBJOB_MIN_LV, PET_MIN_LV: () => PET_MIN_LV };
+function newUnlocks() {
+  if (!state.created) return [];
+  const out = [], lv = state.character.level, seen = state.unlockSeen;
+  const q = nextPromo();
+  if (q && lv >= q.lv && !state.questTaken[q.id] && !seen['promo:' + q.promo]) { seen['promo:' + q.promo] = true; out.push(`${q.promo}등급 승급 시험을 받을 수 있어요! 본부에서 승급을 선택해 보세요.`); }
+  for (const [key, c, text] of LEVEL_UNLOCK_NOTES) { const need = LEVEL_CONST[c](); if (lv >= need && !seen['lv:' + key]) { seen['lv:' + key] = true; out.push(`Lv.${need} 달성: ${text}`); } }
+  if (out.length) save();
+  return out;
+}
 const PROFILE_EDIT_COOL_MS = 24 * 3600 * 1000;
 const profileLockLeft = () => Math.max(0, state.profileEditAt + PROFILE_EDIT_COOL_MS - nowMs()); // 남은 잠금 시간(ms), 0이면 수정 가능
 const fmtDur = sec => { sec = Math.round(sec); const m = Math.floor(sec / 60), r = sec % 60; return m ? (r ? `${m}분 ${r}초` : `${m}분`) : `${r}초`; };
 const fmtLong = ms => { const m = Math.ceil(ms / 60000); return m >= 60 ? `${Math.floor(m / 60)}시간 ${m % 60}분` : `${m}분`; };
 const pct = x => `${Math.round(x * 1000) / 10}%`;
-const monsterOf = a => a.monster || a.terrain.monster;
+/* ---- 전투 난이도: 입구에서 멀어질수록 몬스터가 강해진다 ---- */
+const _distCache = {};
+function entranceDist(z) { // 입구(S)에서 각 칸까지 걸어서 몇 칸인지 (한 번만 계산)
+  if (_distCache[z.id]) return _distCache[z.id];
+  const d = {}, q = []; let max = 1;
+  z.map.forEach((row, y) => [...row].forEach((c, x) => { if (c === 'S' && !q.length) { d[`${x},${y}`] = 0; q.push([x, y]); } }));
+  for (let i = 0; i < q.length; i++) {
+    const [x, y] = q[i];
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = x + dx, ny = y + dy, c = tileOf(z, nx, ny), k = `${nx},${ny}`;
+      if (!c || c === '#' || c === '.' || k in d) continue;
+      d[k] = d[`${x},${y}`] + 1; max = Math.max(max, d[k]); q.push([nx, ny]);
+    }
+  }
+  return (_distCache[z.id] = { d, max });
+}
+const tileDifficulty = (z, x, y) => { const e = entranceDist(z), n = e.d[`${x},${y}`]; return n === undefined ? .5 : clamp(n / e.max, 0, 1); }; // 0(입구)~1(가장 먼 곳)
+const curDifficulty = () => state.dungeon ? tileDifficulty(zoneOf(state.dungeon.zone), state.dungeon.x, state.dungeon.y) : 0;
+/* 같은 몬스터도 입구 근처는 약하고(체력 ×0.7) 가장 먼 곳은 아주 강하다(체력 ×17). 1렙은 입구 근처에서, 고레벨은 깊은 곳에서 겨룰 만하다 */
+function scaleMonster(m, d) {
+  const k = .7 + 16.3 * Math.pow(d, 2.3);
+  return { ...m, hp: Math.round(m.hp * k), atk: Math.max(1, Math.round(m.atk * (1 + .8 * d))), exp: Math.round(m.exp * (1 + d)), cr: Math.round(m.cr * (1 + d)), hit: 1 + 2 * d, diff: d };
+}
+const monsterBase = a => a.monster || a.terrain.monster;
+const monsterOf = (a, d) => scaleMonster(monsterBase(a), d === undefined ? curDifficulty() : d);
 function actionPreview(id, mi = 0) {
   const a = ACTIONS[id], fx = effects(), sp = spOf(a), opt = MULTI_OPTIONS[mi] || MULTI_OPTIONS[0];
   const multi = (a.kind === 'gather' || a.kind === 'battle') && opt.sec > 0;
@@ -385,11 +422,12 @@ function actionPreview(id, mi = 0) {
     return { time, gain: `승리 시 EXP +${m.exp} · CR +${m.cr} · 재료 (회당)`, cost: costs.join(' · '), note, odds };
   }
   if (a.kind === 'tame') return { time: '10분', gain: `성공하면 펫을 얻음 (성공 확률 약 ${Math.round(tameChance() * 100)}% · 감각이 높을수록 유리) · EXP +12`, cost: `기력 -${sp} · 먹이 1개(작물/펫 사료) 소모 · 실패하면 HP 손실 가능` };
-  if (a.kind === 'train') { const n = learnableRecipes().length; return { time: '3시간', gain: `새 제작 레시피 1종을 무작위로 습득 · EXP +${TRAIN_EXP}`, cost: `기력 -${sp}`, note: n ? `지금 배울 수 있는 레시피 ${n}종 (승급하면 후보가 늘어납니다)` : '지금은 더 배울 수 있는 레시피가 없습니다.' }; }
+  if (a.kind === 'train') { const n = learnableRecipes().length; return { time: '1시간', gain: `새 제작 레시피 1종을 무작위로 습득 · EXP +${TRAIN_EXP}`, cost: `기력 -${sp}`, note: n ? `지금 배울 수 있는 레시피 ${n}종 (승급하면 후보가 늘어납니다)` : '지금은 더 배울 수 있는 레시피가 없습니다.' }; }
   if (a.kind === 'rest') return { time: a.sec >= 3600 ? `${a.sec / 3600}시간` : a.sec >= 120 ? `${a.sec / 60}분` : '1분', gain: a.full ? 'HP · 기력 완전 회복 · 충분한 휴식(의지 +2, 5분)' : `HP +30 · 기력 +${a.restSp ?? REST_SP} · 충분한 휴식(의지 +2, 5분)`, cost: '없음' };
   if (a.kind === 'travel') return { time: LOCATIONS[a.to].danger ? `${ZONE_TRIP_SEC / 60}분` : '즉시', gain: `이동 후 그 구역의 선택지를 이용할 수 있음${ZONE_MIN_RANK[a.to] ? ` (${ZONE_MIN_RANK[a.to]}등급 이상)` : ''}`, cost: moveCost(a.to) ? `기력 -${moveCost(a.to)}` : '기력 소모 없음' };
   if (a.kind === 'enter') return { time: '즉시', gain: '타일 지도 탐색 시작 (타일 1칸 이동 = 3분 · 기력 1)', cost: '없음' };
   if (a.kind === 'leave') return { time: '즉시', gain: '구역 지도로 돌아감', cost: '없음' };
+  if (a.kind === 'gamble') { const g = GAMBLES[id]; return { time: '즉시', gain: `성공(${pct(GAMBLE_WIN)}): ${[g.good.money ? `CR +${g.good.money}` : '', ...(g.good.items || []).map(([n, q]) => `${n} ×${q}`), g.good.exp ? `EXP +${g.good.exp}` : '', g.good.hp ? `HP +${g.good.hp}` : '', g.good.buff || ''].filter(Boolean).join(' · ')}`, cost: `기력 -${sp} · 실패(${pct(1 - GAMBLE_WIN)}): ${[g.bad.money ? `CR ${g.bad.money}` : '', g.bad.hp ? `HP ${g.bad.hp}` : '', g.bad.buff || ''].filter(Boolean).join(' · ')} (1시간에 한 번)` }; }
   if (a.kind === 'investigate') return { time: '즉시', gain: `이 지형의 정보 확인 · 무작위 아이템 발견 가능 · 도감 등록`, cost: `기력 -${sp} (이 칸은 12시간에 한 번)`, odds: `재료 발견 ${pct(INVEST_ITEM)} · 희귀 ${pct(.05 + effects().rare)} · 함정으로 다칠 확률 ${pct(INVEST_HURT)}` };
   return { time: '-', gain: '없음', cost: '없음' };
 }
@@ -400,6 +438,7 @@ const tileKey = d => `${d.zone},${d.x},${d.y}`;
 /* 막힌 행동이면 다시 할 수 있을 때까지 남은 ms(양수), 아니면 0. 조사는 한 번 하면 12시간 뒤에 다시 할 수 있다 */
 function actionBlocked(id) {
   const a = ACTIONS[id], d = state.dungeon;
+  if (a.kind === 'gamble') { const at = state.gambleAt[id]; return at && at + GAMBLE_COOL_MS > nowMs() ? at + GAMBLE_COOL_MS - nowMs() : 0; }
   if (a.kind !== 'investigate' || !d) return 0;
   const at = state.invAt[tileKey(d)];
   return at && at + INVEST_RESET_MS > nowMs() ? at + INVEST_RESET_MS - nowMs() : 0;
@@ -430,13 +469,13 @@ function tileGatherIds(z, x, y, seed) {
 function startAction(id, mi = 0) {
   const a = ACTIONS[id];
   if (a.kind === 'todo') return '아직 구현되지 않은 기능입니다.';
-  if (!['gather', 'battle', 'rest', 'investigate', 'tame', 'train'].includes(a.kind)) return '시작할 수 없는 행동입니다.';
+  if (!['gather', 'battle', 'rest', 'investigate', 'gamble', 'tame', 'train'].includes(a.kind)) return '시작할 수 없는 행동입니다.';
   if (!state.created) return '먼저 캐릭터를 만드세요.';
   if (state.active || state.pending) return '이미 진행 중이거나 결과 확인이 필요한 행동이 있습니다.';
   const lg = levelGate(id);
   if (lg) return lg;
   if (a.kind === 'train' && !learnableRecipes().length) return RECIPES.some(rc => !recipeKnown(rc)) ? '지금 등급에서 더 배울 수 있는 레시피가 없습니다. 승급하면 새 레시피를 배울 수 있어요.' : '배울 수 있는 레시피를 모두 익혔습니다.';
-  if (actionBlocked(id)) return '이 칸은 조금 전에 조사했습니다. 12시간 뒤에 다시 할 수 있습니다.';
+  if (actionBlocked(id)) return a.kind === 'gamble' ? `방금 한 판을 했습니다. ${fmtDur(actionBlocked(id))} 뒤에 다시 할 수 있어요.` : '이 칸은 조금 전에 조사했습니다. 12시간 뒤에 다시 할 수 있습니다.';
   if (a.kind === 'battle' && state.vitals.hp <= HP_RETREAT) return `HP가 부족합니다. (${HP_RETREAT} 초과 필요) 쉬거나 응급 키트를 사용하세요.`;
   const t = nowMs(), v = state.vitals, cost = spOf(a);
   if (a.kind === 'investigate') {
@@ -445,6 +484,17 @@ function startAction(id, mi = 0) {
     const d = state.dungeon;
     state.invAt[tileKey(d)] = t;
     state.pending = { id, result: investigate(a) };
+    save();
+    return null;
+  }
+  if (a.kind === 'gamble') {
+    if (v.sp < cost) return `기력이 부족합니다. (필요 ${cost})`;
+    if (state.money < a.stake) return `판돈이 부족합니다. (CR ${a.stake} 필요)`;
+    v.sp -= cost; state.gambleAt[id] = t;
+    const g = GAMBLES[id], win = Math.random() < GAMBLE_WIN, o = win ? g.good : g.bad;
+    const r = { text: (win ? '【성공】 ' : '【실패】 ') + o.text, items: (o.items || []).map(([n, q]) => [n, q]), exp: o.exp || (win ? 4 : 2), money: o.money || 0, hp: o.hp || 0, sp: 0, spCost: cost, buff: o.buff || null, gamble: win ? 'win' : 'lose' };
+    if (r.money < 0) r.money = -Math.min(-r.money, state.money);
+    state.pending = { id, result: r };
     save();
     return null;
   }
@@ -463,7 +513,7 @@ function startAction(id, mi = 0) {
   if (v.sp < spCost) return `기력이 부족합니다. (필요 ${spCost}) 식량을 먹거나 휴식하세요.`;
   v.sp -= spCost;
   if (bait) removeItem(bait);
-  state.active = { id, startAt: t, endAt: t + total * 1000, cycles, cycleSec, spCost, ...(bait ? { bait } : {}) };
+  state.active = { id, startAt: t, endAt: t + total * 1000, cycles, cycleSec, spCost, ...(bait ? { bait } : {}), ...(a.kind === 'battle' ? { seed: 1 + Math.floor(Math.random() * 2147483000), hp0: v.hp, bs: battleSnap(), d: curDifficulty() } : {}) };
   save();
   return null;
 }
@@ -509,17 +559,191 @@ function travelTo(id) {
   return { moved: true };
 }
 
-/* 전투 시뮬레이션 (실시간 아님). hp0에서 시작해 { win, rounds, lost } */
-function simulateBattle(m, hp0) {
-  const fx = effects(), dmg = (3 + weaponAtk()) * (1 + fx.atk), jitter = () => .85 + Math.random() * .3;
-  let hp = hp0, mhp = m.hp, rounds = 0, lost = 0;
+/* ---------- 전투 묘사 ----------
+   진행 중 묘사는 실제 결과와 같은 시드 계산에서 나온다. 모의 전투는 별도의 구경용 계산이다. */
+const BATTLE_LOG_SEC = 60; // 진행 중인 전투·이동은 1분에 한 줄씩 묘사가 나온다
+const BATTLE_LOG_SHOW = 5;
+const STAT_STYLE = { str: '근력', int: '지능', agi: '민첩', wil: '의지', sen: '감각', luk: '행운' };
+function topCombatStat(t = totalStats()) { // 가장 높은 능력치 (5 이상일 때만 전투 스타일에 반영)
+  let best = null; for (const k of Object.keys(STAT_STYLE)) if (t[k] >= 5 && (!best || t[k] > t[best])) best = k;
+  return best;
+}
+const HIT_STYLE = {
+  str: (m, d) => `근력을 실어 ${m}을(를) 힘껏 내리쳤다. (-${d})`,
+  int: (m, d) => `${m}의 움직임을 읽고 허점을 파고드는 전략으로 맞섰다. (-${d})`,
+  agi: (m, d) => `빠른 발놀림으로 ${m}의 뒤를 잡아 일격을 넣었다. (-${d})`,
+  wil: (m, d) => `물러서지 않는 의지로 버티며 ${m}에게 일격을 꽂았다. (-${d})`,
+  sen: (m, d) => `${m}의 급소를 감각으로 짚어 정확히 찔렀다. (-${d})`,
+  luk: (m, d) => `운 좋게 ${m}의 빈틈이 열려 일격을 넣었다. (-${d})`
+};
+const DODGE_STYLE = {
+  agi: m => `민첩하게 몸을 비틀어 ${m}의 공격을 가볍게 흘렸다.`,
+  int: m => `${m}의 공격 궤적을 미리 계산해 비켜섰다.`,
+  sen: m => `${m}의 기척을 먼저 느끼고 한 발 물러섰다.`,
+  luk: m => `${m}의 공격이 아슬아슬하게 빗나갔다. 운이 좋았다!`
+};
+/* 한 줄 묘사. r()는 0~1 난수. 돌려주는 값: { text, kind: 'hit'|'hurt'|'dodge'|'note', dealt, taken } */
+function battleLine(m, r, ctx = {}) {
+  const t = ctx.stats || totalStats(), fx = ctx.fx || effects(), dmg = (3 + weaponAtk()) * (1 + fx.atk), jit = () => .85 + r() * .3, top = topCombatStat(t);
+  const roll = r(), name = m.name;
+  if (roll < .42) { // 내가 때렸다
+    const crit = r() < .1, d = Math.max(1, Math.round(dmg * jit() * (crit ? 2 : 1)));
+    if (top && HIT_STYLE[top] && r() < .55) return { text: (crit ? '치명타! ' : '') + HIT_STYLE[top](name, d), kind: 'hit', dealt: d, taken: 0 };
+    const gen = [`${name}에게 일격을 가했다. (-${d})`, `${name}의 옆구리를 베어 냈다. (-${d})`, `재빠르게 파고들어 ${name}을(를) 때렸다. (-${d})`, `${name}이(가) 주춤할 만큼 강하게 쳤다. (-${d})`];
+    return { text: (crit ? '치명타! ' : '') + gen[Math.floor(r() * gen.length)], kind: 'hit', dealt: d, taken: 0 };
+  }
+  if (roll < .62) { // 맞았다
+    const d = Math.max(1, Math.round(m.atk * jit() * (1 - fx.evade)));
+    const gen = [`${name}의 반격에 스쳤다. (피해 ${d})`, `${name}의 공격을 막지 못하고 맞았다. (피해 ${d})`, `${name}에게 밀려 자세가 흐트러졌다. (피해 ${d})`];
+    return { text: gen[Math.floor(r() * gen.length)], kind: 'hurt', dealt: 0, taken: d };
+  }
+  if (roll < .84) { // 피했다
+    if (top && DODGE_STYLE[top] && r() < .6) return { text: DODGE_STYLE[top](name), kind: 'dodge', dealt: 0, taken: 0 };
+    const gen = [`${name}의 공격을 가까스로 피했다.`, `${name}이(가) 휘두른 공격이 허공을 갈랐다.`, `뒤로 물러나 ${name}과(와) 거리를 벌렸다.`];
+    return { text: gen[Math.floor(r() * gen.length)], kind: 'dodge', dealt: 0, taken: 0 };
+  }
+  const gen = [`${name}이(가) 거칠게 숨을 몰아쉰다.`, `${name}과(와) 서로 틈을 노리며 맴돈다.`, `${name}의 움직임이 조금 둔해진 것 같다.`, `숨을 고르며 다음 기회를 엿본다.`];
+  return { text: gen[Math.floor(r() * gen.length)], kind: 'note', dealt: 0, taken: 0 };
+}
+/* 진행 중인 전투의 묘사: 시작할 때 정한 시드(act.seed)로 실제 결과와 똑같은 전투를 다시 계산해서 1분 단위로 풀어 쓴다.
+   그래서 묘사에서 몰아붙이던 쪽이 결과에서도 이기고, 밀리던 쪽은 후퇴한다. 시간 기준이라 창을 닫았다 열어도 같다 */
+const rngFor = (act, i) => seededRng(((act.seed || 1) * 977 + i * 7919 + 13) >>> 0);
+function battleRuns(act, a) { // [{win, rounds, lost, rs}] 회차별 전투 (resolveAction과 같은 계산)
+  const m = scaleMonster(monsterBase(a), act.d || 0), runs = []; let lost = 0;
+  const hp0 = Number.isFinite(act.hp0) ? act.hp0 : state.vitals.hp;
+  for (let i = 0; i < act.cycles; i++) {
+    if (i > 0 && hp0 - lost <= HP_RETREAT) break;
+    const b = simulateBattle(m, Math.max(1, hp0 - lost), rngFor(act, i), act.bs || battleSnap());
+    runs.push(b); lost += b.lost;
+    if (!b.win) break;
+  }
+  return { m, runs };
+}
+const pickR = (r, arr) => arr[Math.floor(r() * arr.length)];
+const FOE_STATE = [
+  [.75, m => [`${m}은(는) 아직 쌩쌩해 보인다.`, `${m}의 기세가 여전히 사납다.`, `${m}은(는) 물러설 기색이 없다.`]],
+  [.5, m => [`${m}이(가) 숨을 거칠게 몰아쉰다.`, `${m}의 움직임이 조금 둔해졌다.`, `${m}의 몸 곳곳에 상처가 늘어간다.`]],
+  [.25, m => [`${m}이(가) 비틀거리기 시작했다.`, `${m}의 공격이 눈에 띄게 흐트러졌다.`, `${m}은(는) 뒷걸음질 치며 경계한다.`]],
+  [0, m => [`${m}은(는) 금방이라도 쓰러질 듯하다.`, `${m}이(가) 마지막 힘을 쥐어짜 버틴다.`, `${m}의 눈빛에서 기세가 사라져 간다.`]]
+];
+const OPENERS = {
+  near: m => [`${m}와(과) 마주쳤다. 전투 시작!`, `풀숲에서 ${m}이(가) 튀어나왔다!`, `${m}이(가) 길목을 가로막았다. 검을 고쳐 쥔다.`],
+  mid: m => [`${m}이(가) 낮게 으르렁거리며 다가온다. 만만치 않아 보인다.`, `${m}의 기척이 심상치 않다. 신중하게 거리를 잰다.`],
+  far: m => [`압도적인 기운의 ${m}와(과) 마주쳤다! 숨이 막힌다.`, `이 깊은 곳의 ${m}은(는) 눈빛부터 다르다. 각오를 다진다.`]
+};
+const ATK_ONE = [(m, d) => `${m}에게 일격을 가했다. (-${d})`, (m, d) => `틈을 노려 ${m}의 옆구리를 베었다. (-${d})`, (m, d) => `${m}이(가) 주춤할 만큼 강하게 쳤다. (-${d})`, (m, d) => `재빠르게 파고들어 ${m}을(를) 때렸다. (-${d})`];
+const ATK_MANY = [(m, d) => `연이은 공격으로 ${m}을(를) 몰아붙였다. (-${d})`, (m, d) => `숨 돌릴 틈 없이 ${m}을(를) 두들겼다. (-${d})`, (m, d) => `흐름을 타고 ${m}에게 공격을 쏟아부었다. (-${d})`];
+const ATK_NONE = [m => `공격이 허공을 갈랐다. ${m}은(는) 무사하다.`, m => `${m}이(가) 몸을 틀어 공격을 피했다.`, m => `칼끝이 ${m}의 털끝만 스치고 지나갔다.`];
+const HURT_LINE = [(m, d) => `${m}의 반격에 맞았다. (피해 ${d})`, (m, d) => `${m}에게 밀려 자세가 흐트러졌다. (피해 ${d})`, (m, d) => `${m}의 공격을 막지 못했다. (피해 ${d})`];
+const GLANCE_LINE = [m => `${m}의 공격에 크게 휘청였지만 이를 악물고 버텼다.`, m => `${m}에게 한 방 맞았지만 아슬아슬하게 견뎌 냈다.`];
+const DODGE_LINE = [m => `${m}의 공격을 가까스로 피했다.`, m => `뒤로 물러나 ${m}과(와) 거리를 벌렸다.`, m => `${m}이(가) 휘두른 발톱이 허공을 갈랐다.`];
+const QUIET = [m => `${m}과(와) 서로 틈을 노리며 맴돈다.`, m => `숨을 고르며 ${m}의 움직임을 살폈다.`, m => `${m}의 눈치를 보며 천천히 거리를 좁혔다.`];
+function battleSlotLine(m, runs, ci, slot, act) { // 회차 ci 의 slot(0~5)번째 1분 묘사
+  const b = runs[ci], n = b.rs.length, r = rngFor(act, 1000 + ci * 10 + slot), nm = m.name, top = act.bs && act.bs.top || null;
+  const from = Math.floor(slot * n / 6), to = Math.floor((slot + 1) * n / 6), rs = b.rs.slice(from, to), parts = [];
+  const dealt = rs.reduce((s, x) => s + x.dealt, 0), crit = rs.some(x => x.crit), hurt = rs.reduce((s, x) => s + x.hurt, 0), dodges = rs.filter(x => x.dodge).length, glance = rs.some(x => x.glance);
+  if (!rs.length) parts.push(pickR(r, QUIET)(nm));
+  else {
+    if (dealt > 0) {
+      if (top && HIT_STYLE[top] && r() < .5) parts.push((crit ? '치명타! ' : '') + HIT_STYLE[top](nm, dealt));
+      else parts.push((crit ? '치명타! ' : '') + pickR(r, rs.filter(x => x.dealt).length > 1 ? ATK_MANY : ATK_ONE)(nm, dealt));
+    } else parts.push(pickR(r, ATK_NONE)(nm));
+    if (hurt > 0) parts.push(pickR(r, HURT_LINE)(nm, hurt));
+    else if (glance) parts.push(pickR(r, GLANCE_LINE)(nm));
+    else if (dodges > 0) parts.push(top && DODGE_STYLE[top] && r() < .6 ? DODGE_STYLE[top](nm) : pickR(r, DODGE_LINE)(nm));
+    const pct = (rs[rs.length - 1].mhp) / (b.mhp0 || m.hp);
+    if (b.rs[to - 1] && pct > 0) { const st = FOE_STATE.find(([lim]) => pct > lim) || FOE_STATE[3]; parts.push(pickR(r, st[1](nm))); }
+  }
+  let kind = hurt > 0 || glance ? 'hurt' : dealt > 0 ? 'hit' : dodges ? 'dodge' : 'note';
+  if (slot === 5) {
+    const last = b.rs[n - 1], dead = last && last.mhp <= 0;
+    if (b.win) { parts.push(`${nm}을(를) 쓰러뜨렸다!`); kind = 'hit'; }
+    else if (dead) { parts.push('숨통을 끊으려던 순간, 마지막 일격이 빗나가 놓치고 말았다…'); kind = 'hurt'; }
+    else { parts.push(`더는 버틸 수 없어 ${nm}에게서 물러났다…`); kind = 'hurt'; }
+  }
+  return { text: parts.join(' '), kind };
+}
+function battleLogFor(act, now = nowMs()) {
+  const a = ACTIONS[act.id]; if (!a || a.kind !== 'battle') return [];
+  const { m, runs } = battleRuns(act, a), n = Math.floor(Math.max(0, now - act.startAt) / 1000 / BATTLE_LOG_SEC), out = [], d = act.d || 0;
+  const ro = seededRng((act.seed || 1) + 5);
+  out.push({ text: pickR(ro, d < .34 ? OPENERS.near(m.name) : d < .67 ? OPENERS.mid(m.name) : OPENERS.far(m.name)), kind: 'note' });
+  const per = Math.max(1, Math.round((act.cycleSec || 360) / BATTLE_LOG_SEC));
+  for (let k = Math.max(1, n - 40); k <= n; k++) {
+    const ci = Math.floor((k - 1) / per), slot = (k - 1) % per;
+    if (ci >= act.cycles) break;
+    if (runs[ci]) out.push(battleSlotLine(m, runs, ci, Math.min(5, Math.floor(slot * 6 / per)), act));
+    else out.push({ text: '전투를 마치고 숨을 돌리며 돌아가는 길이다.', kind: 'note' });
+  }
+  return out;
+}
+/* 이동 중 묘사: 1분에 한 줄. 지나는 칸의 지형 이름과 능력치 스타일을 섞어 쉽게 질리지 않게 한다. 이동이 끝나면 사라진다 */
+const TRAVEL_STYLE = {
+  str: ['길을 막은 바위를 힘으로 밀어내고 지나갔다.', '무거운 짐을 고쳐 메고 성큼성큼 걸었다.', '쓰러진 나무줄기를 번쩍 들어 옆으로 치웠다.'],
+  int: ['지형을 살피며 가장 안전한 길을 계산해 걸었다.', '주변 지형을 머릿속에 그리며 지름길을 찾아냈다.', '발자국의 방향을 읽고 위험한 쪽을 피해 갔다.'],
+  agi: ['가벼운 걸음으로 장애물을 훌쩍 넘었다.', '바람처럼 빠르게 거친 길을 가로질렀다.', '발끝으로 바위를 짚으며 경쾌하게 건너뛰었다.'],
+  wil: ['지친 몸을 의지로 일으켜 계속 걸었다.', '흔들리지 않는 걸음으로 묵묵히 나아갔다.', '숨이 차올랐지만 멈추지 않고 한 걸음 더 내디뎠다.'],
+  sen: ['멀리 있는 기척을 먼저 알아채고 길을 살짝 돌았다.', '바람결의 미세한 변화를 읽고 발걸음을 늦췄다.', '낯선 냄새를 맡고 조용히 방향을 틀었다.'],
+  luk: ['길가에서 반짝이는 무언가를 발견했다!', '운 좋게 가장 편한 길로 접어들었다.', '무너질 뻔한 땅을 아슬아슬하게 피해 갔다.']
+};
+const TRAVEL_SCENE = [
+  t => `${t}의 풍경을 구경하며 느긋하게 걸었다.`, t => `${t}의 바람이 얼굴을 스치고 지나간다.`, t => `${t}에 들어서자 공기가 사뭇 달라졌다.`,
+  t => `${t}의 땅을 밟을 때마다 발밑에서 소리가 난다.`, t => `${t} 너머로 공중도시의 그림자가 아득하게 보인다.`, t => `${t}의 낯선 식물이 눈에 들어왔다.`
+];
+const TRAVEL_FLOURISH = [
+  '들키지 않도록 몸을 낮추고 숨어서 이동했다.', '수상한 발자국을 발견했지만 조용히 지나쳤다.', '작은 개울가에서 잠시 숨을 돌렸다.',
+  '바람결에 낯선 냄새가 실려 와 발걸음을 서둘렀다.', '멀리서 정체 모를 울음소리가 들렸다. 소리를 죽이고 나아갔다.', '옛 문명의 잔해 사이를 지나며 주위를 살폈다.',
+  '풀숲이 흔들려 멈칫했지만 바람 탓이었다.', '새 떼가 한꺼번에 날아올라 가슴이 철렁했다.', '발밑의 돌이 굴러 소리가 나자 숨을 죽였다.', '잠시 멈춰 서서 가야 할 방향을 다시 확인했다.'
+];
+function travelPlace(act, k) { // k분째에 지나는 칸의 지형 이름
+  try {
+    const z = state.dungeon && zoneOf(state.dungeon.zone); if (!z) return '길';
+    let pt = null;
+    if (act.path && act.path.length) { const cum = act.cum, el = k * BATTLE_LOG_SEC; let i = cum ? cum.findIndex(c => c * 1 >= el) : Math.min(k, act.path.length) - 1; if (i < 0) i = act.path.length - 1; pt = act.path[i]; }
+    const ch = pt ? tileOf(z, pt[0], pt[1]) : null, ti = ch ? 'abcde'.indexOf(ch) : -1;
+    return ti >= 0 && z.terrains[ti] ? z.terrains[ti].name : '이 일대';
+  } catch (e) { return '길'; }
+}
+function travelLogFor(act, now = nowMs()) {
+  const n = Math.floor(Math.max(0, now - act.startAt) / 1000 / BATTLE_LOG_SEC), top = act.bs && act.bs.top || topCombatStat(), out = [{ text: '이동을 시작했다. 주위를 살피며 걷는다.', kind: 'note' }];
+  const base = (act.seed || Math.floor(act.startAt / 1000)) >>> 0;
+  for (let k = 1; k <= n && k <= 600; k++) { if (k < n - 40) continue;
+    const r = seededRng(base * 37 + k * 6151), roll = r(), place = travelPlace(act, k);
+    if (top && roll < .3) out.push({ text: pickR(r, TRAVEL_STYLE[top]), kind: 'dodge' });
+    else if (roll < .65) out.push({ text: pickR(r, TRAVEL_SCENE)(place), kind: 'note' });
+    else out.push({ text: pickR(r, TRAVEL_SCENE)(place) + ' ' + pickR(r, TRAVEL_FLOURISH), kind: 'note' });
+  }
+  return out;
+}
+const activityLogFor = (act, now) => { const a = ACTIONS[act.id], k = a && a.kind; return k === 'battle' ? battleLogFor(act, now) : k === 'step' || k === 'trip' ? travelLogFor(act, now) : []; };
+/* 모의 전투 한 라운드 (실제 결과에는 영향 없음). st = { hp, mhp }  */
+const MOCK_HIT = .35;
+function mockRound(m, st, r = Math.random) {
+  const fx = effects(), line = battleLine(m, r);
+  // 묘사와 수치를 맞춘다: 때린 줄이면 몬스터 HP 감소, 맞은 줄이면 내 HP 감소
+  if (line.kind === 'hit') st.mhp -= line.dealt;
+  else if (line.kind === 'hurt') st.hp -= line.taken;
+  return line;
+}
+/* 전투 시뮬레이션 (실시간 아님). hp0에서 시작해 { win, rounds, lost, rs }.
+   rnd 가 시드 난수면 같은 결과가 나온다: 진행 중 전투 묘사와 최종 결과가 같은 계산에서 나온다. rs = 라운드별 기록 */
+const battleSnap = () => { const fx = effects(); return { atk: fx.atk, evade: fx.evade, wa: weaponAtk(), top: topCombatStat() }; };
+function simulateBattle(m, hp0, rnd = Math.random, bs = battleSnap()) {
+  const dmg = (3 + bs.wa) * (1 + bs.atk), jitter = () => .85 + rnd() * .3, hitP = Math.min(.5, BATTLE_HIT * (m.hit || 1) * (1 - bs.evade)), cap = m.hpCap || BATTLE_HP_CAP;
+  const mhp0 = Math.round(m.hp * (.6 + rnd() * .9)); let hp = hp0, mhp = mhp0, rounds = 0, lost = 0; const rs = [];
   while (mhp > 0 && hp > 1 && rounds < 40) {
     rounds++;
-    if (chance(.8)) mhp -= dmg * (chance(.1) ? 2 : 1) * jitter();
+    const r = { dealt: 0, crit: false, hurt: 0, dodge: false, miss: false };
+    if (rnd() < .8) { r.crit = rnd() < .1; r.dealt = Math.max(1, Math.round(dmg * jitter() * (r.crit ? 2 : 1))); mhp -= r.dealt; } else r.miss = true;
+    r.mhp = Math.max(0, mhp);
+    if (mhp > 0) {
+      if (rnd() < hitP) { const d = Math.max(1, Math.round(m.atk * jitter())), real = Math.max(0, Math.min(d, cap - lost, hp - 1)); hp -= d; lost += real; r.hurt = real; r.glance = real < d; }
+      else r.dodge = true;
+    }
+    rs.push(r);
     if (mhp <= 0) break;
-    if (chance(BATTLE_HIT * (1 - fx.evade))) { const d = Math.max(1, Math.round(m.atk * jitter())); hp -= d; lost += d; }
   }
-  return { win: mhp <= 0 && !(Math.random() > 1 - BATTLE_MAX_WIN_MISS), rounds, lost: Math.min(lost, m.hpCap || BATTLE_HP_CAP, hp0 - 1) };
+  return { mhp0, win: mhp <= 0 && !(rnd() > 1 - BATTLE_MAX_WIN_MISS), rounds, lost: Math.min(lost, cap, hp0 - 1), rs };
 }
 
 /* 조사(즉시): 지형 정보 + 무작위 아이템 */
@@ -537,8 +761,8 @@ function investigate(a) {
 }
 
 /* 완료 시점에 결과를 계산한다: { text, items:[[이름,수량]], exp, money, hp, sp, spCost, buff } (반복 행동은 회차별로 누적) */
-function resolveAction(id, cycles = 1, spPaid = 0) {
-  const a = ACTIONS[id], fx = effects(), t = a.terrain, per = spOf(a);
+function resolveAction(id, cycles = 1, spPaid = 0, act = null) {
+  const a = ACTIONS[id], fx = effects(), t = a.terrain, per = spOf(a), br = act && act.seed && a.kind === 'battle' ? battleRuns(act, a) : null;
   const r = { text: '', items: [], exp: 0, money: 0, hp: 0, sp: 0, spCost: spPaid, buff: null };
   if (a.kind === 'rest') {
     r.hp = a.full ? state.vitals.hpMax : 30; r.sp = a.full ? state.vitals.spMax : (a.restSp ?? REST_SP); r.buff = '충분한 휴식';
@@ -548,7 +772,7 @@ function resolveAction(id, cycles = 1, spPaid = 0) {
   if (a.kind === 'train') {
     const pool = learnableRecipes(), rc = pool.length ? pick(pool) : null;
     r.exp = TRAIN_EXP; r.sp = 0;
-    if (rc) { state.learned.push(rc.out); r.recipe = rc.out; r.text = `3시간의 단련 끝에 「${rc.out}」 제작법을 익혔습니다. (재료: ${Object.entries(rc.mats).map(([n, q]) => `${n} ×${q}`).join(', ')})`; }
+    if (rc) { state.learned.push(rc.out); r.recipe = rc.out; r.text = `1시간의 단련 끝에 「${rc.out}」 제작법을 익혔습니다. (재료: ${Object.entries(rc.mats).map(([n, q]) => `${n} ×${q}`).join(', ')})`; }
     else r.text = '단련을 마쳤습니다. 더 익힐 제작법은 없었습니다.';
     return r;
   }
@@ -574,7 +798,7 @@ function resolveAction(id, cycles = 1, spPaid = 0) {
       r.exp += 6;
       if (chance(a.hazard.chance)) { r.hp -= rand(...a.hazard.hp); accidents++; }
     } else {
-      const m = monsterOf(a), b = simulateBattle(m, Math.max(1, state.vitals.hp + r.hp));
+      const m = monsterOf(a, act && act.d || 0), b = (br && br.runs[i]) || simulateBattle(m, Math.max(1, state.vitals.hp + r.hp));
       discover('monsters', m.name);
       r.hp -= b.lost;
       if (b.win) { wins++; countKill(m.name); r.exp += m.exp; r.money += m.cr; if (keep) { if (chance(BATTLE_MAT)) add(pick(t.gather), rand(1, 2) * mult); m.drops.forEach(([n, p]) => { if (chance(p)) add(n, mult); }); } if (seed && chance(SEED_DROP.battle)) add(seed, 1); }
@@ -588,7 +812,7 @@ function resolveAction(id, cycles = 1, spPaid = 0) {
   noteRepeat(id, done);
   const tail = [lowered ? (a.kind === 'gather' ? `빈손 ${lowered}회` : `재료를 못 얻은 회차 ${lowered}회`) : '', greats ? `대성공 ${greats}회` : '', accidents ? `사고 ${accidents}회` : '', stop].filter(Boolean).join(' · ');
   if (a.kind === 'gather') r.text = `${t.name}에서 ${done}회 「${a.label}」 했습니다.${tail ? ' ' + tail : ''}`;
-  else r.text = `${monsterOf(a).name}와(과) ${done}회 교전: ${wins}승 ${losses}패.${tail ? ' ' + tail : ''}`;
+  else r.text = `${monsterBase(a).name}와(과) ${done}회 교전: ${wins}승 ${losses}패.${tail ? ' ' + tail : ''}`;
   return r;
 }
 
@@ -600,7 +824,7 @@ function finishIfDue() {
   state.active = null;
   if (a.kind === 'trip') { state.location = act.to; discover('zones', act.to); enterDungeon(act.to); return 'trip'; }
   if (a.kind === 'step') { const ev = applyMove(act.path, act.path.length); save(); return ev ? true : 'step'; }
-  state.pending = { id: act.id, result: resolveAction(act.id, act.cycles, act.spCost) };
+  state.pending = { id: act.id, result: resolveAction(act.id, act.cycles, act.spCost, act) };
   save();
   return true;
 }
@@ -610,7 +834,7 @@ function claimResult() {
   const { id, result: r } = state.pending, v = state.vitals, lost = [];
   if (r.death) { state.pending = null; return { id, lost, ups: 0, result: r, died: dieAndRebirth() }; } // 죽으면 이 행동의 보상은 받지 못한다
   r.items.forEach(([n, q]) => { const got = addItem(n, q); if (got < q) lost.push([n, q - got]); });
-  state.money += r.money;
+  state.money = Math.max(0, state.money + r.money);
   if (r.pet) addPet(r.pet);
   v.hp = clamp(v.hp + r.hp, 1, v.hpMax);
   v.sp = clamp(v.sp + r.sp + (r.refund || 0), 0, v.spMax);
@@ -720,7 +944,7 @@ function currentGroups() {
   if (!state.dungeon) return LOCATIONS[state.location].groups;
   const z = zoneOf(state.dungeon.zone), ch = tileOf(z, state.dungeon.x, state.dungeon.y), ti = terrainIndex(ch);
   if (ti >= 0) { const t = z.terrains[ti]; return [{ label: t.name, items: [t.actions[0], ...tileGatherIds(z, state.dungeon.x, state.dungeon.y, state.dungeon.seed), tileBattleId(z, t, state.dungeon.x, state.dungeon.y, state.dungeon.seed), ...(t.tameId ? [t.tameId] : [])] }]; }
-  if (ch === 'C') return [{ label: '안전 캠프', items: ['캠프 휴식', '임무 수주', '상점'] }];
+  if (ch === 'C') return [{ label: '안전 캠프', items: ['캠프 휴식', '임무 수주', '상점', '모닥불 주사위'] }];
   if (ch === 'S') return [{ label: '입구', items: ['퇴장'] }];
   return [];
 }
@@ -759,7 +983,7 @@ function startMove(tx, ty) {
   if (state.vitals.sp < m.sp) return `기력이 부족해 이동할 수 없습니다. (필요 ${m.sp}) 식량을 먹으세요.`;
   state.vitals.sp -= m.sp;
   const t = nowMs();
-  state.active = { id: '타일 이동', startAt: t, endAt: t + m.sec * 1000, cycles: 1, cycleSec: m.sec, spCost: m.sp, path: m.path, cum: m.cum };
+  state.active = { id: '타일 이동', startAt: t, endAt: t + m.sec * 1000, cycles: 1, cycleSec: m.sec, spCost: m.sp, path: m.path, cum: m.cum, seed: 1 + Math.floor(Math.random() * 2147483000), bs: { top: topCombatStat() } };
   save();
   return null;
 }

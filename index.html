@@ -65,7 +65,7 @@
       </section>
 
       <section class="panel status-panel" data-panel="상태">
-        <div class="panel-title"><span class="material-symbols-rounded" aria-hidden="true">bar_chart</span> 스테이터스 <span class="spacer"></span><span class="point-badge hidden" id="statPoints"></span><div class="buff-icons" id="buffIcons"></div></div>
+        <div class="panel-title"><span class="material-symbols-rounded" aria-hidden="true">bar_chart</span> 스테이터스 <span class="spacer"></span><span class="status-pager" id="statusPager"><button data-act="status-page" data-p="0" class="on" title="능력치">1</button><button data-act="status-page" data-p="1" title="전투 능력">2</button></span><span class="point-badge hidden" id="statPoints"></span><div class="buff-icons" id="buffIcons"></div></div>
         <div id="statusBody"></div>
       </section>
 
@@ -119,6 +119,7 @@
         </div>
         <div class="map-body">
         <div class="map-stage" id="mapStage">
+          <div class="map-search"><input id="mapSearch" type="search" maxlength="12" placeholder="재료 검색 (예: 목재)" aria-label="지도에서 재료 검색" autocomplete="off"><span id="mapSearchInfo"></span></div>
           <div class="map-world" id="mapWorld"></div>
           <div class="map-tools">
             <button class="icon" id="zoomIn" title="확대"><span class="material-symbols-rounded" aria-hidden="true">add</span></button>

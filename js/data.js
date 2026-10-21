@@ -37,7 +37,7 @@ const EQUIP_SLOTS = [...EQUIP_SMALL, ...EQUIP_BIG];
 
 /* ---------- 스탯: fx = [효과 키, 이름, 부호, 단위] (수치는 core.js effects()), tip = 설명 ---------- */
 const STAT_DEFS = [ // 스탯당 보너스 1개 (행동 시간·경험치에는 영향을 주지 않는다. 제작 시간만 예외)
-  { key: 'str', name: '근력', en: 'STR', fx: [['atk', '공격력 증가 (사냥 성공 확률)', '+', '%']], tip: '공격력이 늘어 전투에서 이길 확률이 올라갑니다.' },
+  { key: 'str', name: '근력', en: 'STR', fx: [['atk', '공격력 증가', '+', '%']], tip: '공격력이 늘어 전투에서 이길 확률이 올라갑니다.' },
   { key: 'agi', name: '민첩', en: 'AGI', fx: [['evade', '전투 중 다칠 확률', '-', '%p']], tip: '전투에서 공격을 맞아 다칠 확률이 줄어듭니다.' },
   { key: 'int', name: '지능', en: 'INT', fx: [['ggreat', '채집 대성공 확률', '+', '%p']], tip: '채집 대성공 시 재료를 2개 채집합니다.' },
   { key: 'wil', name: '의지', en: 'WIL', fx: [['rare', '희귀 채집 확률', '+', '%p']], tip: '채집·조사에서 희귀한 재료가 나올 확률이 늘어납니다.' },
@@ -305,7 +305,7 @@ const RANK_ORDER = 'FEDCBAS';
 const recipeKnown = rc => STARTER_RECIPES.includes(rc.out) || state.learned.includes(rc.out);
 const rankAtLeast = r => RANK_ORDER.indexOf(state.character.rank) >= RANK_ORDER.indexOf(r);
 const learnableRecipes = () => RECIPES.filter(rc => !recipeKnown(rc) && rankAtLeast(rc.rank)); // 지금 단련으로 배울 수 있는 후보
-const TRAIN_SEC = 3 * 3600, TRAIN_SP = 10, TRAIN_EXP = 30; // 단련: 3시간 · 기력 10 · EXP +30 · 새 레시피 1종
+const TRAIN_SEC = 3600, TRAIN_SP = 10, TRAIN_EXP = 30; // 단련: 1시간 · 기력 10 · EXP +30 · 새 레시피 1종
 
 /* ---------- 버프/디버프 ---------- */
 const BUFFS = {
@@ -330,15 +330,15 @@ ACTIONS['승급'] = { kind: 'promo', icon: 'military_tech', label: '승급', tit
 ACTIONS['농장'] = { kind: 'farm', icon: 'yard', label: '농장', title: '농장', action: '씨앗을 심고 작물을 수확합니다. 시간이 지나면 자랍니다.' };
 ACTIONS['펫 돌보기'] = { kind: 'pet', icon: 'pets', label: '펫 돌보기', title: '펫 돌보기', action: '지상에서 길들인 펫에게 먹이를 주고 함께 갈 펫을 고릅니다.' };
 ACTIONS['서브잡 가입'] = { kind: 'subjob', icon: 'work', label: '서브잡', title: '서브잡', action: '나만의 서브잡을 만들고 하루 한 번 납품해 레벨을 올립니다.' };
-ACTIONS['단련'] = { kind: 'train', icon: 'fitness_center', label: '단련', title: '단련', action: '개인실에서 3시간 동안 단련하며 새 제작 레시피를 익힙니다. 배울 수 있는 레시피는 등급이 오를수록 늘어납니다.', sec: 3 * 3600, cost: { sp: 10 } };
+ACTIONS['단련'] = { kind: 'train', icon: 'fitness_center', label: '단련', title: '단련', action: '개인실에서 1시간 동안 단련하며 새 제작 레시피를 익힙니다. 배울 수 있는 레시피는 등급이 오를수록 늘어납니다.', sec: 3600, cost: { sp: 10 } };
 ACTIONS['휴식'] = { kind: 'rest', icon: 'bed', label: '휴식', title: '휴식', action: '개인실에서 쉬며 HP와 기력을 조금 회복합니다. (30분)', sec: 1800, cost: { sp: 0 } };
 ACTIONS['잠자기'] = { kind: 'rest', icon: 'bedtime', label: '잠자기', title: '잠자기', action: '개인실에서 깊이 잠들어 HP와 기력을 모두 회복합니다. (6시간)', sec: 21600, cost: { sp: 0 }, full: true };
 
 const SAFE_ZONES = [
-  { id: '본부', icon: 'domain', meta: '행정 · 작전 거점', x: 50, y: 42, desc: '임무 수주와 승급 시험을 받을 수 있는 도시 본부입니다. CR을 내고 장비를 강화할 수도 있습니다.', items: ['임무 수주', '승급', '장비 강화'] },
-  { id: '개인실', icon: 'bed', meta: '휴식 · 단련 · 농장', x: 22, y: 20, desc: '나만의 공간입니다. 휴식하고, 단련으로 새 레시피를 익히고, 농장을 가꾸고, 펫을 돌볼 수 있습니다.', items: ['농장', '펫 돌보기', '단련', '휴식', '잠자기'] },
-  { id: '이동장치', icon: 'transfer_within_a_station', meta: '지상 이동 · 구역 선택', x: 50, y: 74, desc: '지상으로 내려가는 이동 장치입니다. 가고 싶은 구역을 고르면 바로 이동합니다.', items: ['이동 제1구역', '이동 제2구역', '이동 제3구역', '이동 제4구역', '이동 제5구역'] },
-  { id: '상점가', icon: 'storefront', meta: '상점 · 대원 거래 · 서브잡', x: 78, y: 20, desc: '상점과 서브잡 가입을 이용할 수 있는 상업 구역입니다. 대원 간 상점은 아직 구현되지 않았습니다.', items: ['상점', '대원 간 상점', '서브잡 가입'] }
+  { id: '본부', icon: 'domain', meta: '행정 · 작전 거점', x: 50, y: 42, desc: '임무 수주와 승급 시험을 받을 수 있는 도시 본부입니다. CR을 내고 장비를 강화할 수도 있습니다.', items: ['임무 수주', '승급', '장비 강화', '작전 예측 내기'] },
+  { id: '개인실', icon: 'bed', meta: '휴식 · 단련 · 농장', x: 22, y: 20, desc: '나만의 공간입니다. 휴식하고, 단련으로 새 레시피를 익히고, 농장을 가꾸고, 펫을 돌볼 수 있습니다.', items: ['농장', '펫 돌보기', '단련', '휴식', '잠자기', '낡은 서랍 뒤지기'] },
+  { id: '이동장치', icon: 'transfer_within_a_station', meta: '지상 이동 · 구역 선택', x: 50, y: 74, desc: '지상으로 내려가는 이동 장치입니다. 가고 싶은 구역을 고르면 바로 이동합니다.', items: ['이동 제1구역', '이동 제2구역', '이동 제3구역', '이동 제4구역', '이동 제5구역', '수상한 승차권 뽑기'] },
+  { id: '상점가', icon: 'storefront', meta: '상점 · 대원 거래 · 서브잡', x: 78, y: 20, desc: '상점과 서브잡 가입을 이용할 수 있는 상업 구역입니다. 대원 간 상점은 아직 구현되지 않았습니다.', items: ['상점', '대원 간 상점', '서브잡 가입', '뒷골목 카드 한 판'] }
 ];
 
 /* 지상은 지도에서 '입장'하면 타일 미궁(map)이 열린다.
@@ -426,7 +426,23 @@ const ENCHANT_COST = 100;
 const ENCHANT_POOL = [ // [종류, 가중치, 값 범위]
   ['str', 10, [1, 2]], ['agi', 10, [1, 2]], ['int', 10, [1, 2]], ['wil', 10, [1, 2]], ['sen', 10, [1, 2]], ['luk', 10, [1, 2]], ['hp', 20, [5, 15]], ['sp', 20, [5, 15]]
 ];
+/* 도박성 선택지: 80%는 좋은 일, 20%는 나쁜 일. 즉시 결과가 나오고 장소마다 1시간에 한 번만 할 수 있다 */
+const GAMBLE_WIN = .8, GAMBLE_COOL_MS = 3600 * 1000;
+const GAMBLES = {
+  '뒷골목 카드 한 판': { icon: 'style', sp: 2, action: '상점가 뒷골목에서 카드 한 판을 겨룹니다. 이기면 CR을 따고, 지면 판돈을 잃습니다.', stake: 30,
+    good: { text: '패가 기막히게 맞아떨어졌다! 상대가 혀를 내두르며 판돈을 내놓았다.', money: 70 }, bad: { text: '마지막 패가 뒤집히며 판돈을 통째로 잃었다…', money: -30 } },
+  '작전 예측 내기': { icon: 'poker_chip', sp: 2, action: '본부 휴게실에서 오늘 작전 결과를 두고 동료와 내기합니다. 맞히면 CR과 경험을 얻고, 틀리면 CR을 잃습니다.', stake: 40,
+    good: { text: '예측이 정확히 들어맞았다! 동료들이 박수를 치며 내기 돈을 건넸다.', money: 50, exp: 10 }, bad: { text: '예측이 완전히 빗나갔다. 동료들의 웃음 속에서 내기 돈을 건넸다…', money: -40 } },
+  '낡은 서랍 뒤지기': { icon: 'inventory_2', sp: 2, action: '개인실의 오래 열지 않은 서랍을 뒤져 봅니다. 쓸 만한 물건이 나올 수도, 손을 다칠 수도 있어요.',
+    good: { text: '서랍 깊숙한 곳에서 쓸 만한 물건이 굴러 나왔다!', items: [['응급 키트', 1], ['건조 식량', 1]] }, bad: { text: '서랍 모서리에 손가락을 세게 찧었다. 욱신거린다…', hp: -3, buff: '부상' } },
+  '수상한 승차권 뽑기': { icon: 'confirmation_number', sp: 2, action: '이동장치 옆 자판기에서 수상한 승차권을 뽑습니다. 당첨이면 CR을 얻고, 꽝이면 요금만 날립니다.', stake: 20,
+    good: { text: '승차권이 당첨됐다! 정산기에서 CR이 쏟아져 나왔다.', money: 80 }, bad: { text: '엉뚱한 승강장행 표였다. 요금만 날리고 말았다…', money: -20 } },
+  '모닥불 주사위': { icon: 'casino', sp: 1, action: '안전 캠프의 모닥불 곁에서 주사위를 굴립니다. 길하면 몸이 가벼워지고, 흉하면 컨디션이 흐트러집니다.',
+    good: { text: '주사위가 길한 눈을 보였다! 모닥불이 따뜻하게 타올라 몸이 가벼워졌다.', hp: 15, buff: '충분한 휴식' }, bad: { text: '주사위가 흉한 눈을 보이자 불꽃이 확 튀어 발을 데고 말았다…', hp: -2, buff: '부상' } }
+};
+Object.entries(GAMBLES).forEach(([id, g]) => { ACTIONS[id] = { kind: 'gamble', icon: g.icon, label: id, title: id, action: g.action, cost: { sp: g.sp }, stake: g.stake || 0 }; });
 ACTIONS['장비 강화'] = { kind: 'enhance', icon: 'build', label: '장비 강화', title: '장비 강화', action: `CR ${ENCHANT_COST}을 내고 장비에 무작위 효과를 붙입니다. (스탯 또는 최대 HP·기력)` };
+const LEVEL_UNLOCK_NOTES = [['subjob', 'SUBJOB_MIN_LV', '서브잡에 가입할 수 있게 됐어요! (상점가)'], ['pet', 'PET_MIN_LV', '펫을 길들이고 돌볼 수 있게 됐어요!']]; // 레벨로 열리는 콘텐츠 [키, 레벨 상수 이름, 알림 문구]
 const SUBJOB_MIN_LV = 5, PET_MIN_LV = 7; // 서브잡은 Lv.5부터, 펫(길들이기·돌보기)은 Lv.7부터
 const EXP_SLOW = 1.18, CR_BONUS = 1.1;   // 레벨업에 필요한 EXP는 18% 늘고, 몬스터가 주는 CR은 10% 는다
 /* 모든 위험구역의 난이도는 비슷하다: 몬스터 체력·공격과 사고 위험을 같은 수준으로 맞추고, 구역이 멀수록 보수(EXP·CR)만 조금 늘어난다 */
@@ -655,6 +671,7 @@ function createDefaultState() {
     active: null,       // 진행 중인 행동 {id, startAt, endAt}
     pending: null,      // 완료됐지만 결과 확인 전인 행동 {id, result}
     settings: { bgmOn: true, bgmVolume: BGM_DEFAULT_VOLUME, sfxVolume: 65, clickOn: true, alertOn: true, notify: true, guildAlert: true, cursor: true, fontSize: 'm', theme: 'light', customBase: 'light', customAccent: '#197da1' },
+    unlockSeen: {}, // 이미 알려 준 개방 알림 { 키: true }
     profileEditAt: 0, // 마지막 프로필 수정 시각 (0=아직 수정 안 함). 첫 수정 뒤에는 24시간 간격
     layout: { left: 292, right: 315, statusH: 0, mapH: 0 },
     collapsed: {},      // 좁은 화면에서 접은 패널 { 키: true }
@@ -681,7 +698,9 @@ function createDefaultState() {
     subjob: null,       // 서브잡 { name, tags, level, prog, lastAt }
     qprog: {},          // 처치 임무 진행도 { id: 수 }
     guild: null,        // 길드 { name, master: 길드장인가, members: [이름...](나 제외) }
-    invAt: {},          // 조사한 칸 { '구역,x,y': 시각(ms) } — 12시간 뒤 다시 조사 가능
+    invAt: {},
+    gambleAt: {},       // 도박성 선택지 마지막 시각 { 이름: ms } — 1시간에 한 번
+              // 조사한 칸 { '구역,x,y': 시각(ms) } — 12시간 뒤 다시 조사 가능
     repeats: {},        // 반복 횟수 { "행동 id@구역,x,y": { n, at } } (같은 장소의 같은 행동만 누적) — 4번째부터 아이템 확률 저하, 12시간 뒤 초기화
     chats: {
       '월드': [['관제 시스템', '월드 채널 연결 완료.']],

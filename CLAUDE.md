@@ -82,3 +82,11 @@ STUB_ICONS=1 python3 tests/smoke.py   # 아이콘 폰트를 못 받는 환경(�
 - 프로필 수정: 이능력 이름 포함, 첫 수정은 바로, 이후 24시간 간격(`state.profileEditAt`, `profileLockLeft()`; 칭호 제외). 전투 승리 확률은 최대 99%(`BATTLE_MAX_WIN_MISS`). 설정에 로컬 저장/불러오기(세이브 .json 파일: `{game,version,savedAt,data}`), 튜토리얼 다시 보기 버튼은 오른쪽.
 - 친구 찾기: 서버 로그인 시 `Cloud.searchPlayers`(RPC `search_players`, `supabase/friends.sql` 을 한 번 실행해야 함)로 `saves`의 캐릭터 이름을 검색. 결과는 `REMOTE_PLAYERS`에 담아 `addFriend` 가능. 메일·교환·길드 초대는 아직 서버 미연결.
 - 서버 소셜(모두 `supabase/friends.sql`, 로그인 시): 친구 신청→상대 수락(`friend_reqs`/`friendships`), 메일(`mails`, 친구에게만, 받으면 `receiveServerMail`), 교환(`trades`, 제안 때 내 물건을 맡기고 수락/거절/취소/3일 만료 시 메일로 지급·반환), 길드(`guilds`/`guild_members`/`guild_reqs`: 초대→초대받은 사람 수락, 가입 신청→길드장 수락; 서버가 기준이라 `guildSyncState`가 state.guild를 맞춤). `friendPoll()`이 60초마다 가져온다. 길드 채팅은 아직 서버 미연결.
+- 전투/이동 묘사: 진행 중 화면의 남은 시간 아래 임시 로그(`#battleLog`, `activityLogFor`)가 **1분에 한 줄**(`BATTLE_LOG_SEC`=60) 나온다. 전투는 시작 때 `state.active`에 저장한 `seed/hp0/bs/d`로 `battleRuns`가 실제 결과(`resolveAction`)와 **같은 시드 계산**을 다시 돌려 6분 회차를 1분 6칸으로 풀어 쓴다(`battleSlotLine`, 문구 변형 다수). 이동은 지나는 칸 지형 이름+능력치 스타일을 섞는다(`travelLogFor`). 결과 화면이 되면 사라진다. 모의 전투(`mockRound`)만 별도 계산.
+- 스테이터스 2페이지(`view.statusPage`, `combatPageHtml`)와 '추가 기능' → 모의 전투 오버레이(`openMock`/`mockStart`, 실제 진행에 영향 없음).
+- 재료: 타일/구역 노드 툴팁에 `[채집]`/`[재료]`, 지도 왼쪽 위 검색창(`#mapSearch`, `view.mapQ`)이 해당 지형 칸(`.tile.hl`)·구역 노드를 하이라이트.
+- 개방 알림: `newUnlocks()`가 승급 시험 가능·레벨 개방(`LEVEL_UNLOCK_NOTES`)을 한 번만 알린다(`state.unlockSeen`). 단련 1시간(`TRAIN_SEC`).
+- 난이도: 입구(S)에서 걸어서 멀수록 몬스터가 강해진다. `entranceDist`/`tileDifficulty`(0~1)/`scaleMonster`(체력 ×0.7~×17, 공격·피격률·보상 증가), 전투 시작 때 `active.d`에 고정. `simulateBattle`은 개체마다 체력 ×0.6~1.5 변동. 모의 전투 목록은 약한 몬스터가 위(`mockMonsters`, hp×atk 순).
+- 도박성 선택지(`GAMBLES`, kind `gamble`): 상점가·본부·개인실·이동장치·캠프 칸. 80% 좋은 일/20% 나쁜 일(`GAMBLE_WIN`), 즉시 결과, 장소별 1시간에 한 번(`state.gambleAt`), 판돈이 있으면 CR 부족 시 불가. 손실 CR은 보유량 이하로 제한.
+- 알림 탭 글쓰기: 서버 `admins` 표 등록 계정이면 `view.isAdmin`(개발자 도구 없이)으로 가능. 실제 권한은 서버 `post_notice`가 검사.
+- 스테이터스 2페이지: 공격력/방어력/모의전투 3칸(1페이지와 같은 크기, `view.statH`). 친구 목록은 2열(`#friendList`).

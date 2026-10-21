@@ -132,7 +132,7 @@ with sync_playwright() as p:
     pg.click('[data-ct="str"][data-d="-1"]'); check('stat_not_below_zero', text(pg, '#ctv-str') == '0' and text(pg, '#ctPool') == '12')
     for _ in range(14): pg.click('[data-ct="str"][data-d="1"]')
     check('stat_all_12_in_one_stat_allowed', text(pg, '#ctv-str') == '12' and text(pg, '#ctPool') == '0')
-    check('stat_effect_preview', '공격력 증가 (사냥 성공 확률) +7.2%' in text(pg, '#cte-str'), text(pg, '#cte-str'))
+    check('stat_effect_preview', '공격력 증가 +7.2%' in text(pg, '#cte-str'), text(pg, '#cte-str'))
     pg.click('[data-ct="str"][data-d="-1"]', click_count=9); pg.wait_for_timeout(40)
     for k, n in [('agi', 3), ('int', 2), ('wil', 2), ('sen', 1), ('luk', 1)]:
         for _ in range(n): pg.click(f'[data-ct="{k}"][data-d="1"]')
@@ -199,7 +199,7 @@ with sync_playwright() as p:
     check('log_label_not_overlapping', ml['b'] <= mls['y'] + 1 and mc['x'] >= ml['r'] and abs((mc['y'] + mc['h'] / 2) - (ml['y'] + ml['h'] / 2)) < 8 and ml['y'] - mlp['y'] >= 3, [ml, mc, mls, mlp])
     check('map_header_top_padding', ev(pg, "getComputedStyle(document.querySelector('#mapHead')).paddingTop")== '18px')
     check('stats_one_bonus_each_new_effects', ev(pg, "STAT_DEFS.every(d=>d.fx.length===1)") and ev(pg, "Object.keys(effects()).sort().join()")== 'atk,craftGreat,craftTime,evade,ggreat,rare' and ev(pg, "STAT_DEFS.map(d=>d.fx[0][0]).join()")== 'atk,evade,ggreat,rare,craftTime,craftGreat')
-    check('stat_effect_wording', ev(pg, "STAT_DEFS.map(d=>d.fx[0][1]).join('|')")== '공격력 증가 (사냥 성공 확률)|전투 중 다칠 확률|채집 대성공 확률|희귀 채집 확률|제작 시간|제작 대성공 확률')
+    check('stat_effect_wording', ev(pg, "STAT_DEFS.map(d=>d.fx[0][1]).join('|')")== '공격력 증가|전투 중 다칠 확률|채집 대성공 확률|희귀 채집 확률|제작 시간|제작 대성공 확률')
     check('left_right_panel_titles', text(pg, '#leftTitle') == '장비' and text(pg, '#rightTitle') == '임무' and pg.locator('.tabs-panel .panel-title').count() == 1 and pg.locator('.quest-panel .panel-title').count() == 1)
     check('subtabs_no_border_box', ev(pg, "(b=>b.borderTopWidth==='0px'&&b.borderLeftWidth==='0px'&&b.borderRightWidth==='0px'&&b.backgroundColor==='rgba(0, 0, 0, 0)')(getComputedStyle(document.querySelector('#invTabs button')))") and ev(pg, "getComputedStyle(document.querySelector('#invTabs')).borderBottomWidth")== '0px' and ev(pg, "getComputedStyle(document.querySelector('#leftTabs button')).borderTopWidth")!= '0px')
     check('cursor_small_and_recolor', "width='18'" in ev(pg, "getComputedStyle(document.body).getPropertyValue('--cur-default')") and ev(pg, "getComputedStyle(document.body).getPropertyValue('--cur-default')")!= ev(pg, "getComputedStyle(document.body).getPropertyValue('--cur-pointer')"))
@@ -211,7 +211,7 @@ with sync_playwright() as p:
     check('map_foot_removed', pg.locator('.map-foot').count() == 0)
     pg.click('#zoomIn'); check('zoom_in_works', 'scale(1.12)' in ev(pg, "document.querySelector('#mapWorld').style.transform"))
     pg.click('#resetMap'); check('reset_works', 'scale(1)' in ev(pg, "document.querySelector('#mapWorld').style.transform"))
-    check('hq_choices', pg.locator('#choices button').count() == 3)
+    check('hq_choices', pg.locator('#choices button').count() == 4)
 
     # ---------- 레이아웃: 고정 높이 + 내부 스크롤, 리사이즈 없음 ----------
     cols = [rect(pg, s) for s in ['.left-column', '.center-column', '.right-column']]
@@ -292,7 +292,7 @@ with sync_playwright() as p:
     names = ev(pg, "[...document.querySelectorAll('.stat-head b')].map(b=>b.textContent)")
     check('six_stats_named', names == ['근력', '민첩', '지능', '의지', '감각', '행운'], names)
     effs = ev(pg, "[...document.querySelectorAll('.stat-eff')].map(e=>e.innerText)")
-    check('effects_show_new_bonuses', '공격력 증가 (사냥 성공 확률) +10.8%' in effs[0] and '전투 중 다칠 확률 -' in effs[1] and '채집 대성공 확률' in effs[2] and '희귀 채집 확률' in effs[3] and '제작 시간 -' in effs[4] and '제작 대성공 확률' in effs[5], effs)
+    check('effects_show_new_bonuses', '공격력 증가 +10.8%' in effs[0] and '전투 중 다칠 확률 -' in effs[1] and '채집 대성공 확률' in effs[2] and '희귀 채집 확률' in effs[3] and '제작 시간 -' in effs[4] and '제작 대성공 확률' in effs[5], effs)
     check('no_speed_or_exp_bonus_text', all('행동 시간' not in e and '경험치' not in e and '행동시간' not in e for e in effs))
     pg.hover('.stat >> nth=0'); pg.wait_for_timeout(150)
     check('stat_tooltip_explains', '전투에서 이길 확률' in text(pg, '#tooltip'), text(pg, '#tooltip'))
@@ -457,7 +457,7 @@ with sync_playwright() as p:
 
     # ---------- 상점 (공중 상점가) / 아직 안 만든 선택지 ----------
     go('상점가')
-    check('shop_choices', pg.locator('#choices button').count() == 3 and text(pg, '#mapLocation') == '상점가')
+    check('shop_choices', pg.locator('#choices button').count() == 4 and text(pg, '#mapLocation') == '상점가')
     check('shop_no_longer_todo', ev(pg, "ACTIONS['상점'].kind")== 'shop' and ev(pg, "ACTIONS['임무 수주'].kind")== 'board')
     m0, f0 = ev(pg, "state.money"), ev(pg, "countItem('건조 식량')")
     pg.click('#choices button:has-text("상점")'); pg.wait_for_timeout(80)
@@ -520,7 +520,7 @@ with sync_playwright() as p:
     ev(pg, "countKill('숲 늑대')")
     check('kill_not_counted_before_take', ev(pg, "state.qprog.z1_wolf")is None)
     go('개인실')
-    check('room_choices_5', pg.locator('#choices button').count() == 5)
+    check('room_choices_6', pg.locator('#choices button').count() == 6)
 
     # ---------- 휴식(개인실, 30분): 방치형 + 버프 / 잠자기(6시간): 완전 회복 ----------
     check('rest_30min_sleep_6h_defs', ev(pg, "ACTIONS['휴식'].sec")== 1800 and ev(pg, "ACTIONS['잠자기'].sec")== 21600 and ev(pg, "ACTIONS['잠자기'].full")== True and ev(pg, "LOCATIONS['개인실'].groups[0].items.includes('잠자기')"))
@@ -553,7 +553,7 @@ with sync_playwright() as p:
     spA = ev(pg, "state.vitals.sp"); pg.click('[data-node="본부"]'); pg.wait_for_timeout(100)
     check('safe_travel_no_confirm_instant', ev(pg, "state.location")== '본부' and pg.locator('.action-confirm-inline').count() == 0 and not ev(pg, "!!state.active") and ev(pg, "state.vitals.sp")== spA and ev(pg, "MOVE_SP_SAFE")== 0)
     go('이동장치')
-    check('gate_is_one_place', ev(pg, "state.location")== '이동장치' and text(pg, '#mapLocation') == '이동장치' and pg.locator('#choices button').count() == ev(pg, "DANGER_ZONES.length"))
+    check('gate_is_one_place', ev(pg, "state.location")== '이동장치' and text(pg, '#mapLocation') == '이동장치' and pg.locator('#choices button').count() == ev(pg, "DANGER_ZONES.length") + 1)
     check('gate_lists_all_zones', all(z in text(pg, '#choices') for z in ['제1구역', '제2구역', '제3구역']))
     spA = ev(pg, "state.vitals.sp"); pg.click('#choices button:has-text("제1구역")'); pg.wait_for_timeout(100)
     check('danger_travel_asks_confirm_1min', ev(pg, "state.location")== '이동장치' and pg.locator('.action-confirm-inline').count() == 1 and '1분' in text(pg, '.action-confirm-inline') and ev(pg, "!state.active") and ev(pg, "state.vitals.sp")== spA)
@@ -591,8 +591,10 @@ with sync_playwright() as p:
     pg.click('[data-act="action-cancel"]'); check('tile_move_cancel', ev(pg, "!state.active") and ev(pg, "state.vitals.sp")== sp1)
     pg.click('.tile[data-x="1"][data-y="0"]'); run_confirm()
     check('tile_move_takes_1min', ev(pg, "state.active.endAt-state.active.startAt")== 60000 and ev(pg, "state.vitals.sp")== sp1 - 1 and pg.locator('#runBar').count() == 1 and ev(pg, "[state.dungeon.x,state.dungeon.y].join()")== '0,0')
+    check('travel_log_shown', pg.locator('#battleLog .bl').count() == 1 and '이동을 시작했다' in text(pg, '#battleLog'))
     ff(50); check('tile_move_not_done_50s', ev(pg, "[state.dungeon.x,state.dungeon.y].join()")== '0,0')
     ff(15); ff(2)
+    check('travel_log_gone_after_move', pg.locator('#battleLog').count() == 0)
     check('tile_move_arrives_after_1min', ev(pg, "[state.dungeon.x,state.dungeon.y].join()")== '1,0' and ev(pg, "!state.active") and '숲' in text(pg, '#mapMeta') and pg.locator('.tile.unseen').count() < 31)
     check('tile_description_shown', '숲' in text(pg, '#actionMain') and '나무가 빽빽한' in text(pg, '#actionMain'))
     ev(pg, "Object.keys(state.dungeon.seen).length");  ev(pg, "(()=>{const z=zoneOf(state.dungeon.zone);z.map.forEach((r,y)=>[...r].forEach((c,x)=>{state.dungeon.seen[x+','+y]=1}));renderMap()})()")
@@ -698,8 +700,12 @@ with sync_playwright() as p:
     pg.click('#choices button:text-matches("쫓는다|추적한다")'); pg.click('[data-act="action-run"]')
     check('battle_cost_sp', ev(pg, "ACTIONS['제1구역 숲 전투'].cost.sp")== 2)
     check('battle_5_to_8_min', 300000 <= ev(pg, "state.active.endAt-state.active.startAt") <= 480000)
+    check('battle_fixed_6min', ev(pg, "state.active.endAt-state.active.startAt")== 360000)
+    check('battle_log_shows_under_timer', pg.locator('#battleLog .bl').count() == 1 and len(text(pg, '#battleLog')) > 5 and rect(pg, '#battleLog')['y'] >= rect(pg, '#runLeft')['b'] - 1)
+    ff(65); check('battle_log_adds_line_every_min', pg.locator('#battleLog .bl').count() == 2, pg.locator('#battleLog .bl').count())
+    check('battle_log_no_disclaimer', '연출' not in text(pg, '#battleLog'))
     ff(500)
-    check('battle_result_ready', pg.locator('[data-act="claim"]').count() == 1)
+    check('battle_result_ready', pg.locator('[data-act="claim"]').count() == 1 and pg.locator('#battleLog').count() == 0)
     hp0 = ev(pg, "state.vitals.hp"); pg.click('[data-act="claim"]'); pg.wait_for_timeout(100)
     check('battle_hp_never_below_1', ev(pg, "state.vitals.hp")>= 1 and ev(pg, "state.vitals.hp")<= hp0)
     ev(pg, "state.vitals.hp=15;renderBars()")
@@ -1425,6 +1431,26 @@ with sync_playwright() as p:
     check('dungeon_tools_and_compass_visible', all(ev(pg, "getComputedStyle(document.querySelector('%s')).display" % s) != 'none' for s in ['#resetMap', '#zoomIn', '#zoomOut', '.compass']))
     pg.click('#zoomIn'); check('dungeon_zoom_in', ev(pg, "view.dzoom")== 1.12 and 'scale(1.12)' in ev(pg, "document.querySelector('#mapWorld').style.transform"))
     pg.click('#resetMap'); check('dungeon_reset_pan', ev(pg, "view.dpan.x")== 0 and ev(pg, "view.dzoom")== 1 and ev(pg, "document.querySelector('#mapWorld').style.transform")== 'none')
+    # ---------- 스테이터스 2페이지 / 모의 전투 / 재료 검색 ----------
+    pg.click('#statusPager [data-p="1"]'); pg.wait_for_timeout(60)
+    check('status_page2_combat', '공격력' in text(pg, '#statusBody') and '방어력' in text(pg, '#statusBody') and '모의전투' in text(pg, '#statusBody') and pg.locator('#statusBody .stat').count() == 3)
+    pg.click('[data-act="extras-open"]'); pg.wait_for_timeout(80)
+    check('extras_opens_mock_overlay', '모의 전투' in text(pg, '#modalTitle') and pg.locator('#mockMon option').count() >= 10)
+    hp_b, sp_b, money_b = ev(pg, "state.vitals.hp"), ev(pg, "state.vitals.sp"), ev(pg, "state.money")
+    pg.click('[data-act="mock-start"]'); pg.wait_for_timeout(2300)
+    check('mock_battle_logs_stream', pg.locator('#mockLog .bl').count() >= 3 and pg.locator('[data-act="mock-start"]').is_disabled())
+    pg.click('[data-act="close"]'); pg.wait_for_timeout(100); n_lines = ev(pg, "!view.mockTimer")
+    check('mock_timer_stops_on_close_and_no_effect', n_lines and ev(pg, "state.vitals.hp")== hp_b and ev(pg, "state.vitals.sp")== sp_b and ev(pg, "state.money")== money_b)
+    pg.click('#statusPager [data-p="0"]'); pg.wait_for_timeout(60)
+    check('status_page1_back', pg.locator('.stat-grid').count() == 1)
+    ev(pg, "(()=>{const z=zoneOf(state.dungeon.zone);z.map.forEach((r,y)=>[...r].forEach((c,x)=>{state.dungeon.seen[x+','+y]=1}));renderMap()})()")
+    check('tile_tooltip_lists_materials', '[채집]' in ev(pg, "document.querySelector('.tile.floor.t0, .tile.floor.t1').dataset.tipDesc"))
+    mat_ = ev(pg, "zoneOf(state.dungeon.zone).terrains[0].gather[0]"); pg.fill('#mapSearch', mat_); pg.wait_for_timeout(100)
+    check('map_search_highlights_tiles', pg.locator('.tile.hl').count() >= 1 and pg.locator('.tile.hl').count() < pg.locator('.tile.floor').count() and len(text(pg, '#mapSearchInfo')) > 0, [mat_, text(pg, '#mapSearchInfo')])
+    pg.fill('#mapSearch', 'zzzz'); pg.wait_for_timeout(100)
+    check('map_search_no_match', pg.locator('.tile.hl').count() == 0 and '찾을 수 없어요' in text(pg, '#mapSearchInfo'))
+    pg.fill('#mapSearch', ''); pg.wait_for_timeout(60)
+    check('map_search_cleared', pg.locator('.tile.hl').count() == 0 and text(pg, '#mapSearchInfo') == '')
     ev(pg, "(()=>{const d=state.dungeon,z=zoneOf(d.zone);const rows=z.map;let rx,ry;rows.forEach((r,y)=>[...r].forEach((c,x)=>{if(terrainIndex(c)>=0&&z.terrains[terrainIndex(c)].rough===2&&!rx&&Math.abs(x-d.x)+Math.abs(y-d.y)===1){rx=x;ry=y}}));window.__rough=[rx,ry];})()")
     ev(pg, "(()=>{const d=state.dungeon,z=zoneOf(d.zone);let found=null;z.map.forEach((r,y)=>[...r].forEach((c,x)=>{const ti=terrainIndex(c);if(!found&&ti>=0&&z.terrains[ti].rough===2){found=[x,y]}}));window.__R=found;})()")
     check('rough_tile_same_1min', ev(pg, "(()=>{const z=zoneOf('제4구역'),i=z.terrains.findIndex(t=>t.rough===2);return i>=0&&ROUGH_EXTRA_SEC.every(v=>v===0)&&DUNGEON_STEP_SEC===60&&tileSec(z,window.__R[0],window.__R[1])===Math.round(stepSec())})()"))
@@ -1436,7 +1462,7 @@ with sync_playwright() as p:
     check('event_done_state_survives_reentry', ev(pg, "(()=>{state.eventAt={'제4구역:1':nowMs()};enterDungeon('제4구역');const ok=state.dungeon.done.join()==='1';state.eventAt={};return ok})()"))
     check('event_at_sanitized_on_load', ev(pg, "(()=>{const s=(o=>{hardenState(o);return o})({...createDefaultState(),eventAt:{'제4구역:1':5,'bad':1,'제1구역:x':2,'제2구역:3':'a'}});return Object.keys(s.eventAt).join()==='제4구역:1'})()"))
     ev(pg, "(()=>{leaveDungeon();state.location='본부';state.character.rank='F'})()")
-    # ---------- 단련(3시간)으로 레시피를 배운다 ----------
+    # ---------- 단련(1시간)으로 레시피를 배운다 ----------
     ev(pg, "(()=>{closeModal();state.active=null;state.pending=null;state.dungeon=null;state.learned=[];state.character.rank='F';state.vitals.sp=state.vitals.spMax;state.vitals.hp=state.vitals.hpMax})()")
     check('starter_recipes_are_the_seven', ev(pg, "STARTER_RECIPES.length")== 7 and ev(pg, "RECIPES.filter(recipeKnown).map(r=>r.out).sort().join()")== ev(pg, "[...STARTER_RECIPES].sort().join()") and ev(pg, "STARTER_RECIPES.every(n=>RECIPES.some(r=>r.out===n))"))
     check('unknown_recipe_cannot_craft', ev(pg, "craft(RECIPES.findIndex(r=>r.out==='고기 수프'))")== 'unknown')
@@ -1448,10 +1474,16 @@ with sync_playwright() as p:
     check('train_is_real_action_not_todo', ev(pg, "ACTIONS['단련'].kind")== 'train' and ev(pg, "ACTIONS['장비 강화']") is not None)
     pg.click('#choices button:has-text("단련")'); pg.wait_for_timeout(80)
     ct = text(pg, '.action-confirm-inline')
-    check('train_confirm_shows_3h_and_recipe', '3시간' in ct and '레시피' in ct and '기력 -10' in ct, ct)
+    check('train_confirm_shows_1h_and_recipe', '1시간' in ct and '레시피' in ct and '기력 -10' in ct, ct)
     sp_t = ev(pg, "state.vitals.sp"); run_confirm()
-    check('train_started_3h', ev(pg, "state.active.endAt-state.active.startAt")== 3 * 3600 * 1000 and ev(pg, "state.vitals.sp")== sp_t - 10)
-    ff(3 * 3600 + 5); ff(2)
+    check('train_started_1h', ev(pg, "state.active.endAt-state.active.startAt")== 3600 * 1000 and ev(pg, "state.vitals.sp")== sp_t - 10)
+    ev(pg, "(()=>{window.__lvSave=[state.character.level,state.character.rank,state.unlockSeen];state.unlockSeen={};state.character.level=5;state.character.rank='F'})()")
+    ul = ev(pg, "newUnlocks()")
+    check('unlock_notes_promo_and_subjob', any('E등급 승급 시험' in t for t in ul) and any('서브잡' in t for t in ul) and not any('펫' in t for t in ul) and ev(pg, "newUnlocks().length")== 0, ul)
+    ev(pg, "state.character.level=7"); ul2 = ev(pg, "newUnlocks()")
+    check('unlock_note_pet_at_lv7', len(ul2) == 1 and '펫' in ul2[0], ul2)
+    ev(pg, "(()=>{[state.character.level,state.character.rank,state.unlockSeen]=window.__lvSave})()")
+    ff(3600 + 5); ff(2)
     check('train_learns_one_recipe', ev(pg, "state.learned.length")== 1 and ev(pg, "recipeKnown(RECIPES.find(r=>r.out===state.learned[0]))") and ev(pg, "learnableRecipes().length")== ev(pg, "RECIPES.filter(r=>r.rank==='F').length-7+0") - 1 + 0 or ev(pg, "state.learned.length")== 1, [ev(pg, "state.learned"), text(pg, '#actionPanel')[:120]])
     check('train_result_card_names_recipe', ev(pg, "state.learned[0]") in text(pg, '#actionPanel'))
     check('train_never_teaches_locked_rank', ev(pg, "(()=>{let ok=true;for(let i=0;i<40;i++){state.learned=[];const r=resolveAction('단련',1,10);const rc=RECIPES.find(x=>x.out===r.recipe);if(!rc||rc.rank!=='F')ok=false}state.learned=[];return ok})()"))
@@ -1545,6 +1577,45 @@ with sync_playwright() as p:
     ev(pg, "(()=>{leaveDungeon();state.location='본부';})()")
     # ---------- 전투 1회 HP 손실 상한 ----------
     check('battle_hp_loss_capped_at_4', ev(pg, "(()=>{let mx=0;for(let i=0;i<500;i++)mx=Math.max(mx,simulateBattle({hp:200,atk:30},100).lost);return mx<=4&&BATTLE_HP_CAP===4})()"))
+    # ---------- 전투 묘사=실제 결과 / 입구 거리 난이도 / 도박 / 표시 ----------
+    ev(pg, "closeModal()")
+    check('battle_log_matches_result', ev(pg, """(()=>{const bak=JSON.stringify(state);const id=Object.keys(ACTIONS).find(k=>ACTIONS[k].kind==='battle'),a=ACTIONS[id];let ok=true,wins=0;
+      for(let sd=1;sd<=60;sd++){const act={id,startAt:0,endAt:1,cycles:1,cycleSec:360,seed:sd*7919,hp0:100,bs:{atk:.1,evade:0,wa:3,top:'str'},d:.3};
+        const {m,runs}=battleRuns(act,a),line=battleSlotLine(m,runs,0,5,act).text,res=resolveAction(id,1,0,act).text;
+        if(runs[0].win){wins++;ok=ok&&line.includes('쓰러뜨렸다')&&res.includes('1승');}else ok=ok&&!line.includes('쓰러뜨렸다')&&res.includes('1패');}
+      Object.assign(state,JSON.parse(bak));return ok&&wins>0&&wins<60})()"""))
+    check('battle_log_one_line_per_minute', ev(pg, "BATTLE_LOG_SEC")== 60)
+    check('difficulty_rises_with_distance', ev(pg, """(()=>{const z=DANGER_ZONES[0],a=Object.values(ACTIONS).find(x=>x.kind==='battle'),e=entranceDist(z);
+      const ds=Object.keys(e.d).map(k=>{const [x,y]=k.split(',').map(Number);return tileDifficulty(z,x,y)});
+      return Math.min(...ds)===0&&Math.max(...ds)===1&&monsterOf(a,0).hp<monsterOf(a,.5).hp&&monsterOf(a,.5).hp<monsterOf(a,1).hp&&monsterOf(a,1).atk>monsterOf(a,0).atk})()"""))
+    check('difficulty_fun_for_lv1_and_max', ev(pg, """(()=>{const m=DANGER_ZONES[0].terrains[0].monster,rate=(d,bs)=>{let w=0;for(let i=0;i<200;i++)if(simulateBattle(scaleMonster(m,d),100,Math.random,bs).win)w++;return w/200};
+      const lv1={atk:0,evade:0,wa:0},mx={atk:.5,evade:.5,wa:12};return rate(0,lv1)>.9&&rate(1,lv1)<.1&&rate(0,mx)>.9&&rate(1,mx)>.3&&rate(1,mx)<.95})()"""))
+    check('mock_monsters_weak_to_strong', ev(pg, "(()=>{const l=mockMonsters().map(m=>m.hp*m.atk);return l.length>3&&l.every((v,i)=>i===0||v>=l[i-1])})()"))
+    check('gamble_80_20', ev(pg, """(()=>{const bak=JSON.stringify(state);let w=0,N=400;state.location='상점가';state.dungeon=null;state.active=null;state.pending=null;
+      for(let i=0;i<N;i++){state.pending=null;state.gambleAt={};state.money=500;state.vitals.sp=state.vitals.spMax;startAction('뒷골목 카드 한 판');if(state.pending.result.gamble==='win')w++;}
+      Object.assign(state,JSON.parse(bak));return w/N>.72&&w/N<.88})()"""))
+    check('gamble_cooldown_and_stake', ev(pg, """(()=>{const bak=JSON.stringify(state);state.location='상점가';state.dungeon=null;state.active=null;state.pending=null;state.gambleAt={};state.money=500;state.vitals.sp=state.vitals.spMax;
+      const a=startAction('뒷골목 카드 한 판');state.pending=null;const b=startAction('뒷골목 카드 한 판');state.gambleAt={};state.money=5;const c=startAction('뒷골목 카드 한 판');
+      Object.assign(state,JSON.parse(bak));return a===null&&/다시/.test(b)&&/판돈/.test(c)})()"""))
+    check('gamble_places', ev(pg, "['본부','개인실','이동장치','상점가'].every(l=>LOCATIONS[l].groups[0].items.some(i=>ACTIONS[i]&&ACTIONS[i].kind==='gamble'))"))
+    check('gamble_loss_never_below_zero_chip', ev(pg, "(()=>{const r={items:[],exp:0,money:-30,hp:0,sp:0,spCost:2,buff:null};return costChips(r).includes('CR -30')&&!rewardChips(r).some(c=>c.includes('CR'))})()"))
+    ev(pg, "(()=>{view.lastResult={id:'뒷골목 카드 한 판',result:{text:'t',items:[],exp:0,money:0,hp:0,sp:0,spCost:0,buff:null}};renderAction()})()")
+    cb = pg.locator('.last-result .lr-head button')
+    if cb.count():
+        bb = cb.first.bounding_box()
+        check('result_close_square_centered', abs(bb['width'] - bb['height']) < 1.5, bb)
+        check('result_close_icon_centered', pg.evaluate("(()=>{const b=document.querySelector('.last-result .lr-head button'),i=b.firstElementChild,rb=b.getBoundingClientRect(),ri=i.getBoundingClientRect();return Math.abs((rb.left+rb.width/2)-(ri.left+ri.width/2))<1.5&&Math.abs((rb.top+rb.height/2)-(ri.top+ri.height/2))<1.5})()"))
+    else: check('result_close_square_centered', False, 'no close button')
+    ev(pg, "view.lastResult=null;renderAction()")
+    ev(pg, "openSettings()")
+    check('settings_font_unified', ev(pg, "(()=>{const f=s=>[...new Set([...document.querySelectorAll(s)].map(e=>getComputedStyle(e).fontSize))];return f('#modalBody .setting-group h3').length===1})()"), ev(pg, "[...new Set([...document.querySelectorAll('#modalBody .setting-group h3')].map(e=>getComputedStyle(e).fontSize))]"))
+    ev(pg, "closeModal()")
+    ev(pg, "(()=>{state.friends=['가가','나나','다다'];openFriends(true)})()")
+    check('friend_list_two_columns', ev(pg, "getComputedStyle(document.querySelector('#friendList')).gridTemplateColumns.trim().split(/\\s+/).length")== 2)
+    ev(pg, "(()=>{state.friends=[];closeModal()})()")
+    check('long_choice_text_wraps', ev(pg, "getComputedStyle(document.querySelector('#choices button')).whiteSpace")== 'normal')
+    check('stat_page2_same_size_as_page1', ev(pg, "(()=>{view.statusPage=0;renderStatus();const a=document.querySelector('#statusBody .stat-grid').getBoundingClientRect();view.statusPage=1;renderStatus();const b=document.querySelector('#statusBody .stat-grid').getBoundingClientRect();view.statusPage=1;return Math.abs(a.height-b.height)<2&&Math.abs(a.width-b.width)<2})()"))
+    check('admin_can_write_notice', ev(pg, "(()=>{view.isAdmin=true;const ok=canNotice();view.isAdmin=false;return ok})()"))
     check('special_battle_can_exceed_cap', ev(pg, "(()=>{let mx=0;for(let i=0;i<500;i++)mx=Math.max(mx,simulateBattle({hp:200,atk:30,hpCap:40},100).lost);return mx>4&&mx<=40})()"))
     check('all_zone_monsters_use_normal_cap', ev(pg, "DANGER_ZONES.every(z=>z.terrains.every(t=>!t.monster.hpCap))"))
     # ---------- 기력 바닥 구조 / HP 1에서 또 다치면 사망·재탄생 ----------

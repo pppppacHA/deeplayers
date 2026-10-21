@@ -152,6 +152,25 @@ textarea{min-height:75px;resize:vertical}
 /* ---------- 왼쪽: 스테이터스 ---------- */
 .point-badge{padding:1px 8px;border-radius:999px;background:var(--accent-soft);border:1px solid var(--accent-line);color:var(--accent-2);font-size:calc(10px*var(--fs));letter-spacing:0;text-transform:none}
 #statusBody{display:grid;gap:5px;padding:6px 8px 8px}
+.map-search{position:absolute;top:10px;left:10px;z-index:3;display:flex;flex-direction:column;gap:3px;max-width:60%}
+.map-search input{width:130px;padding:4px 8px;font-size:calc(11px*var(--fs));background:var(--panel);box-shadow:var(--shadow)}
+.map-search span{font-size:calc(10px*var(--fs));color:var(--text-2);background:var(--panel);border-radius:5px;padding:0 5px;width:fit-content}
+.map-search span:empty{display:none}
+.tile.hl{outline:2px solid var(--accent);outline-offset:1px;animation:hlpulse 1.2s ease-in-out infinite}
+.map-node.hl{box-shadow:0 0 0 5px var(--accent-soft),0 0 0 7px var(--accent);animation:hlpulse 1.2s ease-in-out infinite}
+@keyframes hlpulse{50%{filter:brightness(1.35)}}
+.status-pager{display:inline-flex;gap:3px;margin-left:8px}
+.status-pager button{width:20px;height:18px;padding:0;font-size:calc(10px*var(--fs));line-height:1;border-radius:5px;color:var(--muted)}
+.status-pager button.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent-2);font-weight:700}
+.combat-page{display:grid;gap:4px}
+.cstat{display:grid;grid-template-columns:auto 1fr;gap:0 8px;align-items:baseline;padding:4px 7px;background:var(--panel-2);border:1px solid var(--line-soft);border-radius:7px;font-size:calc(11px*var(--fs))}
+.cstat b{color:var(--text-2)}.cstat span{text-align:right}.cstat em{font-style:normal;font-weight:800;color:var(--accent-2)}
+.cstat small{grid-column:1/-1;color:var(--muted);font-size:calc(10px*var(--fs))}
+.battle-log{margin-top:6px;padding:5px 8px;background:var(--panel-2);border:1px solid var(--line-soft);border-radius:7px;display:grid;gap:2px;font-size:calc(11px*var(--fs));max-height:96px;overflow:auto}
+.battle-log.mock{max-height:240px;min-height:160px;align-content:start}
+.bl.hit{color:var(--good)}.bl.hurt{color:var(--danger-text)}.bl.dodge{color:var(--accent-2)}.bl.note{color:var(--muted)}
+.bl-note{font-size:calc(9px*var(--fs));color:var(--muted);opacity:.8}
+.mock-bars{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:6px 0}
 .stat-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:4px}
 .stat{padding:4px 7px;background:var(--panel-2);border:1px solid var(--line-soft);border-radius:7px}
 .stat-head{display:flex;align-items:center;gap:6px}
@@ -291,6 +310,7 @@ textarea{min-height:75px;resize:vertical}
 .confirm-actions{display:flex;gap:6px;justify-content:flex-end;margin-top:8px}
 .progress{height:8px;margin:4px 0 6px;background:var(--bar-track);border-radius:6px;overflow:hidden}
 .progress span{display:block;width:0;height:100%;background:var(--accent);transition:width 1s linear}
+.progress span.bad{background:var(--bad)}
 .run-meta{display:flex;justify-content:space-between;font-size:calc(11px*var(--fs));color:var(--muted)}
 .choices{overflow:visible;padding:8px;border-left:1px solid var(--line)}
 .choice-group{margin-bottom:7px}
@@ -811,3 +831,29 @@ textarea#mailBody{width:100%;min-height:80px;resize:vertical}
 .cloudrow{display:flex;flex-wrap:wrap;align-items:center;gap:6px}.cloudrow span{flex:1 1 100%;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dev-fold>summary{cursor:pointer;font-size:calc(11px*var(--fs));font-weight:800;color:var(--muted);list-style:none}.dev-fold>summary::-webkit-details-marker{display:none}
 .dev-fold>summary::before{content:'▸ '}.dev-fold[open]>summary::before{content:'▾ '}
+
+/* ---------- 설정 창 글자 크기 통일: 제목 13px · 항목 12px · 설명 11px ---------- */
+.setting-group h3,.dev-fold>summary{font-size:calc(13px*var(--fs));font-weight:800;letter-spacing:0}
+.setting-group .srow>span,.setting-group .srow label,.setting-group .switch,.setting-group .snd-switch,.setting-group .snd-title,.setting-group .snd-slider b,.setting-group select,.setting-group .check,.setting-group button,.setting-group input{font-size:calc(12px*var(--fs))}
+.setting-group .snd-switch span,.setting-group .snd-title{font-weight:700}
+.setting-group .tiny,.setting-group .cloudrow span.tiny{font-size:calc(11px*var(--fs));line-height:1.45}
+.setting-group .cloudrow span{font-size:calc(12px*var(--fs))}
+.setting-group .srow>span{color:var(--text-2)}
+
+/* ---------- 선택지: 길면 줄바꿈 (박스 밖으로 나가지 않는다) ---------- */
+.choice-col button{white-space:normal;overflow-wrap:anywhere;word-break:keep-all;line-height:1.35;min-width:0;align-items:flex-start;text-align:left}
+.choice-col button .material-symbols-rounded{flex:none;margin-top:1px}
+.choice-col button small{white-space:normal}
+
+/* ---------- 행동 결과 닫기(X) 버튼: 정사각형, 아이콘 가운데 ---------- */
+.last-result .lr-head button{width:26px;height:26px;min-height:0;padding:0;display:grid;place-items:center;flex:none;line-height:1}
+.last-result .lr-head button .material-symbols-rounded{margin:0;font-size:calc(16px*var(--fs));line-height:1}
+
+.stat.span2{grid-column:1/-1}.stat-grid{align-content:stretch}
+/* 친구 목록 2열 */
+#friendList{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px}
+#friendList .nearby-row{min-width:0;flex-wrap:wrap;gap:4px 6px}
+#friendList .nearby-row .grow{min-width:0;flex:1 1 60px}
+#friendList .nearby-row strong,#friendList .nearby-row small{overflow-wrap:anywhere}
+#friendList .nearby-row button{padding:2px 7px;font-size:calc(11px*var(--fs))}
+#friendList .empty{grid-column:1/-1}
