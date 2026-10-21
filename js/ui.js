@@ -104,7 +104,7 @@ function combatPageHtml() { // 스테이터스 2페이지: 공격력 / 방어력
   return '<div class="stat-grid">' +
     `<div class="stat" data-tip-title="공격력" data-tip-desc="기본 3 + 무기 ${wa}에 근력 보정 +${round1(fx.atk * 100)}%가 곱해집니다."><div class="stat-head"><b>공격력</b><span class="stat-val">${round1(eff)}</span></div><div class="stat-eff"><span>무기 ${esc(state.equipment['무기'] || '맨손')}</span></div></div>` +
     `<div class="stat" data-tip-title="방어력" data-tip-desc="몬스터의 한 번 공격이 맞을 확률입니다. 기본 ${round1(BATTLE_HIT * 100)}%에서 민첩 보정 -${round1(fx.evade * 100)}%."><div class="stat-head"><b>방어력</b><span class="stat-val">${round1(hit * 100)}%</span></div><div class="stat-eff"><span>피격 확률</span></div></div>` +
-    `<div class="stat span2" data-tip-title="모의전투" data-tip-desc="상대를 골라 전투를 구경해 보세요. 실제 진행에는 영향이 없어요."><div class="stat-head"><b>모의전투</b><button class="stat-plus" data-act="extras-open" title="모의 전투">${icon('sports_martial_arts')}</button></div><div class="stat-eff"><span>연습 상대와 겨뤄 보기</span></div></div>` +
+    `<button class="stat span2 mock-card" data-act="extras-open" data-tip-title="모의전투" data-tip-desc="상대를 골라 전투를 구경해 보세요. 실제 진행에는 영향이 없어요."><div class="stat-head"><b>모의전투</b><span class="stat-plus">${icon('sports_martial_arts')}</span></div><div class="stat-eff"><span>연습 상대와 겨뤄 보기</span></div></button>` +
     '</div>';
 }
 function renderStatus() {
@@ -378,9 +378,9 @@ function renderAction() {
   if (view.phase === 'confirm') {
     const a = ACTIONS[view.id], todo = a.kind === 'todo', multi = a.kind === 'gather' || a.kind === 'battle', pv = previewOf(view.id, view.mult);
     if (pv.err) { resetPhase(); renderAction(); return; }
-    html += `<div class="action-confirm-inline"><strong>${esc(confirmTitle(a))}</strong><p>${esc(pv.desc || a.action)}</p>` +
+    html += `<div class="action-confirm-inline"><div class="cf-head"><strong>${esc(confirmTitle(a))}</strong>${todo ? '' : `<span class="cf-time">${icon('schedule')} ${esc(pv.time)}</span>`}</div><p>${esc(pv.desc || a.action)}</p>` +
       (multi ? `<div class="chips mult">${MULTI_OPTIONS.map((o, i) => `<button class="chip ${i === view.mult ? 'active' : ''}" data-act="mult" data-i="${i}">${o.label}</button>`).join('')}</div>` : '') +
-      (todo ? '' : `${pv.odds ? `<small class="odds">확률 · ${esc(pv.odds)}</small>` : ''}<small>예상 시간 ${esc(pv.time)}</small><small>예상 보상: ${esc(pv.gain)}</small><small class="risk">소모 · 위험: ${esc(pv.cost)}</small>${pv.note ? `<small class="repeat-note">${esc(pv.note)}</small>` : ''}`) +
+      (todo ? '' : `${pv.odds ? `<small class="odds">확률 · ${esc(pv.odds)}</small>` : ''}<small class="gain"><b>보상</b> ${esc(pv.gain)}</small><small class="risk"><b>위험</b> ${esc(pv.cost)}</small>${pv.note ? `<small class="repeat-note">${esc(pv.note)}</small>` : ''}`) +
       `<div class="confirm-actions"><button data-act="action-cancel">${todo ? '닫기' : '취소'}</button>${todo ? '' : `<button class="primary" data-act="action-run">${esc(runLabel(a))}</button>`}</div></div>`;
   }
   main.innerHTML = lastCard + html;
@@ -476,7 +476,17 @@ const FACE_ICONS = ['face', 'face_2', 'face_3', 'face_4', 'face_5', 'face_6'];
 const speakerIcon = n => SYSTEM_SPEAKERS[n] || FACE_ICONS[[...n].reduce((a, c) => a + c.charCodeAt(0), 0) % FACE_ICONS.length];
 /* ---- 대원 아이콘: 각자 설정한 프로필 이미지(서버에 64px로 올려 둔 것)를 보여 주고, 없으면 기본 얼굴 아이콘 ---- */
 view.avatars = {}; view.avWant = new Set(); view.chatSrv = { '월드': [], '길드': [] }; view.chatLast = { '월드': 0, '길드': 0 };
-const CHAT_CH = { '월드': 'world', '길드': 'guild' };
+const CHAT_CH = { '월드': 'world', '길드': 'guild' }, CHAT_CACHE = 'deeplayer-chat', CHAT_KEEP = 60;
+(function loadChatCache() { // 새로고침해도 직전 대화가 바로 보이도록 서버 채팅의 최근 글을 이 기기에 남겨 둔다 (아이디가 다르면 무시)
+  try {
+    const c = JSON.parse(localStorage.getItem(CHAT_CACHE)); if (!c || c.u !== Cloud.user()) return;
+    for (const tab of ['월드', '길드']) {
+      const rows = ((c[tab] || {}).rows || []).filter(r => Array.isArray(r) && Number.isFinite(r[3])).slice(-CHAT_KEEP).map(r => [cleanText(r[0], 12), cleanText(r[1], 200), /^[0-9a-f-]{36}$/i.test(r[2]) ? r[2] : '', r[3]]);
+      view.chatSrv[tab] = rows; view.chatLast[tab] = rows.length ? rows[rows.length - 1][3] : 0;
+    }
+  } catch (e) { /* 저장된 대화 없음 */ }
+})();
+function saveChatCache() { try { localStorage.setItem(CHAT_CACHE, JSON.stringify({ u: Cloud.user(), '월드': { rows: view.chatSrv['월드'].slice(-CHAT_KEEP) }, '길드': { rows: view.chatSrv['길드'].slice(-CHAT_KEEP) } })); } catch (e) { /* 저장 불가 */ } }
 const chatOnline = () => Cloud.enabled && !!Cloud.user();
 function avatarOf(name) {
   const n = String(name || ''), mine = n === '나' || (state.character.name && n === state.character.name);
@@ -516,13 +526,14 @@ async function chatPoll() { // 월드·길드 채팅을 서버에서 가져온�
       let rows; try { rows = await Cloud.chatFetch(CHAT_CH[tab], view.chatLast[tab]); } catch (e) { continue; }
       for (const r of rows) {
         const id = Number(r.id); if (!Number.isFinite(id) || id <= view.chatLast[tab]) continue;
-        view.chatLast[tab] = id; view.chatSrv[tab].push([cleanText(r.name, 12) || '?', cleanText(r.body, 200), /^[0-9a-f-]{36}$/i.test(r.uid) ? r.uid : '']); changed = true;
+        view.chatLast[tab] = id; view.chatSrv[tab].push([cleanText(r.name, 12) || '?', cleanText(r.body, 200), /^[0-9a-f-]{36}$/i.test(r.uid) ? r.uid : '', id]); changed = true;
         if (r.uid !== Cloud.userUid && state.chatTab !== tab && view.chatReady) { toast(`[${tab}] ${cleanText(r.name, 12)}: ${cleanText(r.body, 40)}`); }
       }
       view.chatSrv[tab] = view.chatSrv[tab].slice(-100);
     }
   } finally { view.chatBusy = false; }
   view.chatReady = true;
+  if (changed) saveChatCache();
   if (changed && $('#chatFeed') && (state.chatTab === '월드' || state.chatTab === '길드')) renderChat();
 }
 function renderChat() {
@@ -730,8 +741,9 @@ async function friendPoll() { // 서버에서 친구 신청·메일·교환 소�
     else if ($('#friendInbox')) $('#friendInbox').innerHTML = inboxHtml();
   } finally { _polling = false; }
 }
-if (Cloud.enabled) { setTimeout(friendPoll, 5000); setInterval(friendPoll, 60000); setTimeout(() => { syncMyAvatar(); chatPoll(); }, 3000); setInterval(chatPoll, 6000); }
+if (Cloud.enabled) { setTimeout(friendPoll, 5000); setInterval(friendPoll, 60000); setTimeout(() => { syncMyAvatar(); chatPoll(); }, 1200); setInterval(chatPoll, 6000); }
 function openFriends(noPoll) {
+  Object.keys(view.avatars).forEach(k => { if (!view.avatars[k]) delete view.avatars[k]; }); // 못 찾았던 이름은 창을 열 때 다시 물어본다
   renderMailBadge();
   const list = state.friends.map(n => `<div class="nearby-row"><div class="round-avatar">${avatarOf(n)}</div><div class="grow"><strong>${esc(n)}</strong><small>${esc((samplePlayer(n) || ['', '온라인'])[1])}</small></div>${Cloud.enabled && Cloud.user() ? `<button data-act="ftrade-open" data-name="${esc(n)}">교환</button>` : ''}<button data-act="friend-remove" data-name="${esc(n)}">삭제</button></div>`).join('');
   modal('친구', `<div class="search-row"><input id="friendSearch" placeholder="대원 이름으로 검색" aria-label="대원 검색"><button data-act="friend-search">검색</button></div><div id="friendResult"></div><div id="friendInbox">${inboxHtml()}</div>` +
@@ -1635,8 +1647,8 @@ function openTrade(name, keepScroll) {
   if (!p) { toast('주위에 없는 대원입니다.'); return; }
   const mine = ['소모품', '재료', '장비'].flatMap(t => state.inventory[t]).map(s => s.n), uniq = [...new Set(mine)], offers = playerOffers(p);
   const body = `<p class="tiny">${esc(name)}님과 물건을 맞바꿉니다. 하루 ${TRADE_DAILY}회까지 · 오늘 남은 횟수 <b>${tradesLeft()}회</b>. 장착 중인 장비는 줄 수 없어요.</p>` +
-    (offers.length ? `<div class="srow fontrow"><span>내가 줄 물건</span><select id="tradeGive">${uniq.map(n => `<option value="${esc(n)}">${esc(n)} (${countItem(n)})</option>`).join('')}</select><input id="tradeGiveQty" type="number" min="1" value="1" style="width:64px"></div>` +
-      `<div class="srow fontrow"><span>받을 물건</span><select id="tradeWant">${offers.map(([n, q]) => `<option value="${esc(n)}">${esc(n)} (최대 ${q})</option>`).join('')}</select><input id="tradeWantQty" type="number" min="1" value="1" style="width:64px"></div>`
+    (offers.length ? `<div class="srow fontrow trade-row"><span>내가 줄 물건</span><select id="tradeGive">${uniq.map(n => `<option value="${esc(n)}">${esc(n)} (${countItem(n)})</option>`).join('')}</select><input id="tradeGiveQty" type="number" min="1" value="1" style="width:64px"></div>` +
+      `<div class="srow fontrow trade-row"><span>받을 물건</span><select id="tradeWant">${offers.map(([n, q]) => `<option value="${esc(n)}">${esc(n)} (최대 ${q})</option>`).join('')}</select><input id="tradeWantQty" type="number" min="1" value="1" style="width:64px"></div>`
       : '<div class="empty">상대가 내놓은 물건이 없습니다.</div>') +
     '<p class="tiny">지금은 서버가 없어 상대의 물건은 테스트용으로만 존재합니다. 실제 대원과의 교환은 서버 연결 후 열립니다.</p>';
   modal(`${name}님과 교환`, body, [btnClose, `<button class="primary" data-act="trade-do" data-player="${esc(name)}" ${offers.length && tradesLeft() ? '' : 'disabled'}>교환하기</button>`], true);
@@ -1679,8 +1691,8 @@ function openFriendTrade(name) {
   const mine = ['소모품', '재료', '장비'].flatMap(t => state.inventory[t]).map(s => s.n).filter(n => n !== MAIL_SHIP_ITEM), uniq = [...new Set(mine)];
   const all = Object.keys(ITEMS).filter(n => n !== MAIL_SHIP_ITEM);
   const body = `<p class="tiny">${esc(name)} 대원에게 교환을 제안합니다. 내가 줄 물건은 상대가 답할 때까지 맡겨 두고, 거절·취소·3일 만료 시 메일로 돌아와요. 하루 ${TRADE_DAILY}회까지 · 오늘 남은 횟수 <b>${tradesLeft()}회</b>. 장착 중인 장비는 줄 수 없어요.</p>` +
-    (uniq.length ? `<div class="srow fontrow"><span>내가 줄 물건</span><select id="ftGive">${uniq.map(n => `<option value="${esc(n)}">${esc(n)} (${countItem(n)})</option>`).join('')}</select><input id="ftGiveQty" type="number" min="1" max="99" value="1" style="width:64px"></div>` +
-      `<div class="srow fontrow"><span>받고 싶은 물건</span><input id="ftWant" list="ftItems" placeholder="아이템 이름" autocomplete="off"><input id="ftWantQty" type="number" min="1" max="99" value="1" style="width:64px"></div><datalist id="ftItems">${all.map(n => `<option value="${esc(n)}">`).join('')}</datalist>` : '<div class="empty">줄 수 있는 물건이 없습니다.</div>');
+    (uniq.length ? `<div class="srow fontrow trade-row"><span>내가 줄 물건</span><select id="ftGive">${uniq.map(n => `<option value="${esc(n)}">${esc(n)} (${countItem(n)})</option>`).join('')}</select><input id="ftGiveQty" type="number" min="1" max="99" value="1" style="width:64px"></div>` +
+      `<div class="srow fontrow trade-row"><span>받고 싶은 물건</span><input id="ftWant" list="ftItems" placeholder="아이템 이름" autocomplete="off"><input id="ftWantQty" type="number" min="1" max="99" value="1" style="width:64px"></div><datalist id="ftItems">${all.map(n => `<option value="${esc(n)}">`).join('')}</datalist>` : '<div class="empty">줄 수 있는 물건이 없습니다.</div>');
   modal(`${name} 대원과 교환`, body, ['<button data-act="close">닫기</button>', `<button class="primary" data-act="ftrade-send" data-name="${esc(name)}" ${uniq.length && tradesLeft() ? '' : 'disabled'}>제안 보내기</button>`], true);
 }
 function openEnhance(keepScroll) {
@@ -1734,6 +1746,7 @@ function guildSyncState(info) { // 서버의 길드 정보를 내 상태에 반�
 }
 const guildReqRows = (list, acts) => list.map(r => `<div class="member-row"><div class="round-avatar">${icon(r.kind === 'invite' ? 'mail' : 'person_add')}</div><div class="grow"><strong>${esc(r.kind === 'invite' ? r.guild : r.name)}</strong><small>${esc(r.text)}</small></div>${acts(r)}</div>`).join('');
 async function openGuildOnline(keepForm) {
+  Object.keys(view.avatars).forEach(k => { if (!view.avatars[k]) delete view.avatars[k]; });
   let info; const dr = keepForm ? { s: ($('#guildQ') || {}).value || '' } : { s: '' };
   try { info = await Cloud.guildInfo(); } catch (e) { toast('길드 정보를 가져오지 못했어요. 서버에 friends.sql 을 실행했는지 확인해 주세요.'); return; }
   view.guildInfo = info; view.guildIn = (info.incoming || []).length; renderMailBadge(); guildSyncState(info);
@@ -1750,7 +1763,7 @@ async function openGuildOnline(keepForm) {
   }
   const mem = (g.members || []).map(m => ({ uid: m.uid, name: cleanText(m.name, 12), master: !!m.master }));
   modal(`길드 · ${cleanText(g.name, GUILD_NAME_MAX)}`, `<p class="tiny">${mem.length}/${GUILD_MAX}명 · ${g.master ? '길드장입니다. 대원을 초대하거나 가입 신청을 수락할 수 있어요.' : '길드원입니다.'}</p>` +
-    mem.map(m => `<div class="member-row"><div class="round-avatar">${avatarOf(m.name)}</div><div class="grow"><strong>${esc(m.name)}</strong><small>${m.master ? '길드장' : '길드원'}${m.uid === Cloud.userUid ? ' (나)' : ''}</small></div></div>`).join('') + incHtml + sentHtml +
+    '<div class="member-grid">' + mem.map(m => `<div class="member-row"><div class="round-avatar">${avatarOf(m.name)}</div><div class="grow"><strong>${esc(m.name)}</strong><small>${m.master ? '길드장' : '길드원'}${m.uid === Cloud.userUid ? ' (나)' : ''}</small></div></div>`).join('') + '</div>' + incHtml + sentHtml +
     (g.master ? `<div class="choice-label">초대하기</div><div class="search-row"><input id="guildQ" placeholder="대원 이름으로 검색" value="${esc(dr.s)}"><button data-act="guild-find-player">검색</button></div><div id="guildFound"></div>` : ''),
     [btnClose, `<button class="danger" data-act="guild-leave">${g.master ? '길드 해산' : '길드 탈퇴'}</button>`]);
 }
@@ -1766,8 +1779,8 @@ function openGuild() {
   }
   const rest = NEARBY_PLAYERS.filter(p => !g.members.includes(p[0]));
   modal(`길드 · ${g.name}`, `<p class="tiny">${g.members.length + 1}/${GUILD_MAX}명 · ${g.master ? '길드장입니다. 아래에서 대원을 초대할 수 있어요.' : '길드원입니다.'}</p>` +
-    `<div class="member-row"><div class="round-avatar">${avatarOf('나')}</div><div class="grow"><strong>${esc(state.character.name || '나')}</strong><small>${g.master ? '길드장 (나)' : '나'}</small></div></div>` +
-    g.members.map(n => `<div class="member-row"><div class="round-avatar">${avatarOf(n)}</div><div class="grow"><strong>${esc(n)}</strong><small>길드원</small></div></div>`).join('') +
+    `<div class="member-grid"><div class="member-row"><div class="round-avatar">${avatarOf('나')}</div><div class="grow"><strong>${esc(state.character.name || '나')}</strong><small>${g.master ? '길드장 (나)' : '나'}</small></div></div>` +
+    g.members.map(n => `<div class="member-row"><div class="round-avatar">${avatarOf(n)}</div><div class="grow"><strong>${esc(n)}</strong><small>길드원</small></div></div>`).join('') + '</div>' +
     (g.master && rest.length ? '<div class="choice-label">초대</div>' + rest.map(([n, st]) => `<div class="member-row"><div class="grow"><strong>${esc(n)}</strong><small>${esc(st)}</small></div><button data-act="guild-invite" data-name="${esc(n)}">초대</button></div>`).join('') : ''),
     [btnClose, `<button class="danger" data-act="guild-leave">${g.master ? '길드 해산' : '길드 탈퇴'}</button>`]);
 }

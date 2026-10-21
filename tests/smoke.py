@@ -654,7 +654,7 @@ with sync_playwright() as p:
     check('action_confirm_multi_no_scroll', all(ev(pg, NOSCROLL)) and pg.evaluate("document.querySelector('.confirm-actions button').getBoundingClientRect().bottom")<= 900 and ev(pg, "document.documentElement.scrollHeight<=window.innerHeight+1"), ev(pg, NOSCROLL))
     pg.click('.chips.mult .chip >> nth=0'); pg.wait_for_timeout(40)
     ct = text(pg, '.action-confirm-inline')
-    check('confirm_shows_time_reward_and_costs', '5분' in ct and '예상 보상' in ct and '소모 · 위험' in ct and '기력 -1' in ct and pg.locator('.chips.mult .chip').count() == 4 and '확률' in ct and '%' in ct and '목재' in ct, ct)
+    check('confirm_shows_time_reward_and_costs', '5분' in ct and '보상' in ct and '위험' in ct and pg.locator('.action-confirm-inline .cf-head .cf-time').count() == 1 and '기력 -1' in ct and pg.locator('.chips.mult .chip').count() == 4 and '확률' in ct and '%' in ct and '목재' in ct, ct)
     pg.click('.chips.mult .chip >> nth=2'); pg.wait_for_timeout(40)
     check('multi_option_preview', '1시간' in text(pg, '.action-confirm-inline') and '회 반복' in text(pg, '.action-confirm-inline') and '기력 -' in text(pg, '.action-confirm-inline'), text(pg, '.action-confirm-inline'))
     pg.click('.chips.mult .chip >> nth=0'); pg.wait_for_timeout(40)
@@ -1584,6 +1584,8 @@ with sync_playwright() as p:
         const {m,runs}=battleRuns(act,a),line=battleSlotLine(m,runs,0,5,act).text,res=resolveAction(id,1,0,act).text;
         if(runs[0].win){wins++;ok=ok&&line.includes('쓰러뜨렸다')&&res.includes('1승');}else ok=ok&&!line.includes('쓰러뜨렸다')&&res.includes('1패');}
       Object.assign(state,JSON.parse(bak));return ok&&wins>0&&wins<60})()"""))
+    ev(pg, "view.statusPage=1;renderStatus()"); pg.click('#statusBody .mock-card'); pg.wait_for_timeout(100)
+    check('mock_card_whole_box_is_button', pg.locator('#mockMon').count() == 1); ev(pg, "closeModal();view.statusPage=0;renderStatus()")
     check('lit_title_on_full_map', ev(pg, """(()=>{const bak=JSON.stringify(state);const z=DANGER_ZONES[2];const before=zoneFullyLit(z.id);
       z.map.forEach((row,y)=>[...row].forEach((c,x)=>{if(c!=='#'&&c!=='.')state.explored[z.id][x+','+y]=1}));
       const got=checkTitles();const ok=!before&&zoneFullyLit(z.id)&&got.includes('용암계곡을 밝힌 자')&&!state.titles.includes('고요한 숲을 밝힌 자');Object.assign(state,JSON.parse(bak));state.titles=JSON.parse(bak).titles;return ok})()"""))

@@ -875,3 +875,33 @@ textarea#mailBody{width:100%;min-height:80px;resize:vertical}
 .setting-group h3,.dev-fold>summary{font-size:calc(14px*var(--fs))}
 .setting-group .tiny,.setting-group .cloudrow span.tiny{font-size:calc(12px*var(--fs))}
 .setting-group .cloudrow span{font-size:calc(13px*var(--fs))}
+/* 행동 확인창: 예상 시간은 제목 오른쪽, 보상(초록)·위험(빨강)만 색을 쓰고 글자 크기는 같게 */
+.cf-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.cf-time{flex:none;display:inline-flex;align-items:center;gap:3px;font-size:calc(13px*var(--fs));font-weight:700;color:var(--text)}
+.cf-time .material-symbols-rounded{font-size:calc(15px*var(--fs));color:var(--muted)}
+.action-confirm-inline small,.action-confirm-inline small.odds,.action-confirm-inline small.repeat-note{font-size:calc(13px*var(--fs));font-weight:500;color:var(--text-2);line-height:1.5}
+.action-confirm-inline small b{font-weight:800}
+.action-confirm-inline small.gain b{color:var(--good)}
+.action-confirm-inline small.risk b{color:var(--danger-text)}
+.action-confirm-inline small.risk,.action-confirm-inline small.gain{color:var(--text-2)}
+.mock-card{width:100%;text-align:left;cursor:pointer;display:block;font:inherit;color:inherit}.mock-card:hover{border-color:var(--accent-line);background:var(--accent-soft)}
+/* 로그·임무 글자를 살짝 키움 */
+.log-row{font-size:calc(12px*var(--fs));line-height:1.45}
+.nearby-row strong,.quest-row strong{font-size:calc(12px*var(--fs))}
+.nearby-row small,.quest-row small{font-size:calc(11px*var(--fs))}
+.quest-row .quest-state{font-size:calc(10px*var(--fs))}
+.quest-detail p{font-size:calc(12px*var(--fs));line-height:1.5}
+.quest-prog small{font-size:calc(11px*var(--fs))}
+.quest-reward{font-size:calc(11px*var(--fs))}
+/* 설명 글자 통일: 임무 설명과 같은 크기(12px)로 — 로그·임무·스테이터스·목록 설명·툴팁류 */
+.log-row,.quest-detail p,.quest-prog small,.quest-reward,.tiny,.stat-eff,.nearby-row small,.quest-row small,.recipe small,.cstat small,.action-confirm-inline p,.last-result p,.run-meta,.setting-group .tiny,.setting-group .cloudrow span.tiny{font-size:calc(12px*var(--fs))}
+.stat-val em{font-size:calc(11px*var(--fs))}
+.nearby-row strong,.quest-row strong,.stat-head b{font-size:calc(13px*var(--fs))}
+.member-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px}
+.member-grid .member-row{margin-top:2px;min-width:0;padding:6px 7px}
+.member-grid .member-row .grow{flex:1 1 auto;min-width:0}
+.member-grid .member-row strong,.member-grid .member-row small{overflow-wrap:anywhere}
+.trade-row{display:flex;flex-wrap:nowrap;align-items:center;gap:6px}
+.trade-row>span{flex:none;width:5.6em;white-space:nowrap}
+.trade-row>select,.trade-row>input:not([type=number]){flex:1 1 0;min-width:0;width:auto}
+.trade-row>input[type=number]{flex:none;width:58px}

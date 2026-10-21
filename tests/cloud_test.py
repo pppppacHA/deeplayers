@@ -143,6 +143,11 @@ with sync_playwright() as p:
     server['ginfo']['incoming'] = [{'id': 32, 'kind': 'apply', 'guild': '달빛길드', 'name': '새싹'}]
     pg.evaluate("openGuild()"); pg.wait_for_timeout(500)
     check('guild_master_sees_application', '새싹' in pg.inner_text('#modalBody') and '가입 신청' in pg.inner_text('#modalBody') and pg.locator('#guildQ').count() == 1)
+    server['avatars'] = {'하늘': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='}
+    server['ginfo']['guild']['members'] = [{'uid': 'me', 'name': '테스터', 'master': True}, {'uid': 'u2', 'name': '하늘', 'master': False}, {'uid': 'u3', 'name': '바다', 'master': False}]
+    pg.evaluate("view.avatars={};openGuild()"); pg.wait_for_timeout(1200)
+    check('guild_members_two_columns', pg.evaluate("getComputedStyle(document.querySelector('.member-grid')).gridTemplateColumns.trim().split(/\\s+/).length") == 2 and pg.locator('.member-grid .member-row').count() == 3)
+    check('guild_member_shows_profile_image', pg.locator('.member-grid .round-avatar img').count() == 1, pg.inner_html('.member-grid')[:300])
     pg.fill('#guildQ', '새'); pg.click('[data-act="guild-find-player"]'); pg.wait_for_timeout(400); pg.click('[data-act="guild-invite-req"]'); pg.wait_for_timeout(400)
     check('guild_invite_sent', ['invite', {'p_to': '44444444-4444-4444-4444-444444444444'}] in server['gcalls'], [server['gcalls'], pg.inner_text('#modalBody')[:300]])
     pg.evaluate("closeModal()")
@@ -157,6 +162,14 @@ with sync_playwright() as p:
     server['chat'].append({'id': 3, 'name': '하늘', 'body': '새 메시지', 'uid': '11111111-1111-1111-1111-111111111111', 'at': '2026-10-21T09:01:00Z'})
     pg.evaluate("chatPoll()"); pg.wait_for_timeout(700)
     check('chat_poll_appends_only_new', pg.locator('#chatFeed .msg').count() == 3 and pg.evaluate("view.chatLast['월드']") == 3)
+    cache = pg.evaluate("JSON.parse(localStorage.getItem('deeplayer-chat'))")
+    check('chat_cached_on_device', cache and len(cache['월드']['rows']) == 3 and cache['월드']['rows'][0][1] == '안녕하세요', cache)
+    saved_chat = server['chat']; server['chat'] = []
+    pg.evaluate("flushSave && flushSave()"); pg.reload(); pg.wait_for_timeout(500)
+    pg.evaluate("document.querySelector('#tutorial') && document.querySelector('#tutorial').classList.add('hidden')")
+    check('chat_survives_reload', pg.evaluate("state.chatTab") == '월드' and '안녕하세요' in pg.inner_text('#chatFeed') and '새 메시지' in pg.inner_text('#chatFeed'), pg.inner_text('#chatFeed')[:200])
+    server['chat'] = saved_chat; pg.wait_for_timeout(1800)
+    check('chat_reload_no_duplicates', pg.locator('#chatFeed .msg').count() == 3, pg.locator('#chatFeed .msg').count())
     pg.evaluate("sendChat('반가워요')"); pg.wait_for_timeout(600)
     check('chat_send_goes_to_server', server['chatsent'] and server['chatsent'][-1] == {'p_channel': 'world', 'p_body': '반가워요'}, server['chatsent'])
     pg.evaluate("state.chatTab='길드';renderChat();chatPoll()"); pg.wait_for_timeout(500)
@@ -171,6 +184,7 @@ with sync_playwright() as p:
     pg.evaluate("view.avatars={};state.friends=['하늘'];openFriends(true)"); pg.wait_for_timeout(900)
     check('friend_list_shows_profile_image', pg.locator('#friendList .round-avatar img').count() == 1)
     pg.evaluate("state.friends=[];closeModal()")
+    server['data']['money'] = 4242  # 그동안 자동 저장이 서버 데이터를 덮었을 수 있어 다시 정한다
     pg.evaluate("openSettings()"); pg.click('[data-act="cloud-pull"]'); pg.wait_for_timeout(1000)
     check('pull_replaces_local_and_reloads', pg.evaluate("state.money") == 4242, pg.evaluate("state.money"))
     pg.evaluate("document.querySelector('#tutorial').classList.add('hidden')")
