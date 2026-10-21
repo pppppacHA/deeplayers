@@ -73,6 +73,10 @@ const Cloud = (() => {
     async isAdmin() { return (await call('/rest/v1/rpc/is_admin', {}, await token())) === true; },
     /* → { rev, data, at } | null(서버에 세이브 없음) */
     async pull() { const j = await call('/rest/v1/rpc/pull_save', {}, await token()); if (j) { const s = rd(); if (s) { s.rev = j.rev; wr(s); } } return j; },
+    /* 서버 백업 (supabase/backups.sql) */
+    async listBackups() { return (await call('/rest/v1/rpc/list_backups', {}, await token())) || []; },
+    async getBackup(id) { return await call('/rest/v1/rpc/get_backup', { p_id: id }, await token()); },
+    async backupNow() { return await call('/rest/v1/rpc/backup_now', {}, await token()); },
     /* → { ok, rev } — ok:false 면 다른 기기가 먼저 저장한 것 */
     async push(data) {
       const s = rd(); const j = await call('/rest/v1/rpc/push_save', { p_rev: s ? s.rev : 0, p_data: data }, await token());

@@ -982,6 +982,7 @@ with sync_playwright() as p:
     pg.click('#avatarButton'); check('char_options_reopen', not pg.locator('#cFriend').is_checked() and not pg.locator('#cGuild').is_checked())
     check('profile_locked_24h_after_edit', pg.locator('#cName').is_disabled() and pg.locator('#cAbility').is_disabled() and pg.locator('#cFriend').is_disabled() and pg.locator('[data-act="profile-edit"]').is_disabled() and '24시간' in text(pg, '#modalBody') and ev(pg, "profileLockLeft()")> 23 * 3600e3 and pg.locator('.tchip').first.is_enabled())
     sf, sg2 = rect(pg, 'label.switch:has(#cFriend) i'), rect(pg, 'label.switch:has(#cFriend) > span'); sg3 = rect(pg, 'label.switch:has(#cGuild) i')
+    check('switches_beside_avatar_right', ev(pg, "(()=>{const a=document.querySelector('#modalBody .avatar.big').getBoundingClientRect(),f=document.querySelector('#cFriend').closest('label').getBoundingClientRect(),g=document.querySelector('#cGuild').closest('label').getBoundingClientRect(),ab=document.querySelector('.pc-ability').getBoundingClientRect();return f.left>a.right&&f.top>=a.top-4&&g.bottom<=a.bottom+4&&g.bottom<=ab.top})()"))
     check('switch_next_to_label', sf['x'] - sg2['r'] < 40 and abs(sg3['x'] - sf['x']) < 4 and sg3['y'] > sf['y'] + 12, [sf, sg2, sg3])
     pg.click('#closeModal')
     ev(pg, "state.profileEditAt=nowMs()-24*3600e3-1000"); pg.click('#avatarButton'); pg.wait_for_timeout(60)
@@ -1086,6 +1087,25 @@ with sync_playwright() as p:
     pg.reload(); pg.wait_for_timeout(300)
     if os.environ.get('STUB_ICONS'): pg.add_style_tag(content=STUB)
     check('old_save_discarded', ev(pg, "state.money")== 100 and ev(pg, "state.created")== False and pg.locator('#tutStory').is_visible())
+    # 불러오는 순간(loadState) 쓰이는 코드가 core.js 아래쪽에 선언된 const/let을 참조하면 TDZ 오류로 저장이 통째로 날아간다 → 정적 검사
+    _core = (ROOT / 'js' / 'core.js').read_text(encoding='utf8').split('\n'); _call = [i for i, l in enumerate(_core) if l.startswith('const state = loadState()')][0]
+    import re as _re
+    _late = {m.group(1) for i, l in enumerate(_core) if i > _call for m in [_re.match(r'^(?:const|let)\s+([A-Za-z_$][\w$]*)', l)] if m}
+    _body = '\n'.join(_core[:_call])
+    check('load_path_has_no_late_consts', not [n for n in _late if _re.search(r'\b' + _re.escape(n) + r'\b', _body)], [n for n in _late if _re.search(r'\b' + _re.escape(n) + r'\b', _body)])
+    # 제작 중·서브잡·농사·행동 진행 중 같은 상태로 새로고침해도 캐릭터가 그대로여야 한다
+    for _k, _code in {'crafting': "state.crafting={index:0,startAt:Date.now(),endAt:Date.now()+60000,qty:2,great:false,ready:false}", 'subjob': "state.subjob={name:'t',tags:['농사'],level:3,prog:1,lastAt:Date.now()}", 'farm': "state.farm={plots:[{crop:Object.keys(CROPS)[0],at:Date.now()}]}", 'active': "state.active={id:Object.keys(ACTIONS).find(k=>ACTIONS[k].kind==='gather'),startAt:Date.now(),endAt:Date.now()+300000,cycles:1,cycleSec:300,spCost:1}", 'guild': "state.guild={name:'길드',master:true,members:['나']}", 'reinforce': "state.reinforce={'맨손':1}"}.items():
+        ev(pg, "(()=>{localStorage.clear();return 1})()"); pg.reload(); pg.wait_for_timeout(250)
+        ev(pg, "(()=>{state.created=true;state.character.name='보존';" + _code + ";flushSave()})()")
+        pg.reload(); pg.wait_for_timeout(250)
+        check('reload_keeps_character_' + _k, ev(pg, "state.created")== True and ev(pg, "state.character.name")== '보존' and ev(pg, "!window.__loadError"), ev(pg, "window.__loadError"))
+    if os.environ.get('STUB_ICONS'): pg.add_style_tag(content=STUB)
+    # 펫이 있는 저장도 새로고침 후 그대로여야 한다 (저장 검증이 불러오는 순간 쓰는 상수가 늦게 선언되어 저장이 날아갔던 사고 방지)
+    ev(pg, "(()=>{state.created=true;state.character.name='보존테스트';state.pets=[{id:Object.keys(PET_SPECIES)[0],bond:40,fedAt:0,exp:null,name:'콩이'},{id:Object.keys(PET_SPECIES)[1],bond:10,fedAt:0,exp:{zone:'제1구역',at:Date.now()-1000,ms:3600000}}];flushSave()})()")
+    pg.reload(); pg.wait_for_timeout(300)
+    if os.environ.get('STUB_ICONS'): pg.add_style_tag(content=STUB)
+    check('save_with_pets_survives_reload', ev(pg, "state.created")== True and ev(pg, "state.character.name")== '보존테스트' and ev(pg, "state.pets.length")== 2 and ev(pg, "state.pets[0].name")== '콩이' and ev(pg, "!window.__loadError"))
+    ev(pg, "(()=>{localStorage.setItem(SAVE_KEY,JSON.stringify({version:SAVE_VERSION,created:true,character:{name:'망가진'},pets:'x',inventory:5}));return true})()")
     ev(pg, "localStorage.clear()"); pg.reload(); pg.wait_for_timeout(300)
     if os.environ.get('STUB_ICONS'): pg.add_style_tag(content=STUB)
     make_char(); pg.wait_for_timeout(100)

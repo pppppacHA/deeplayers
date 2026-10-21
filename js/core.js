@@ -116,7 +116,7 @@ function hardenState(s) {
   if (s.active && s.active.id === '타일 이동' && s.active.cum && !(Array.isArray(s.active.cum) && s.active.cum.length === (s.active.path || []).length && s.active.cum.every(Number.isFinite))) delete s.active.cum;
   s.logs = (Array.isArray(s.logs) ? s.logs : []).filter(l => l && typeof l.text === 'string').map(l => ({ time: cleanText(l.time, 10), text: cleanText(l.text, 400) })).slice(0, 100);
   if (s.crafting && (!RECIPES[s.crafting.index] || !Number.isFinite(s.crafting.endAt))) s.crafting = null;
-  if (s.crafting) { s.crafting.qty = intIn(s.crafting.qty, 1, MAX_BATCH, 1); s.crafting.great = !!s.crafting.great; s.crafting.ready = !!s.crafting.ready; }
+  if (s.crafting) { s.crafting.out = RECIPES[s.crafting.index].out; s.crafting.qty = intIn(s.crafting.qty, 1, MAX_BATCH, 1); s.crafting.great = !!s.crafting.great; s.crafting.ready = !!s.crafting.ready; }
   if (!['장비', '음식', '약', '재료'].includes(s.craftTab)) s.craftTab = null;
   if (s.active && s.active.id === '구역 이동' && !(LOCATIONS[s.active.to] && LOCATIONS[s.active.to].danger && !s.dungeon && Number.isFinite(s.active.endAt))) s.active = null;
   if (s.active && s.active.id === '타일 이동' && !(s.dungeon && Array.isArray(s.active.path) && s.active.path.length)) s.active = null;
@@ -132,7 +132,10 @@ function loadState() {
         return sanitize(merge(createDefaultState(), saved));
       }
     }
-  } catch (e) { /* 깨진 저장 데이터는 무시 */ }
+  } catch (e) { // 읽다가 실패해도 원본은 지우지 않는다: 백업 키에 따로 보관하고 콘솔에 남긴다
+    try { const raw = localStorage.getItem(SAVE_KEY); if (raw && !localStorage.getItem(SAVE_KEY + '-backup')) localStorage.setItem(SAVE_KEY + '-backup', raw); } catch (e2) { /* 저장 불가 환경 */ }
+    window.__loadError = String(e && e.message || e); console.error('저장 데이터를 읽지 못했습니다:', e);
+  }
   return createDefaultState();
 }
 const state = loadState();
@@ -951,7 +954,6 @@ function itemEffect(name) {
 /* 제작 시간(초): 감각 스탯으로 단축 */
 const craftSec = rc => Math.max(5, Math.round(rc.sec * (1 - effects().craftTime)));
 /* 제작 시작. 'ok' / 'mats' / 'space' / 'busy'. 재료는 시작할 때 소모하고, 시간이 지나면 완성된다 (성공률 없음) */
-const MAX_BATCH = 99;
 /* 이 아이템을 몇 개까지 더 넣을 수 있나 (빈 칸 + 쌓을 수 있는 자리) */
 function roomFor(name) {
   const it = ITEMS[name], list = state.inventory[it.tab], free = Math.max(0, bagCapacity() - usedSlots());
@@ -1414,7 +1416,6 @@ function setActivePet(i) {
   return null;
 }
 /* ---- 펫 자동 탐험: 24시간 뒤 선택한 지상 구역의 재료를 가져온다 ---- */
-const PET_NAME_MAX = 8;
 const petName = p => (p && p.name) || PET_SPECIES[p.id].name; // 이름을 붙이지 않았으면 종 이름
 function renamePet(i, name) { // 빈 이름이면 종 이름으로 되돌린다
   const p = state.pets[i]; if (!p) return '펫이 없습니다.';

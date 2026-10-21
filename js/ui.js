@@ -638,6 +638,7 @@ function cloudSchedule() {
 }
 async function cloudAutoPush() {
   _cloudTimer = 0;
+  if (!state.created) return; // 캐릭터를 아직 만들지 않은 빈 상태로 서버 진행을 덮어쓰지 않는다
   try {
     const r = await Cloud.push(JSON.parse(JSON.stringify(state)));
     if (!r.ok) { _cloudBlocked = true; toast('다른 기기에서 먼저 저장했어요. 설정 → 서버 저장에서 선택해 주세요.'); }
@@ -652,16 +653,42 @@ function cloudGroupHtml() {
   const u = Cloud.enabled && Cloud.user();
   const local = '<button data-act="local-save">로컬 저장</button><button data-act="local-load">로컬 불러오기</button>';
   if (!u) return `<div class="setting-group"><h3>저장</h3><div class="cloudrow"><span class="tiny">세이브 파일로 저장하고 불러올 수 있어요.</span>${local}</div></div>`;
-  return `<div class="setting-group"><h3>서버 저장</h3><div class="cloudrow"><span><b>${esc(u)}</b> 로그인됨</span><button data-act="cloud-push">저장</button><button data-act="cloud-pull">서버 불러오기</button>${local}</div><p class="tiny">진행은 20초 정도마다 자동으로 서버에 저장돼요.${_cloudBlocked ? ' (⚠ 다른 기기가 먼저 저장해 자동 저장이 멈춰 있어요)' : ''} 로컬 저장은 이 기기에 세이브 파일(.json)로 내려받아요.</p></div>`;
+  return `<div class="setting-group"><h3>서버 저장</h3><div class="cloudrow"><span><b>${esc(u)}</b> 로그인됨</span><button data-act="cloud-push">저장</button><button data-act="cloud-pull">서버 불러오기</button>${local}</div><div class="cloudrow"><button data-act="cloud-backups">서버 백업</button><span class="tiny">서버 저장이 덮어써지기 전 진행을 최대 12개 보관해요.</span></div><p class="tiny">진행은 20초 정도마다 자동으로 서버에 저장돼요.${_cloudBlocked ? ' (⚠ 다른 기기가 먼저 저장해 자동 저장이 멈춰 있어요)' : ''} 로컬 저장은 이 기기에 세이브 파일(.json)로 내려받아요.</p></div>`;
 }
 async function cloudAfterLogin() { // 로그인 직후: 서버에 세이브가 있으면 어느 쪽을 쓸지 묻는다
   const s = await Cloud.pull();
-  if (!s) { await Cloud.push(JSON.parse(JSON.stringify(state))); toast('이 기기의 진행을 서버에 저장했어요.'); openSettings(); return; }
+  if (!s) { if (!state.created) { toast('서버에 저장된 진행이 없어요.'); return; } await Cloud.push(JSON.parse(JSON.stringify(state))); toast('이 기기의 진행을 서버에 저장했어요.'); openSettings(); return; }
   modal('서버 저장 발견', `<p>서버에 저장된 진행이 있어요. (${esc(String(s.at || '').slice(0, 16).replace('T', ' '))})<br>어느 쪽을 쓸까요?</p><p class="tiny">서버 것을 쓰면 이 기기의 현재 진행은 사라집니다.</p>`,
     ['<button data-act="cloud-use-server" class="primary">서버 진행 불러오기</button>', '<button data-act="cloud-use-local">이 기기 진행으로 덮어쓰기</button>']);
   view.cloudServer = s;
 }
 
+/* ---------- 서버 백업 목록 (supabase/backups.sql) ---------- */
+const BACKUP_KIND = { auto: '자동', guard: '안전장치', manual: '수동' };
+async function openBackups() {
+  modal('서버 백업', '<p class="tiny">불러오는 중…</p>', ['<button data-act="close">닫기</button>'], true);
+  let list = [];
+  try { list = await Cloud.listBackups(); }
+  catch (e) { modal('서버 백업', '<p class="detail-desc">백업 목록을 불러오지 못했어요. 서버에 <b>supabase/backups.sql</b>을 한 번 실행해야 해요.</p>', ['<button data-act="close">닫기</button>'], true); return; }
+  const when = at => { const d = new Date(at); return Number.isNaN(+d) ? '' : d.toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }); };
+  const rows = list.map(b => `<div class="nearby-row"><div class="grow"><strong>${esc(when(b.at))} <span class="tag">${esc(BACKUP_KIND[b.kind] || '자동')}</span></strong><small>${esc(cleanText(b.name, 12) || '-')} · Lv.${esc(String(intIn(b.level, 0, 999, 0)))} · ${esc(String(intIn(b.money, 0, 99999999, 0)))} CR</small></div><button data-act="backup-restore" data-id="${esc(String(intIn(b.id, 0, 9e15, 0)))}">불러오기</button></div>`).join('');
+  modal('서버 백업', `<p class="tiny">서버 저장이 덮어써지기 전의 진행을 유저별로 최대 12개까지 보관해요. (6시간마다 자동, 캐릭터가 사라지는 덮어쓰기 직전에는 항상)</p>` +
+    (rows || '<div class="empty">아직 백업이 없어요. 서버에 저장된 진행이 있다면 \'지금 백업\'을 눌러 보세요.</div>'),
+    ['<button data-act="close">닫기</button>', '<button class="primary" data-act="backup-now">지금 백업</button>'], true);
+}
+/* 이 기기의 저장이 비어 있는데(새 기기·저장 손실) 서버에 진행이 있으면 먼저 알려 준다: 모르고 새 캐릭터를 만들어 덮어쓰지 않도록 */
+async function cloudRecover() {
+  try {
+    const s = await Cloud.pull();
+    if (s && s.data && s.data.created) {
+      view.cloudServer = s;
+      modal('서버 저장 발견', `<p>이 기기에는 진행이 없지만, 서버에 저장된 진행이 있어요. (${esc(String(s.at || '').slice(0, 16).replace('T', ' '))})</p><p class="tiny">새로 시작하면 서버의 기존 진행은 새 캐릭터로 덮어써질 수 있어요.</p>`,
+        ['<button data-act="cloud-use-server" class="primary">서버 진행 불러오기</button>', '<button data-act="cloud-fresh">새로 시작하기</button>']);
+      return;
+    }
+  } catch (e) { /* 서버를 못 읽으면 그냥 시작 */ }
+  startTutorial();
+}
 /* ---------- 설정 (소리는 한 묶음, 컴팩트) ---------- */
 const snd = (id, ic, label, on) => `<label class="switch snd-switch"><span>${icon(ic)} ${label}</span><input id="${id}" type="checkbox" role="switch" ${on ? 'checked' : ''}><i></i></label>`;
 const sw = (id, label, on, cls = '', dis = '') => `<label class="switch ${cls}"><span>${label}</span><input id="${id}" type="checkbox" role="switch" ${on ? 'checked' : ''} ${dis}><i></i></label>`;
@@ -1141,8 +1168,23 @@ const A = {
   },
   'cloud-logout': () => { Cloud.logout(); _cloudBlocked = false; location.href = 'signup.html'; },
   'cloud-push': async () => {
+    if (!state.created) { toast('캐릭터를 만든 뒤에 서버에 저장할 수 있어요.'); return; }
     try { const r = await Cloud.push(JSON.parse(JSON.stringify(state))); if (r.ok) { _cloudBlocked = false; toast('서버에 저장했어요.'); } else { _cloudBlocked = true; toast('다른 기기에서 먼저 저장했어요. "서버에서 불러오기"를 먼저 해 주세요.'); } } catch (e) { toast('서버에 저장하지 못했어요.'); }
   },
+  'cloud-backups': () => openBackups(),
+  'backup-now': async () => {
+    try { const r = await Cloud.backupNow(); toast(r && r.ok ? '지금 상태를 서버에 백업했어요.' : r && r.why === 'too_fast' ? '방금 백업했어요. 1분 뒤에 다시 눌러 주세요.' : '백업할 진행이 서버에 없어요. (먼저 서버에 저장해 주세요)'); sfx('ok'); openBackups(); }
+    catch (e) { toast('서버 백업에 실패했어요. (서버에 backups.sql 을 실행했는지 확인해 주세요)'); sfx('error'); }
+  },
+  'backup-restore': el => askConfirm('백업 불러오기', '이 백업으로 되돌립니다. 지금 서버에 있는 진행은 먼저 자동으로 백업해 두고, 이 기기의 진행은 백업 내용으로 바뀝니다.', '불러오기', 'backup-restore-do', { id: el.dataset.id }, openBackups),
+  'backup-restore-do': async el => {
+    try { try { await Cloud.backupNow(); } catch (e) { /* 지금 상태 백업은 실패해도 계속 */ }
+      const d = await Cloud.getBackup(+el.dataset.id);
+      if (!d || !d.created) { toast('이 백업을 불러오지 못했어요.'); sfx('error'); return; }
+      toast('백업을 불러옵니다.'); cloudApply(d);
+    } catch (e) { toast('백업을 불러오지 못했어요.'); sfx('error'); }
+  },
+  'cloud-fresh': () => { closeModal(); startTutorial(); },
   'cloud-pull': async () => { try { const s = await Cloud.pull(); if (s) cloudApply(s.data); else toast('서버에 저장된 진행이 없어요.'); } catch (e) { toast('서버에서 불러오지 못했어요.'); } },
   'local-save': () => {
     try {
@@ -1685,11 +1727,11 @@ function openProfile(keepScroll) {
   const lock = profileLockLeft(), editing = !!view.profEdit && lock <= 0, dis = editing ? '' : 'disabled'; // 수정 버튼을 눌러야 입력칸이 열린다
   const row = (label, inner) => `<div class="srow fontrow pf-row"><span>${label}</span>${inner}</div>`;
   modal('프로필', `<div class="profile-card"><button class="avatar big ${img ? '' : 'empty'}" data-act="avatar-pick" title="이미지 변경" aria-label="프로필 이미지 변경">${img ? `<img src="${esc(img)}" alt="프로필">` : icon('add_a_photo')}<span class="avatar-edit">${icon('photo_camera')}</span></button>` +
-    `<div class="pc-info"><div class="title-chip" id="pcTitle">${esc(c.title)}</div><strong>${esc(c.name || '-')}</strong><div class="char-meta">LV.${c.level}　${esc(c.rank)}등급　${c.age}세</div><div class="char-tags">${esc(tags)}</div>${state.subjob ? `<div class="char-job">${esc(`서브잡 · ${state.subjob.name} Lv.${state.subjob.level}`)}</div>` : ''}</div></div>` +
+    `<div class="pc-info"><div class="title-chip" id="pcTitle">${esc(c.title)}</div><strong>${esc(c.name || '-')}</strong><div class="char-meta">LV.${c.level}　${esc(c.rank)}등급　${c.age}세</div><div class="char-tags">${esc(tags)}</div>${state.subjob ? `<div class="char-job">${esc(`서브잡 · ${state.subjob.name} Lv.${state.subjob.level}`)}</div>` : ''}</div><div class="pf-sw">${sw('cFriend', '친구 추가 허용', dr ? dr.fr : c.allowFriend, 'near', dis)}${sw('cGuild', '길드 초대 허용', dr ? dr.gu : c.allowGuild, 'near', dis)}</div></div>` +
     `<div class="pc-ability"><b>${icon('bolt')} 이능력 · ${esc(c.ability || '미설정')}</b><p>${esc(c.abilityDesc || '이능력 설명이 없습니다.')}</p></div>` +
     `<div class="choice-label">칭호 ${state.titles.length}개 보유 · 눌러서 착용</div><div class="title-chips">${TITLE_DEFS.filter(([n]) => state.titles.includes(n)).map(([n, d]) =>
       `<button class="tchip ${c.title === n ? 'on' : ''}" data-act="title-set" data-title="${esc(n)}" title="달성: ${esc(d)}">${esc(n)}</button>`).join('')}</div>` +
-    `<div class="setting-group"><div class="pf-head"><h3>캐릭터 정보 수정</h3><div class="pf-side">${editing ? `<button class="pf-edit on" data-act="profile-edit-cancel">${icon('close')} 편집 취소</button>` : `<button class="pf-edit" data-act="profile-edit" ${lock > 0 ? 'disabled' : ''}>${icon('edit')} 편집</button>`}<div class="pf-sw">${sw('cFriend', '친구 추가 허용', dr ? dr.fr : c.allowFriend, 'near', dis)}${sw('cGuild', '길드 초대 허용', dr ? dr.gu : c.allowGuild, 'near', dis)}</div></div></div>` +
+    `<div class="setting-group"><div class="pf-head"><h3>캐릭터 정보 수정</h3><div class="pf-side">${editing ? `<button class="pf-edit on" data-act="profile-edit-cancel">${icon('close')} 편집 취소</button>` : `<button class="pf-edit" data-act="profile-edit" ${lock > 0 ? 'disabled' : ''}>${icon('edit')} 편집</button>`}</div></div>` +
     (lock > 0 ? `<p class="tiny">프로필(칭호 제외)은 수정 후 24시간이 지나야 다시 바꿀 수 있어요. 남은 시간 ${fmtLong(lock)}</p>` : state.profileEditAt ? '' : '<p class="tiny">첫 수정은 바로 가능하고, 그 뒤에는 24시간마다 한 번 수정할 수 있어요.</p>') +
     row('이름', `<input id="cName" maxlength="12" ${dis} value="${esc(dr ? dr.name : c.name)}">`) +
     row('이능력 이름', `<input id="cAbility" maxlength="20" ${dis} value="${esc(dr ? dr.ab : c.ability)}">`) +
@@ -2199,6 +2241,7 @@ function renderStory() {
   $('#tutStory').classList.toggle('npc', npc);
   p.textContent = pg.text;
   p.classList.remove('fade'); void p.offsetWidth; p.classList.add('fade');
+  $('#tutCloudLoad').classList.toggle('hidden', !(Cloud.enabled && Cloud.user() && !state.created && !tut.replay)); // 저장이 날아가 처음 화면이 떴을 때 서버 진행을 바로 불러올 수 있게
   $('#tutNextStory').textContent = tut.page === lastPage() ? (tut.replay || state.created ? '단말기 안내 보기' : '캐릭터 만들기') : '다음';
   const from = tut.replay ? TUTORIAL_REPLAY_FROM : 0;
   $('#tutDots').innerHTML = TUTORIAL_STORY.slice(from, lastPage() + 1).map((_, i) => `<i class="${i + from === tut.page ? 'on' : ''}"></i>`).join('');
@@ -2310,6 +2353,19 @@ function endTutorial(msg) {
   save();
   toast(msg || '튜토리얼을 마쳤습니다. 본부에서 임무를 확인해 보세요!');
 }
+$('#tutCloudLoad').onclick = async () => {
+  const b = $('#tutCloudLoad'); b.disabled = true;
+  try {
+    const sv = await Cloud.pull();
+    if (sv && sv.data && sv.data.created) { toast('서버 진행을 불러옵니다.'); cloudApply(sv.data); return; }
+    try { // 서버 저장 자체가 비어 있으면 가장 최근 백업을 찾아 본다
+      const bl = await Cloud.listBackups(), nb = (bl || [])[0];
+      if (nb) { const d = await Cloud.getBackup(+nb.id); if (d && d.created) { toast('서버 백업에서 진행을 불러옵니다.'); cloudApply(d); return; } }
+    } catch (e) { /* 백업 기능이 없으면 무시 */ }
+    toast('서버에 저장된 진행이 없어요.');
+  } catch (e) { toast('서버에서 불러오지 못했어요.'); }
+  b.disabled = false;
+};
 $('#tutNextStory').onclick = () => { if (tut.page < lastPage()) { tut.page++; renderStory(); } else afterStory(); };
 $('#tutSkipStory').onclick = afterStory;
 $('#tutSkip').onclick = endTour;
@@ -2353,7 +2409,7 @@ function init() {
   renderProfile(); renderBars(); renderLeftTab(); renderBag(); renderBuffs(true);
   renderLogs(); renderChat();
   setLocation(state.location);
-  if (!state.tutorialDone) startTutorial();
+  if (!state.tutorialDone) { if (Cloud.enabled && Cloud.user() && !state.created) cloudRecover(); else startTutorial(); }
   const clock = () => { $('#clock').textContent = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }); };
   clock();
   setInterval(() => { tick(); clock(); }, 1000);

@@ -12,7 +12,7 @@ def rect(pg, sel):
 def check(n, c, info=None):
     print(('ok  ' if c else 'FAIL'), n, '' if c else info)
     if not c: fails.append(n)
-server = {'chat': [], 'chatsent': [], 'avatars': {}, 'avq': [], 'setav': [], 'rev': 0, 'data': None, 'pushes': [], 'sent': [], 'incoming': [], 'results': [], 'answers': [], 'acks': [], 'friends': [], 'mails': [], 'inmail': [], 'mack': [], 'props': [], 'tb': {'incoming': [], 'sent': [], 'results': []}, 'tans': [], 'tack': [], 'gcalls': [], 'ginfo': {'guild': None, 'incoming': [], 'sent': []}}
+server = {'backups': [], 'bdata': {}, 'bnow': 0, 'chat': [], 'chatsent': [], 'avatars': {}, 'avq': [], 'setav': [], 'rev': 0, 'data': None, 'pushes': [], 'sent': [], 'incoming': [], 'results': [], 'answers': [], 'acks': [], 'friends': [], 'mails': [], 'inmail': [], 'mack': [], 'props': [], 'tb': {'incoming': [], 'sent': [], 'results': []}, 'tans': [], 'tack': [], 'gcalls': [], 'ginfo': {'guild': None, 'incoming': [], 'sent': []}}
 pg_name = ['테스터']
 def api(route):
     req = route.request; u = req.url; h = {'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'content-type': 'application/json'}
@@ -56,6 +56,9 @@ def api(route):
         if body['p_rev'] != server['rev']: return route.fulfill(headers=h, body=json.dumps({'ok': False, 'rev': server['rev']}))
         server['rev'] += 1; server['data'] = body['p_data']; server['pushes'].append(server['rev'])
         return route.fulfill(headers=h, body=json.dumps({'ok': True, 'rev': server['rev']}))
+    if '/rpc/list_backups' in u: return route.fulfill(headers=h, body=json.dumps(server['backups']))
+    if '/rpc/get_backup' in u: return route.fulfill(headers=h, body=json.dumps(server['bdata'].get(str(body.get('p_id')))))
+    if '/rpc/backup_now' in u: server['bnow'] += 1; return route.fulfill(headers=h, body=json.dumps({'ok': True}))
     route.fulfill(status=404, headers=h, body='{}')
 with sync_playwright() as p:
     b = p.chromium.launch(); pg = b.new_page(); pg.on('pageerror', lambda e: print('PAGEERR', str(e)[:200]))
@@ -79,12 +82,16 @@ with sync_playwright() as p:
     pg.evaluate("openSettings()"); pg.wait_for_timeout(100)
     cr_ = [rect(pg, '.cloudrow span'), rect(pg, '[data-act="cloud-push"]'), rect(pg, '[data-act="cloud-pull"]')]
     ls_, ll_ = rect(pg, '[data-act="local-save"]'), rect(pg, '[data-act="local-load"]')
-    check('settings_shows_logged_in_with_save_and_load_right', cr_[2]['x'] > cr_[1]['x'] and ls_['x'] > cr_[2]['r'] - 1 and ll_['x'] > ls_['x'] and abs(ls_['y'] - cr_[1]['y']) < 6 and cr_[1]['y'] > cr_[0]['y'] and pg.locator('.cloudrow button').count() == 4, [cr_, ls_, ll_])
-    pg.evaluate("state.money=777;save()"); pg.click('[data-act="cloud-push"]'); pg.wait_for_timeout(300)
+    check('settings_shows_logged_in_with_save_and_load_right', cr_[2]['x'] > cr_[1]['x'] and ls_['x'] > cr_[2]['r'] - 1 and ll_['x'] > ls_['x'] and abs(ls_['y'] - cr_[1]['y']) < 6 and cr_[1]['y'] > cr_[0]['y'] and pg.locator('.cloudrow button').count() == 5, [cr_, ls_, ll_])
+    pg.evaluate("window.__c0=state.created;state.created=true;state.money=777;save()"); pg.click('[data-act="cloud-push"]'); pg.wait_for_timeout(300)
     check('manual_push_bumps_rev', server['rev'] == 4 and server['data']['money'] == 777, server['rev'])
+    pg.evaluate("state.created=false"); n_push = len(server['pushes']); pg.evaluate("openSettings()"); pg.click('[data-act="cloud-push"]'); pg.wait_for_timeout(200)
+    check('blank_state_never_pushed', len(server['pushes']) == n_push and server['data']['money'] == 777)
+    pg.evaluate("state.created=true")
     server['rev'] = 9  # 다른 기기가 먼저 저장
     pg.evaluate("openSettings()"); pg.click('[data-act="cloud-push"]'); pg.wait_for_timeout(300)
     check('conflict_blocks_push', server['rev'] == 9 and pg.evaluate("_cloudBlocked") is True)
+    pg.evaluate("state.created=window.__c0")
     server['data']['money'] = 4242
     pg.evaluate("state.created=true;openFriends()"); pg.fill('#friendSearch', '미'); pg.click('[data-act="friend-search"]'); pg.wait_for_timeout(300)
     check('friend_search_uses_server', pg.locator('#friendResult .nearby-row').count() == 2 and '미나' in pg.inner_text('#friendResult') and pg.locator('#friendResult img').count() == 0)
@@ -97,7 +104,10 @@ with sync_playwright() as p:
     server['fsent'] = []; pg.wait_for_timeout(900)
     # 받은 신청 → 수락해야 친구
     server['incoming'] = [{'id': 7, 'name': '하늘'}]
-    pg.evaluate("openFriends()"); pg.wait_for_timeout(400)
+    pg.evaluate("openFriends()")
+    try: pg.wait_for_function("(()=>{if(document.querySelector('#friendInbox [data-act=friend-accept]'))return true;friendPoll().then(()=>openFriends());return false})()", timeout=8000, polling=500)
+    except Exception: pass
+    pg.wait_for_timeout(100)
     check('incoming_request_listed', pg.locator('#friendInbox [data-act="friend-accept"]').count() == 1 and '하늘' in pg.inner_text('#friendInbox') and not pg.evaluate("state.friends.includes('하늘')"))
     check('friend_icon_dot_on_request', pg.locator('[data-system="친구"].has-dot').count() == 1)
     pg.click('#friendInbox [data-act="friend-accept"]'); pg.wait_for_timeout(400)
@@ -206,6 +216,37 @@ with sync_playwright() as p:
     server['data']['money'] = 4242  # 그동안 자동 저장이 서버 데이터를 덮었을 수 있어 다시 정한다
     pg.evaluate("openSettings()"); pg.click('[data-act="cloud-pull"]'); pg.wait_for_timeout(1000)
     check('pull_replaces_local_and_reloads', pg.evaluate("state.money") == 4242, pg.evaluate("state.money"))
+    # 저장이 날아가 처음(스토리) 화면이 떴을 때: 오른쪽 아래 '서버 불러오기'로 서버 진행을 바로 불러온다
+    server['data']['created'] = True; server['data']['money'] = 5151
+    pg.evaluate("(()=>{const s=JSON.parse(localStorage.getItem(SAVE_KEY));s.created=false;s.tutorialDone=false;localStorage.setItem(SAVE_KEY,JSON.stringify(s))})()")
+    pg.reload(); pg.wait_for_timeout(1500)
+    pg.evaluate("document.querySelector('#modalBody') && closeModal && closeModal()")
+    if pg.locator('#tutStory').is_visible() or True:
+        pg.evaluate("tut.replay=false;tut.page=0;tutShow('story');renderStory()")
+    cb = rect(pg, '#tutCloudLoad') if pg.locator('#tutCloudLoad').is_visible() else None
+    tb = rect(pg, '#tutStory')
+    check('tutorial_has_server_load_bottom_right', cb is not None and cb['r'] > tb['r'] - 60 and cb['b'] > tb['b'] - 60, [cb, tb])
+    if cb: pg.click('#tutCloudLoad'); pg.wait_for_timeout(1500)
+    check('tutorial_server_load_restores', pg.evaluate("state.money") == 5151 and pg.evaluate("state.created") is True, pg.evaluate("[state.money, state.created]"))
+    # 서버 백업: 목록 → 지금 백업 → 불러오기, 그리고 서버 저장이 비었을 때 스토리 버튼이 최근 백업을 찾는다
+    server['backups'] = [{'id': 11, 'at': '2026-10-21T01:00:00Z', 'rev': 3, 'kind': 'guard', 'name': '테스터', 'level': '5', 'money': '300'}]
+    server['bdata'] = {'11': {'created': True, 'money': 300, 'version': 8}}
+    pg.evaluate("document.querySelector('#tutorial').classList.add('hidden')")
+    pg.evaluate("openSettings()"); pg.click('[data-act="cloud-backups"]'); pg.wait_for_timeout(600)
+    check('backup_list_shown', pg.locator('[data-act="backup-restore"]').count() == 1 and '테스터' in pg.inner_text('#modalBody') and '안전장치' in pg.inner_text('#modalBody') and pg.locator('[data-act="backup-now"]').count() == 1, pg.inner_text('#modalBody'))
+    pg.click('[data-act="backup-now"]'); pg.wait_for_timeout(500)
+    check('backup_now_calls_server', server['bnow'] == 1)
+    pg.click('[data-act="backup-restore"]'); pg.wait_for_timeout(200)
+    pg.click('[data-act="backup-restore-do"]'); pg.wait_for_timeout(1800)
+    check('backup_restore_applies_and_backs_up_current_first', pg.evaluate("state.money") == 300 and server['bnow'] == 2, [pg.evaluate("state.money"), server['bnow']])
+    server['data']['created'] = False; server['bdata']['11']['money'] = 616
+    pg.evaluate("(()=>{const s=JSON.parse(localStorage.getItem(SAVE_KEY));s.created=false;s.tutorialDone=false;localStorage.setItem(SAVE_KEY,JSON.stringify(s))})()")
+    pg.reload(); pg.wait_for_timeout(1500)
+    pg.evaluate("tut.replay=false;tut.page=0;tutShow('story');renderStory()")
+    pg.click('#tutCloudLoad'); pg.wait_for_timeout(1800)
+    check('story_button_falls_back_to_backup', pg.evaluate("state.money") == 616 and pg.evaluate("state.created") is True, pg.evaluate("[state.money, state.created]"))
+    server['data']['created'] = True
+
     pg.evaluate("document.querySelector('#tutorial').classList.add('hidden')")
     pg.evaluate("openSettings()")
     check('settings_has_no_logout_or_signup_link', pg.locator('[data-act="cloud-logout"]').count() == 0 and pg.locator('a[href="signup.html"]').count() == 0)

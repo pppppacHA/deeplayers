@@ -1012,3 +1012,11 @@ textarea#mailBody{width:100%;min-height:80px;resize:vertical}
 .stat-slide .se-next:hover{background:var(--accent-soft)}
 
 .custom-time input{width:84px}
+
+.pf-opts{display:flex;justify-content:flex-end;margin:6px 0 2px}
+
+.profile-card .pf-sw{margin-left:auto;align-self:center;display:flex;flex-direction:column;align-items:flex-end;gap:6px}
+.profile-card .pf-sw .switch.near{justify-content:flex-end;gap:8px;padding:0}
+
+.tut-story .tut-cloud{position:absolute;right:18px;bottom:16px;padding:6px 12px;font-size:calc(12px*var(--fs));border:1px solid color-mix(in srgb,var(--story-text) 40%,transparent);border-radius:8px;opacity:.85}
+.tut-story .tut-cloud:hover{opacity:1}
