@@ -175,7 +175,7 @@ function renderInventory() {
 let devBtn = () => '';
 /* 개발자 도구: 서버의 관리자 계정으로 로그인했을 때만 js/dev.js 를 불러온다 (개발자 코드 입력은 없앴다). 미리보기 빌드에는 처음부터 합쳐져 있다 */
 async function loadDevScript() {
-  if (!window.DEV) await new Promise((ok, no) => { const s = document.createElement('script'); s.src = 'js/dev.js'; s.onload = ok; s.onerror = () => no(new Error('dev.js')); document.head.appendChild(s); });
+  if (!window.DEV) await new Promise((ok, no) => { const s = document.createElement('script'); s.src = 'js/dev.js?t=' + Date.now(); s.onload = ok; s.onerror = () => no(new Error('dev.js')); document.head.appendChild(s); });
   return !!window.DEV;
 }
 /* 관리자 계정(서버 admins 표에 등록된 아이디)으로 로그인하면 개발자 코드 없이 개발자 도구가 켜진다 */
