@@ -16,8 +16,10 @@ def js(name):
     t = (ROOT / f'js/{name}.js').read_text(encoding='utf8')
     if name == 'data':
         t = t.replace("'audio/bgm.mp3'", "'" + bgm + "'")
+    if name == 'cloud':
+        t = t.replace("location.replace('signup.html')", 'void 0')
     if name == 'ui':
-        t = t.replace('<a class="btn-link" href="signup.html">가입 페이지</a>', '').replace('<a class="btn-link" href="signup.html">가입</a>', '')
+        t = t.replace('<a class="btn-link" href="signup.html">가입 페이지</a>', '').replace('<a class="btn-link" href="signup.html">가입</a>', '').replace("location.href = 'signup.html'", "location.reload()")
         t += '\n' + (ROOT / 'js/dev.js').read_text(encoding='utf8')  # 미리보기에는 개발자 도구가 처음부터 켜져 있다
     return t
 for n in ('data', 'core', 'cloud', 'ui'):

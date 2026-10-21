@@ -14,8 +14,15 @@
 <body data-theme="light" class="signup-body">
 <main class="signup-card" aria-labelledby="suTitle">
   <div class="brand"><small>공중도시</small><em>DEEP LAYER</em></div>
+  <div class="su-tabs hidden" id="suTabs" role="tablist"><button type="button" class="active" data-su="signup" role="tab">가입</button><button type="button" data-su="login" role="tab">로그인</button></div>
   <h1 id="suTitle">탐색자 등록</h1>
   <p class="tiny">초대코드가 있어야 가입할 수 있어요.</p>
+  <form id="liForm" class="hidden" autocomplete="on" novalidate>
+    <label class="su-field"><span>아이디</span><input id="liId" maxlength="16" autocomplete="username" spellcheck="false"></label>
+    <label class="su-field"><span>비밀번호</span><input id="liPw" type="password" maxlength="64" autocomplete="current-password"></label>
+    <button class="primary su-submit" id="liGo" type="submit">로그인</button>
+    <div class="su-result" id="liResult" role="status" aria-live="polite"></div>
+  </form>
   <form id="suForm" autocomplete="off" novalidate>
     <label class="su-field"><span>아이디</span>
       <input id="suId" maxlength="16" autocomplete="username" spellcheck="false" placeholder="영문 소문자·숫자·_ 4~16자">
@@ -34,7 +41,7 @@
     <button class="primary su-submit" id="suGo" type="submit">가입하기</button>
     <div class="su-result" id="suResult" role="status" aria-live="polite"></div>
   </form>
-  <a class="su-back" href="index.html">← 게임으로 돌아가기</a>
+  <a class="su-back" id="suBack" href="index.html">← 게임으로 돌아가기</a>
   <p class="tiny su-note">이 페이지는 서버 연결 전 데모입니다. 가입 정보는 이 브라우저에만 저장되며(비밀번호는 PBKDF2 해시), 초대코드 인원 제한도 이 브라우저에서만 셉니다. 실서비스에서는 서버가 검증·집계해야 합니다. (SECURITY.md)</p>
 </main>
 <script src="js/cloud.js"></script>

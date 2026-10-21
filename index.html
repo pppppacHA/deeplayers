@@ -29,6 +29,7 @@
     <nav class="top-actions">
       <button title="공지" data-board="공지"><span class="material-symbols-rounded" aria-hidden="true">notifications</span></button>
       <button title="가이드" data-board="가이드"><span class="material-symbols-rounded" aria-hidden="true">question_mark</span></button>
+      <button title="버그 리포트" id="bugBtn"><span class="material-symbols-rounded" aria-hidden="true">bug_report</span></button>
       <button title="세계관" data-board="세계관"><span class="material-symbols-rounded" aria-hidden="true">public</span></button>
       <button title="설정" id="settingsBtn"><span class="material-symbols-rounded" aria-hidden="true">settings</span></button>
       <button title="로그아웃" class="logout" id="logoutBtn"><span class="material-symbols-rounded" aria-hidden="true">logout</span></button>
@@ -102,7 +103,7 @@
         </div>
         <div class="tab-view hidden" id="viewCraft">
           <div class="subtabs" id="craftTabs"><button data-craft="장비">장비</button><button data-craft="음식">음식</button><button data-craft="약">약</button><button data-craft="재료">재료</button></div>
-          <div class="craft-tools"><label>수량 <input id="craftQty" type="number" min="1" max="99" value="1" inputmode="numeric"></label><label class="chk"><input type="checkbox" id="craftOnly"> 제작 가능만</label></div>
+          <div class="craft-head"><span id="craftCount">레시피</span><button type="button" class="chip" id="craftOnly" aria-pressed="false">제작 가능만</button></div>
           <div id="craftList"></div>
         </div>
       </section>

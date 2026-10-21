@@ -1,6 +1,6 @@
 /* 서버 저장(Supabase) 클라이언트 — SDK 없이 fetch만 쓴다. url/key 를 채우면 켜지고, 비어 있으면 지금처럼 브라우저에만 저장한다.
    key 는 공개해도 되는 anon(publishable) 키다. 서비스 롤 키는 절대 여기에 넣지 않는다. (supabase/schema.sql, SECURITY.md) */
-const CLOUD = { url: 'sb_publishable__aSe-515cAhRmTWf3hIySg_mYYdK1R9', key: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdwcWZob3BobWp6d2dhcml6cGJ3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI1NTU2MjgsImV4cCI6MjEwODEzMTYyOH0.lo_KOTLArUIVqS1ECQRBiD73PelM-dEdzaFiQeMn1r8' };
+const CLOUD = { url: 'https://gpqfhophmjzwgarizpbw.supabase.co', key: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdwcWZob3BobWp6d2dhcml6cGJ3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI1NTU2MjgsImV4cCI6MjEwODEzMTYyOH0.lo_KOTLArUIVqS1ECQRBiD73PelM-dEdzaFiQeMn1r8' };
 const Cloud = (() => {
   const SKEY = 'deeplayer-cloud', FAKE = '@deeplayer.game';
   const on = () => !!(CLOUD.url && CLOUD.key);
@@ -31,6 +31,10 @@ const Cloud = (() => {
       catch (e) { return { err: kor(e.message) }; }
     },
     logout() { wr(null); },
+    async submitBug(body, ctx) { await call('/rest/v1/rpc/submit_bug', { p_body: body, p_ctx: ctx }, await token()); },
+    async listBugs() { return (await call('/rest/v1/rpc/list_bugs', {}, await token())) || []; },
+    async deleteBug(id) { await call('/rest/v1/rpc/delete_bug', { p_id: id }, await token()); },
+    async isAdmin() { return (await call('/rest/v1/rpc/is_admin', {}, await token())) === true; },
     /* → { rev, data, at } | null(서버에 세이브 없음) */
     async pull() { const j = await call('/rest/v1/rpc/pull_save', {}, await token()); if (j) { const s = rd(); if (s) { s.rev = j.rev; wr(s); } } return j; },
     /* → { ok, rev } — ok:false 면 다른 기기가 먼저 저장한 것 */
@@ -41,3 +45,6 @@ const Cloud = (() => {
     }
   };
 })();
+
+/* 서버가 켜져 있는데 로그인하지 않았다면 가입/로그인 페이지부터 보여 준다 */
+if (Cloud.enabled && !Cloud.user() && document.body && !document.body.classList.contains('signup-body')) location.replace('signup.html');

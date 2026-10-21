@@ -179,9 +179,27 @@ async function devUnlock(code) {
   if (!code || !window.crypto || !crypto.subtle) return false;
   const h = [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(code)))].map(b => b.toString(16).padStart(2, '0')).join('');
   if (h !== DEV_CODE_HASH) return false;
-  await new Promise((ok, no) => { const s = document.createElement('script'); s.src = 'js/dev.js'; s.onload = ok; s.onerror = () => no(new Error('dev.js')); document.head.appendChild(s); });
+  return loadDevScript();
+}
+async function loadDevScript() {
+  if (!window.DEV) await new Promise((ok, no) => { const s = document.createElement('script'); s.src = 'js/dev.js'; s.onload = ok; s.onerror = () => no(new Error('dev.js')); document.head.appendChild(s); });
   return !!window.DEV;
 }
+/* 관리자 계정(서버 admins 표에 등록된 아이디)으로 로그인하면 개발자 코드 없이 개발자 도구가 켜진다 */
+if (Cloud.enabled && Cloud.user()) Cloud.isAdmin().then(ok => ok && loadDevScript()).then(on => { if (on) { renderAction(); renderCraft(); } }).catch(() => { /* 오프라인이면 일반 계정 */ });
+function openCraftQty(i) {
+  const rc = RECIPES[i], it = ITEMS[rc.out], max = maxCraft(rc);
+  modal(`${rc.out} 제작`, `<div class="nearby-row"><div class="round-avatar">${icon(it.icon)}</div><div class="grow"><strong>${esc(rc.out)}</strong><small class="effect">${esc(itemEffect(rc.out))}</small></div></div>` +
+    `<div class="choice-label">몇 개 만들까요? (최대 ${max}개)</div><div class="qty-row"><button data-act="cq-step" data-d="-1" aria-label="하나 줄이기">−</button><input id="cqQty" type="number" min="1" max="${max}" value="1" inputmode="numeric" data-index="${i}" aria-label="제작 개수"><button data-act="cq-step" data-d="1" aria-label="하나 늘리기">＋</button><button data-act="cq-max">최대</button></div><p class="tiny" id="cqInfo"></p>`,
+    [btnClose, `<button class="primary" data-act="craft-go" data-index="${i}">제작 시작</button>`], true);
+  cqUpdate();
+}
+function cqUpdate() {
+  const q = $('#cqQty'); if (!q) return;
+  const rc = RECIPES[+q.dataset.index], n = clamp(Math.floor(+q.value) || 1, 1, +q.max);
+  $('#cqInfo').textContent = `소요 시간 ${fmtTime(craftTotalSec(rc, n) * 1000)} · 재료 ${Object.entries(rc.mats).map(([m, c]) => `${m} ${c * n}`).join(', ')}`;
+}
+document.addEventListener('input', e => { if (e.target.id === 'cqQty') cqUpdate(); });
 function craftJobHtml() {
   const c = state.crafting;
   if (!c) return '';
@@ -197,13 +215,15 @@ function updateCraftTimer() {
   $('#craftLeft').textContent = fmtTime(c.endAt - nowMs());
 }
 function renderCraft() {
-  const tab = state.craftTab, only = !!view.craftOnly, qn = intIn($('#craftQty').value, 1, MAX_BATCH, 1);
-  $('#craftOnly').checked = only;
+  const tab = state.craftTab, only = !!view.craftOnly;
+  $('#craftOnly').classList.toggle('active', only); $('#craftOnly').setAttribute('aria-pressed', only);
   $$('[data-craft]').forEach(b => b.classList.toggle('active', b.dataset.craft === tab));
-  $('#craftList').innerHTML = craftJobHtml() + RECIPES.map((rc, i) => ({ rc, i })).filter(({ rc }) => recipeKnown(rc) && (!tab || craftCat(rc.out) === tab) && (!only || canCraft(rc))).map(({ rc, i }) => {
-    const it = ITEMS[rc.out], ok = canCraft(rc) && !state.crafting, n = ok ? Math.max(1, Math.min(qn, maxCraft(rc))) : qn;
+  const shown = RECIPES.map((rc, i) => ({ rc, i })).filter(({ rc }) => recipeKnown(rc) && (!tab || craftCat(rc.out) === tab) && (!only || canCraft(rc)));
+  $('#craftCount').textContent = `레시피 ${shown.length}종`;
+  $('#craftList').innerHTML = craftJobHtml() + shown.map(({ rc, i }) => {
+    const it = ITEMS[rc.out], ok = canCraft(rc) && !state.crafting;
     const mats = Object.entries(rc.mats).map(([n, q]) => `<span class="${countItem(n) >= q ? '' : 'lack'}">${esc(n)} ${countItem(n)}/${q}</span>`).join(' · ');
-    return `<div class="recipe"><div class="round-avatar">${icon(it.icon)}</div><div class="grow"><strong>${esc(rc.out)} <em class="tag">${esc(craftCat(rc.out))}</em></strong><small class="effect">${esc(itemEffect(rc.out))}</small><small>제작 시간 ${fmtTime(craftTotalSec(rc, n) * 1000)}${n > 1 ? ` (×${n})` : ''} · ${mats}</small></div><button class="primary" data-act="craft" data-index="${i}" data-qty="${n}" ${ok ? '' : 'disabled'}>제작${n > 1 ? ` ×${n}` : ''}</button></div>`;
+    return `<div class="recipe"><div class="round-avatar">${icon(it.icon)}</div><div class="grow"><strong>${esc(rc.out)} <em class="tag">${esc(craftCat(rc.out))}</em></strong><small class="effect">${esc(itemEffect(rc.out))}</small><small>제작 시간 ${fmtTime(craftSec(rc) * 1000)} · ${mats}</small></div><button class="primary" data-act="craft" data-index="${i}" ${ok ? '' : 'disabled'}>제작</button></div>`;
   }).join('') + (() => { const n = RECIPES.filter(rc => !recipeKnown(rc)).length; return n ? `<div class="empty">개인실의 '단련'(3시간)으로 새 레시피를 배울 수 있어요. (남은 ${n}종 · 승급하면 후보가 늘어납니다)</div>` : ''; })() || '<div class="empty">레시피가 없습니다.</div>';
 }
 const renderBag = () => { renderEquip(); renderInventory(); renderCraft(); renderStatus(); renderLeftTab(); };
@@ -425,7 +445,7 @@ function renderSide() {
     return `<div class="quest-item ${open ? 'open' : ''} ${done ? 'done' : ''} ${!done && pr.ready ? 'ready' : ''}"><div class="quest-row ${q.kind === '메인' ? 'main-quest' : ''}" data-act="quest" data-id="${q.id}"><span class="quest-state">${done ? '완료' : pr.ready ? '완수 가능' : '진행 중'}</span><strong>${q.kind === '메인' ? '◆ ' : ''}${esc(q.title)}</strong><small>${esc(q.desc)}</small></div>${detail}</div>`;
   }).join('');
 }
-const SYSTEM_SPEAKERS = { '관제 시스템': 'smart_toy', '시스템': 'smart_toy', '공지': 'campaign' };
+const SYSTEM_SPEAKERS = { '관제 시스템': 'smart_toy', '시스템': 'smart_toy', '공지': 'campaign', '업데이트': 'system_update_alt' };
 const FACE_ICONS = ['face', 'face_2', 'face_3', 'face_4', 'face_5', 'face_6'];
 const speakerIcon = n => SYSTEM_SPEAKERS[n] || FACE_ICONS[[...n].reduce((a, c) => a + c.charCodeAt(0), 0) % FACE_ICONS.length];
 function renderChat() {
@@ -497,7 +517,7 @@ function openSettings() {
     `<div class="setting-group"><h3>표시</h3>${sw('cursorOn', '사용자 지정 커서', st.cursor)}<div class="srow fontrow"><span>글자 크기</span><select id="fontSize">${opt('s', '작게', st.fontSize)}${opt('m', '보통', st.fontSize)}${opt('l', '크게', st.fontSize)}${opt('xl', '아주 크게', st.fontSize)}</select></div></div>` +
     `<div class="setting-group"><h3>튜토리얼</h3><div class="row-gap"><button data-act="tutorial-replay">튜토리얼 다시 보기</button><a class="btn-link" href="signup.html">가입 페이지</a></div></div>` +
     cloudGroupHtml() +
-    `<div class="setting-group"><h3>개발자</h3>${window.DEV ? `<div class="row-gap"><span class="tiny">개발자 도구가 켜져 있습니다.</span><button data-act="dev-open">개발자 도구 열기</button></div>` : `<div class="srow fontrow"><span>개발자 코드</span><input id="devCode" type="password" autocomplete="off" maxlength="40" placeholder="운영자만 사용"><button data-act="dev-unlock">확인</button></div>`}</div>` +
+    `<div class="setting-group"><h3>개발자</h3>${window.DEV ? `<div class="row-gap"><span class="tiny">개발자 도구가 켜져 있습니다.</span><button data-act="dev-open">개발자 도구 열기</button><button data-act="bug-list">버그 리포트 보기</button></div>` : `<div class="srow fontrow"><span>개발자 코드</span><input id="devCode" type="password" autocomplete="off" maxlength="40" placeholder="운영자만 사용"><button data-act="dev-unlock">확인</button></div>`}</div>` +
     `<div class="setting-group"><h3>알림</h3>${sw('notifyOn', '다른 탭을 보고 있을 때 행동 완료 알림', st.notify)}${sw('guildAlertOn', '길드 채팅 알림 (새 메시지가 오면 알림음과 알림창)', st.guildAlert)}</div>` +
     `<div class="setting-group"><h3>테마</h3><div class="srow theme"><select id="themeSelect">${opt('light', '라이트', st.theme)}${opt('dark', '다크', st.theme)}${opt('custom', '사용자 설정', st.theme)}</select>` +
     `<span id="customOpts" class="${st.theme === 'custom' ? '' : 'hidden'}"><select id="customBase">${opt('light', '라이트 기반', st.customBase)}${opt('dark', '다크 기반', st.customBase)}</select><input id="customAccent" type="color" value="${esc(st.customAccent)}" title="강조 색상"></span></div></div>`,
@@ -827,6 +847,17 @@ const A = {
     sfx('ok'); toast('개발자 도구가 켜졌습니다.'); renderAction(); renderCraft(); openSettings();
   },
   'dev-open': () => openDevPanel(),
+  'bug-send': async () => {
+    const body = cleanText($('#bugText').value, BUG_MAX);
+    if (body.length < 5) { toast('내용을 5자 이상 적어 주세요.'); sfx('error'); return; }
+    try {
+      if (Cloud.enabled && Cloud.user()) await Cloud.submitBug(body, bugCtx());
+      else { const l = localBugs(); l.push({ body, ctx: bugCtx() }); localStorage.setItem(BUG_KEY, JSON.stringify(l)); }
+      closeModal(); toast('리포트를 보냈어요. 고마워요!'); sfx('ok');
+    } catch (e) { toast(/too_many/.test(e.message) ? '잠시 뒤에 다시 보내 주세요. (너무 많이 보냈어요)' : '보내지 못했어요. 잠시 뒤에 다시 시도해 주세요.'); sfx('error'); }
+  },
+  'bug-list': () => openBugList(),
+  'bug-del': async el => { try { await Cloud.deleteBug(+el.dataset.id); openBugList(); } catch (e) { toast('삭제하지 못했어요.'); } },
   'cloud-login': async () => {
     const id = $('#clId').value, pw = $('#clPw').value;
     if (!id || !pw) { toast('아이디와 비밀번호를 입력해 주세요.'); return; }
@@ -835,7 +866,7 @@ const A = {
     _cloudBlocked = false;
     try { await cloudAfterLogin(); } catch (e) { toast('서버와 연결하지 못했어요.'); }
   },
-  'cloud-logout': () => { Cloud.logout(); _cloudBlocked = false; toast('로그아웃했어요.'); openSettings(); },
+  'cloud-logout': () => { Cloud.logout(); _cloudBlocked = false; location.href = 'signup.html'; },
   'cloud-push': async () => {
     try { const r = await Cloud.push(JSON.parse(JSON.stringify(state))); if (r.ok) { _cloudBlocked = false; toast('서버에 저장했어요.'); } else { _cloudBlocked = true; toast('다른 기기에서 먼저 저장했어요. "서버에서 불러오기"를 먼저 해 주세요.'); } } catch (e) { toast('서버에 저장하지 못했어요.'); }
   },
@@ -916,8 +947,16 @@ const A = {
 
   /* 스탯 / 제작 / 아이템 */
   'stat-up': el => { if (spendStatPoint(el.dataset.stat)) { renderStatus(); renderCraft(); save(); } },
-  craft: el => {
-    const res = craft(+el.dataset.index, el.dataset.qty), name = RECIPES[+el.dataset.index].out;
+  craft: el => { // 여러 개 만들 수 있으면 몇 개 만들지 먼저 고른다
+    const i = +el.dataset.index, rc = RECIPES[i];
+    if (rc && !state.crafting && canCraft(rc) && maxCraft(rc) > 1) { openCraftQty(i); return; }
+    A['craft-go']({ dataset: { index: i, qty: 1 } });
+  },
+  'cq-step': el => { const q = $('#cqQty'); q.value = clamp((+q.value || 1) + (+el.dataset.d), 1, +q.max); cqUpdate(); },
+  'cq-max': () => { const q = $('#cqQty'); q.value = q.max; cqUpdate(); },
+  'craft-go': el => {
+    const res = craft(+el.dataset.index, el.dataset.qty ? +el.dataset.qty : intIn($('#cqQty').value, 1, MAX_BATCH, 1)), name = RECIPES[+el.dataset.index].out;
+    if (!el.dataset.qty) closeModal();
     const msgs = { ok: `${name} 제작을 시작했습니다.`, mats: '재료가 부족합니다.', space: '가방 공간이 부족합니다.', busy: '이미 제작 중인 아이템이 있습니다.', rank: '아직 모르는 레시피입니다.' };
     toast(msgs[res]);
     renderBag(); save();
@@ -1037,7 +1076,7 @@ const A = {
   'friend-remove': el => { removeFriend(el.dataset.name); openFriends(); },
   'codex-tab': el => { codexView.tab = el.dataset.codex; codexView.sub = null; $('#codexRoot').innerHTML = codexHtml(); },
   'codex-sub': el => { codexView.sub = el.dataset.sub || null; $('#codexRoot').innerHTML = codexHtml(); },
-  'logout-ok': () => { closeModal(); toast('서버 인증 기능은 아직 연결되지 않았습니다.'); }
+  'logout-ok': () => { closeModal(); if (Cloud.enabled && Cloud.user()) { if (_cloudTimer) { clearTimeout(_cloudTimer); _cloudTimer = 0; cloudAutoPush().finally(() => A['cloud-logout']()); } else A['cloud-logout'](); } else toast('서버 인증 기능은 아직 연결되지 않았습니다.'); },
 };
 document.addEventListener('click', e => {
   const el = e.target.closest('[data-act]');
@@ -1060,7 +1099,8 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal()
 $$('[data-board]').forEach(b => { b.onclick = () => openBoard(b.dataset.board); });
 $$('[data-system]').forEach(b => { b.onclick = () => openSystem(b.dataset.system); });
 $('#settingsBtn').onclick = openSettings;
-$('#logoutBtn').onclick = () => modal('로그아웃', '<p>프로토타입에서는 실제 계정 로그아웃이 수행되지 않습니다.</p>', ['<button data-act="close">취소</button>', '<button class="primary" data-act="logout-ok">확인</button>'], true);
+$('#bugBtn').onclick = openBugReport;
+$('#logoutBtn').onclick = () => modal('로그아웃', Cloud.enabled && Cloud.user() ? '<p>로그아웃하면 가입/로그인 화면으로 이동해요. 진행은 서버에 저장되어 있어요.</p>' : '<p>서버에 연결되어 있지 않아 실제 계정 로그아웃은 수행되지 않습니다.</p>', ['<button data-act="close">취소</button>', '<button class="primary" data-act="logout-ok">확인</button>'], true);
 /* 테마/커서는 저장하기 전에도 바로 미리 보인다 (취소하면 되돌아감) */
 const previewTheme = () => applyTheme({ ...state.settings, theme: $('#themeSelect').value, customBase: $('#customBase').value, customAccent: $('#customAccent').value, cursor: $('#cursorOn').checked, fontSize: $('#fontSize').value });
 document.addEventListener('input', e => {
@@ -1117,8 +1157,7 @@ $('#avatarFile').onchange = async e => {
   } catch (err) { toast('이미지를 처리하지 못했습니다.'); }
 };
 $$('[data-ltab]').forEach(b => { b.onclick = () => { state.leftTab = b.dataset.ltab; renderLeftTab(); save(); }; });
-$('#craftQty').oninput = renderCraft;
-$('#craftOnly').onchange = e => { view.craftOnly = e.target.checked; renderCraft(); };
+$('#craftOnly').onclick = () => { view.craftOnly = !view.craftOnly; renderCraft(); };
 $$('[data-craft]').forEach(b => { b.onclick = () => { state.craftTab = state.craftTab === b.dataset.craft ? null : b.dataset.craft; renderCraft(); save(); }; });
 $$('[data-inv]').forEach(b => { b.onclick = () => { state.invTab = state.invTab === b.dataset.inv ? null : b.dataset.inv; state.page = 1; renderInventory(); save(); }; });
 $('#prevPage').onclick = () => { state.page--; renderInventory(); };
@@ -1556,7 +1595,36 @@ $('#tutNext').onclick = () => { if (tut.step < TUTORIAL_STEPS.length - 1) { tut.
 window.addEventListener('resize', () => { if (tut.mode === 'tour') renderTour(); if (state.dungeon) renderDungeon(); });
 
 /* ---------- 시작 ---------- */
+/* ---------- 버그 리포트: 누구나 보낼 수 있고, 읽을 수 있는 사람은 서버의 관리자뿐이다 (서버 연결 전에는 이 브라우저에만 쌓여 개발자 도구에서만 보인다) ---------- */
+const BUG_KEY = 'deeplayer-bugs', BUG_MAX = 1000;
+const bugCtx = () => ({ v: SAVE_VERSION, loc: state.location, lv: state.character.level, rank: state.character.rank, ua: navigator.userAgent.slice(0, 120), at: new Date().toISOString() });
+function openBugReport() {
+  modal('버그 리포트', `<p class="tiny">어떤 상황에서 무엇이 이상했는지 적어 주세요. 개발자만 볼 수 있어요. (비밀번호 같은 개인정보는 적지 마세요)</p><textarea id="bugText" maxlength="${BUG_MAX}" rows="6" placeholder="예) 제작 수량을 3개로 고르고 시작했는데 재료가 2개만 줄었어요."></textarea><p class="tiny"><span id="bugCount">0</span>/${BUG_MAX}자 · 현재 위치·레벨·기기 정보가 함께 전송돼요.</p>`,
+    [btnClose, '<button class="primary" data-act="bug-send">보내기</button>'], true);
+  $('#bugText').addEventListener('input', () => { $('#bugCount').textContent = $('#bugText').value.length; });
+}
+const localBugs = () => { try { const l = JSON.parse(localStorage.getItem(BUG_KEY)); return Array.isArray(l) ? l.slice(-50) : []; } catch (e) { return []; } };
+async function openBugList() { // 관리자·개발자 전용 목록
+  let rows = [], note = '';
+  try { rows = Cloud.enabled && Cloud.user() ? await Cloud.listBugs() : localBugs().reverse().map((b, i) => ({ id: -1 - i, uname: '(이 기기)', body: b.body, ctx: b.ctx, created_at: b.ctx.at })); }
+  catch (e) { note = '불러오지 못했어요. 관리자 계정으로 로그인했는지 확인해 주세요.'; }
+  modal(`버그 리포트 (${rows.length})`, note ? `<p class="empty">${esc(note)}</p>` : rows.length ? rows.map(r => `<div class="bug-row"><div class="bug-head"><b>${esc(r.uname || '?')}</b> <small>${esc(String(r.created_at || '').slice(0, 16).replace('T', ' '))} · ${esc(String((r.ctx || {}).loc || ''))} Lv.${esc(String((r.ctx || {}).lv || ''))}</small>${r.id > 0 ? `<button class="flat" data-act="bug-del" data-id="${r.id}">삭제</button>` : ''}</div><p>${esc(r.body)}</p></div>`).join('') : '<p class="empty">접수된 리포트가 없어요.</p>', [btnClose]);
+}
+/* ---------- 새 버전 알림: 배포할 때 만들어지는 version.json 이 접속 때와 달라지면 알림 채널에 공지한다 ---------- */
+let _ver = null, _verNotified = false;
+async function fetchVersion() {
+  try { const r = await fetch('version.json?t=' + Date.now(), { cache: 'no-store' }); if (!r.ok) return null; const j = await r.json(); return typeof j.v === 'string' ? j.v.slice(0, 64) : null; } catch (e) { return null; }
+}
+async function checkUpdate() {
+  const v = await fetchVersion(); if (!v) return; // 로컬 실행 등 version.json 이 없으면 쓰지 않는다
+  if (_ver === null) { _ver = v; return; }
+  if (v === _ver || _verNotified) return;
+  _verNotified = true;
+  state.chats['알림'].push(['업데이트', '게임이 업데이트되었어요! 새로고침(F5, 안 되면 Ctrl+F5)하면 새 버전이 적용돼요.']);
+  renderChat(); toast('업데이트되었어요. 새로고침해 주세요.'); sfx('ok');
+}
 function init() {
+  state.chats['알림'] = state.chats['알림'].filter(m => m[0] !== '업데이트'); // 지난 업데이트 공지는 새로고침하면 사라진다
   applyTheme(); applyLayout();
   finishIfDue(); pruneBuffs();
   renderProfile(); renderBars(); renderLeftTab(); renderBag(); renderBuffs(true);
@@ -1566,6 +1634,8 @@ function init() {
   const clock = () => { $('#clock').textContent = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }); };
   clock();
   setInterval(() => { tick(); clock(); }, 1000);
+  checkUpdate(); setInterval(checkUpdate, 5 * 60 * 1000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) checkUpdate(); });
 }
 init();
 

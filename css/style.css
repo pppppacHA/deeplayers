@@ -758,9 +758,6 @@ textarea#mailBody{width:100%;min-height:80px;resize:vertical}
 .title-chips{display:flex;flex-wrap:wrap;gap:4px;margin:5px 0 8px}
 .tchip{padding:3px 9px;border:1px solid var(--line);border-radius:999px;background:var(--panel-2);font-size:calc(11px*var(--fs))}
 .tchip.on{border-color:var(--accent);color:var(--accent);font-weight:800;background:var(--accent-soft,var(--panel-hi))}
-.craft-tools{display:flex;align-items:center;gap:12px;margin:0 2px 8px;font-size:calc(11px*var(--fs));color:var(--muted)}
-.craft-tools input[type=number]{width:54px;margin-left:4px}
-.craft-tools .chk{display:flex;align-items:center;gap:4px}
 .codex-list .src{color:var(--accent-2);margin-top:2px}
 /* 채팅 줄바꿈: 말풍선은 내용 크기만큼 자라고, 줄 끝에 닿을 때만 줄을 바꾼다 (퍼센트 최대폭이 내용폭을 줄이지 않게) */
 .term-screen .msg.mine{margin-left:0;width:100%}
@@ -781,3 +778,11 @@ textarea#mailBody{width:100%;min-height:80px;resize:vertical}
 #chatFeed .bubble,#chatFeed .msg.mine .bubble,#chatFeed .msg:not(.mine) .bubble{display:inline;width:auto;max-width:none;padding:0;border:0;border-radius:0;background:transparent;text-align:left;font-weight:400;overflow-wrap:anywhere}
 #chatFeed .bubble.sticker-msg,#chatFeed .msg.mine .bubble.sticker-msg{display:inline-flex;vertical-align:middle}
 #chatFeed .msg.cont{margin-top:0}
+.craft-head{display:flex;align-items:center;justify-content:space-between;margin:0 2px 8px;font-size:calc(11px*var(--fs));color:var(--muted)}
+.craft-head .chip{padding:3px 10px}
+.qty-row{display:flex;align-items:center;gap:6px;margin:6px 0}
+.qty-row input{width:64px;text-align:center}
+#bugText{width:100%;resize:vertical;min-height:110px}
+.bug-row{padding:8px 0;border-bottom:1px solid var(--line)}
+.bug-head{display:flex;align-items:center;gap:8px}.bug-head small{color:var(--muted);flex:1}
+.bug-row p{margin:4px 0 0;white-space:pre-wrap;overflow-wrap:anywhere}

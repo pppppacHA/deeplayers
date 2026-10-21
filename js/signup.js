@@ -27,3 +27,32 @@ $s('suForm').addEventListener('submit', async e => {
   } catch (err) { out.textContent = '가입 처리 중 문제가 생겼어요. 잠시 뒤에 다시 시도해 주세요.'; out.classList.add('err'); }
   btn.disabled = false;
 });
+
+/* ---- 서버 연결 시: 가입/로그인 탭. 가입·로그인에 성공하면 게임으로 이동한다 ---- */
+const goGame = () => { location.href = 'index.html'; };
+function suTab(which) {
+  $s('suForm').classList.toggle('hidden', which !== 'signup'); $s('liForm').classList.toggle('hidden', which !== 'login');
+  $s('suTitle').textContent = which === 'signup' ? '탐색자 등록' : '로그인';
+  document.querySelectorAll('[data-su]').forEach(b => b.classList.toggle('active', b.dataset.su === which));
+}
+if (Cloud.enabled) {
+  $s('suTabs').classList.remove('hidden'); $s('suBack').classList.add('hidden');
+  document.querySelectorAll('[data-su]').forEach(b => b.addEventListener('click', () => suTab(b.dataset.su)));
+  if (Cloud.user()) goGame(); // 이미 로그인되어 있으면 바로 게임으로
+  $s('liForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    const out = $s('liResult'), btn = $s('liGo'); btn.disabled = true; out.className = 'su-result'; out.textContent = '';
+    try {
+      const r = await Cloud.login($s('liId').value, $s('liPw').value);
+      if (!r.ok) { out.textContent = r.err; out.classList.add('err'); }
+      else {
+        const s = await Cloud.pull(); // 서버에 진행이 있으면 이 기기의 저장을 서버 것으로 바꾼다
+        if (s && s.data) { try { localStorage.setItem('deeplayer-ui', JSON.stringify(s.data)); } catch (e2) { /* 저장 불가 */ } }
+        goGame();
+      }
+    } catch (err) { out.textContent = '서버와 연결하지 못했어요. 잠시 뒤에 다시 시도해 주세요.'; out.classList.add('err'); }
+    btn.disabled = false;
+  });
+  $s('suForm').addEventListener('submit', () => { /* 가입 성공 후 이동은 아래 관찰자가 처리 */ });
+  new MutationObserver(() => { if ($s('suResult').classList.contains('ok') && Cloud.user()) setTimeout(goGame, 900); else if ($s('suResult').classList.contains('ok')) suTab('login'); }).observe($s('suResult'), { attributes: true, childList: true });
+}

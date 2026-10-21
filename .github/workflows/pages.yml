@@ -24,6 +24,7 @@ jobs:
           mkdir _site
           cp -r index.html signup.html css js audio _site/
           touch _site/.nojekyll
+          echo "{\"v\":\"${GITHUB_SHA}\"}" > _site/version.json
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site
