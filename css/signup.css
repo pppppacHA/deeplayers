@@ -1,0 +1,16 @@
+.signup-body{min-height:100vh;display:grid;place-items:start center;padding:24px 16px;background:var(--bg)}
+.signup-card{width:100%;max-width:420px;display:flex;flex-direction:column;gap:12px;padding:22px;border:1px solid var(--line);border-radius:14px;background:var(--panel);box-shadow:0 10px 30px rgba(0,0,0,.08)}
+.signup-card h1{margin:0;font-size:20px}
+.su-field{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:800;color:var(--text-2)}
+.su-field input{padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:var(--panel-2);color:var(--text);font-size:14px}
+.su-field input:focus{outline:2px solid var(--accent);outline-offset:1px}
+.su-hint{font-weight:500;color:var(--muted);font-size:11px}
+.su-msg{min-height:14px;font-weight:600;font-size:11px;color:#c0392b}
+.su-msg.ok{color:#1f8a5b}
+.su-meter{height:4px;border-radius:2px;background:var(--line);overflow:hidden}
+.su-meter i{display:block;height:100%;width:0;background:var(--accent);transition:width .15s}
+.su-submit{padding:11px;font-size:14px}
+.su-result{min-height:18px;font-size:12px;font-weight:700}
+.su-result.ok{color:#1f8a5b}.su-result.err{color:#c0392b}
+.su-back{font-size:12px;color:var(--accent);text-decoration:none}
+.su-note{margin:0}

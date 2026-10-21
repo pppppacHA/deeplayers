@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://*.supabase.co; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta name="referrer" content="no-referrer">
+<title>가입 · 공중도시 DEEP LAYER</title>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,400,0,0&display=block" rel="stylesheet">
+<link rel="stylesheet" href="css/theme.css">
+<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/signup.css">
+</head>
+<body data-theme="light" class="signup-body">
+<main class="signup-card" aria-labelledby="suTitle">
+  <div class="brand"><small>공중도시</small><em>DEEP LAYER</em></div>
+  <h1 id="suTitle">탐색자 등록</h1>
+  <p class="tiny">초대코드가 있어야 가입할 수 있어요.</p>
+  <form id="suForm" autocomplete="off" novalidate>
+    <label class="su-field"><span>아이디</span>
+      <input id="suId" maxlength="16" autocomplete="username" spellcheck="false" placeholder="영문 소문자·숫자·_ 4~16자">
+      <small class="su-msg" id="suIdMsg"></small></label>
+    <label class="su-field"><span>비밀번호</span>
+      <input id="suPw" type="password" maxlength="64" autocomplete="new-password" placeholder="10자 이상, 영문+숫자 포함">
+      <small class="su-hint">다른 사이트나 다른 페이지에서 쓰는 비밀번호와 <b>다른 것</b>을 만들어 주세요.</small>
+      <span class="su-meter" aria-hidden="true"><i id="suMeter"></i></span><small class="su-msg" id="suPwMsg"></small></label>
+    <label class="su-field"><span>비밀번호 확인</span>
+      <input id="suPw2" type="password" maxlength="64" autocomplete="new-password">
+      <small class="su-msg" id="suPw2Msg"></small></label>
+    <label class="su-field"><span>초대코드</span>
+      <input id="suInv" maxlength="32" autocomplete="off" spellcheck="false" placeholder="초대코드 입력">
+      <small class="su-msg" id="suInvMsg"></small></label>
+    <label class="switch su-check"><span>다른 곳에서 쓰는 비밀번호와 다릅니다</span><input id="suOther" type="checkbox" role="switch"><i></i></label>
+    <button class="primary su-submit" id="suGo" type="submit">가입하기</button>
+    <div class="su-result" id="suResult" role="status" aria-live="polite"></div>
+  </form>
+  <a class="su-back" href="index.html">← 게임으로 돌아가기</a>
+  <p class="tiny su-note">이 페이지는 서버 연결 전 데모입니다. 가입 정보는 이 브라우저에만 저장되며(비밀번호는 PBKDF2 해시), 초대코드 인원 제한도 이 브라우저에서만 셉니다. 실서비스에서는 서버가 검증·집계해야 합니다. (SECURITY.md)</p>
+</main>
+<script src="js/cloud.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/signup.js"></script>
+</body>
+</html>
