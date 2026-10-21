@@ -474,3 +474,27 @@ end $$;
 
 revoke all on function public.set_avatar(text), public.get_avatars(text[]), public.chat_channel(text), public.chat_send(text, text), public.chat_fetch(text, bigint) from public, anon;
 grant execute on function public.set_avatar(text), public.get_avatars(text[]), public.chat_send(text, text), public.chat_fetch(text, bigint) to authenticated;
+
+-- ===== 다른 대원의 공개 프로필 보기 (이름을 정확히 맞춰서 조회) =====
+create or replace function public.get_profile(p_name text) returns jsonb
+language sql security definer set search_path = public as $$
+  select coalesce((
+    select jsonb_build_object(
+      'uid', s.user_id,
+      'name', s.data->'character'->>'name',
+      'title', s.data->'character'->>'title',
+      'rank', s.data->'character'->>'rank',
+      'level', s.data->'character'->>'level',
+      'age', s.data->'character'->>'age',
+      'keywords', s.data->'character'->>'keywords',
+      'ability', s.data->'character'->>'ability',
+      'abilityDesc', s.data->'character'->>'abilityDesc',
+      'allowFriend', coalesce(s.data->'character'->>'allowFriend', 'true'),
+      'online', (s.updated_at > now() - interval '30 minutes'),
+      'guild', (select g.name from public.guild_members m join public.guilds g on g.id = m.guild_id where m.user_id = s.user_id limit 1))
+    from public.saves s
+    where s.user_id <> auth.uid() and s.data->'character'->>'name' = left(trim(coalesce(p_name, '')), 12)
+    order by s.updated_at desc limit 1), 'null'::jsonb);
+$$;
+revoke all on function public.get_profile(text) from public, anon;
+grant execute on function public.get_profile(text) to authenticated;

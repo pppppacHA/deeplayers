@@ -10,7 +10,11 @@ const chance = p => Math.random() < p;
 const pick = arr => arr[Math.floor(Math.random() * arr.length)];
 const round1 = v => Math.round(v * 10) / 10;
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const icon = n => `<span class="material-symbols-rounded" aria-hidden="true">${n}</span>`;
+/* 머티리얼 아이콘에 없는 모양은 직접 그린 SVG 를 쓴다 (이름이 CUSTOM_ICONS 에 있으면 그것을 그린다) */
+const CUSTOM_ICONS = {
+  pistol: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="1.5" y="5" width="20" height="6" rx="1.2"/><rect x="2.5" y="3.4" width="2" height="1.8"/><rect x="18" y="3.4" width="2" height="1.8"/><path d="M12.6 11h6.4l-1.9 9.2a1 1 0 0 1-1 .8h-2.6a1 1 0 0 1-1-1.2z"/><path d="M6.5 11v3c0 1.2.9 2 2 2h3.6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><rect x="9.6" y="11" width="1.5" height="3" rx=".6"/></svg>'
+};
+const icon = n => CUSTOM_ICONS[n] ? `<span class="material-symbols-rounded custom-icon" aria-hidden="true">${CUSTOM_ICONS[n]}</span>` : `<span class="material-symbols-rounded" aria-hidden="true">${n}</span>`;
 const fmtTime = ms => { const s = Math.max(0, Math.ceil(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 const isObj = v => v && typeof v === 'object' && !Array.isArray(v);
 const merge = (base, over) => {
@@ -59,6 +63,7 @@ function hardenState(s) {
   s.money = intIn(s.money, 0, 999999999, 0); s.statPoints = intIn(s.statPoints, 0, 99, 0);
   STAT_DEFS.forEach(d => { s.stats[d.key] = intIn(s.stats[d.key], 0, 99, STAT_BASE); });
   s.enchants = Object.fromEntries(Object.entries(s.enchants && typeof s.enchants === 'object' ? s.enchants : {}).filter(([k, e]) => ITEMS[k] && ITEMS[k].tab === '장비' && e && (e.k === 'hp' || e.k === 'sp' || STAT_DEFS.some(d => d.key === e.k))).map(([k, e]) => [k, { k: e.k, v: intIn(e.v, 1, e.k === 'hp' || e.k === 'sp' ? 30 : 5, 1), n: intIn(e.n, 1, 9999, 1) }]));
+  s.reinforce = Object.fromEntries(Object.entries(s.reinforce && typeof s.reinforce === 'object' ? s.reinforce : {}).filter(([k]) => ITEMS[k] && ITEMS[k].slot === '무기').map(([k, v]) => [k, intIn(v, 0, REINFORCE_RANKS.length - 1, 0)]).filter(([, v]) => v > 0));
   const v = s.vitals, mb = maxBonus(s.equipment, s.enchants);
   v.hpMax = 100 + mb.hp; v.spMax = 100 + mb.sp; v.hp = intIn(v.hp, 1, v.hpMax, v.hpMax); v.sp = intIn(v.sp, 0, v.spMax, v.spMax); v.exp = intIn(v.exp, 0, 999999, 0);
   s.settings.bgmVolume = intIn(s.settings.bgmVolume, 0, 100, BGM_DEFAULT_VOLUME); s.settings.sfxVolume = intIn(s.settings.sfxVolume, 0, 100, 65);
@@ -218,6 +223,21 @@ function enchantItem(name) {
   syncMax(); save();
   return { old, now: state.enchants[name] };
 }
+/* 무기 강화: F랭에서 A랭까지. 단계마다 CR을 내고 도전하며, 실패하면 CR만 잃는다 (랭크는 내려가지 않는다) */
+const reinforceLv = n => (state.reinforce && state.reinforce[n]) | 0;
+const reinforceBonus = n => REINFORCE_BONUS[reinforceLv(n)] || 0;
+function reinforceItem(name, rnd = Math.random) { // 성공 { ok, lv } / 실패 사유 문자열
+  if (!ITEMS[name] || ITEMS[name].slot !== '무기' || !enchantables().includes(name)) return '강화할 수 없는 무기입니다.';
+  const lv = reinforceLv(name);
+  if (lv >= REINFORCE_RANKS.length - 1) return '이미 최고 랭크(A)입니다.';
+  const cost = REINFORCE_COST[lv];
+  if (state.money < cost) return `CR이 부족합니다. (필요 ${cost})`;
+  state.money -= cost;
+  const ok = rnd() < REINFORCE_RATE[lv];
+  if (ok) state.reinforce[name] = lv + 1;
+  save();
+  return { ok, lv: ok ? lv + 1 : lv };
+}
 /* 장착 변경. 성공 true / 공간 부족 'space' / 실패 false */
 function changeEquipment(slot, newName) {
   const cur = state.equipment[slot], list = state.inventory['장비'].slice();
@@ -305,6 +325,7 @@ function addBuff(id) {
 function statMods() {
   const m = {}, add = o => { for (const k in o) m[k] = (m[k] || 0) + o[k]; };
   Object.values(state.equipment).forEach(n => { if (!n) return; if (ITEMS[n].mods) add(ITEMS[n].mods); const e = state.enchants[n]; if (e && STAT_DEFS.some(d => d.key === e.k)) add({ [e.k]: e.v }); });
+  ITEM_SETS.forEach(st => { if (st.need.every(n => Object.values(state.equipment).includes(n))) add(st.mods); });
   activeBuffs().forEach(b => add(b.mods));
   return m;
 }
@@ -330,7 +351,7 @@ function todayWeather(now = nowMs()) {
 }
 const weatherFx = () => { const w = todayWeather(); return { gather: w.wet ? WEATHER_GATHER : 0, atk: w.wet ? 0 : WEATHER_ATK }; };
 const modText = mods => Object.entries(mods).map(([k, v]) => `${STAT_DEFS.find(d => d.key === k).name} ${v > 0 ? '+' : ''}${v}`);
-const weaponAtk = () => (state.equipment['무기'] && ITEMS[state.equipment['무기']].atk) || 0;
+const weaponAtk = () => { const w = state.equipment['무기']; return (w && ITEMS[w].atk) ? ITEMS[w].atk + reinforceBonus(w) : 0; };
 
 function spendStatPoint(key) {
   if (state.statPoints < 1 || !(key in state.stats)) return false;
@@ -636,6 +657,14 @@ function battleRuns(act, a) { // [{win, rounds, lost, rs}] 회차별 전투 (res
   return { m, runs };
 }
 const pickR = (r, arr) => arr[Math.floor(r() * arr.length)];
+/* 착용 장비에 반응하는 묘사 한 줄 (없으면 ''). kind: 't' 이동 / 'b' 전투 */
+function equipLine(kind, r) {
+  const worn = Object.values(state.equipment).filter(Boolean), pool = [];
+  worn.forEach(n => { const e = EQUIP_LINES[n]; if (e && e[kind] && e[kind].length) pool.push(e[kind]); });
+  Object.values(EQUIP_SET_LINES).forEach(st => { if (st.need.every(n => worn.includes(n)) && st[kind].length) { pool.push(st[kind]); pool.push(st[kind]); } });
+  if (!pool.length) return '';
+  return pickR(r, pickR(r, pool));
+}
 const FOE_STATE = [
   [.75, m => [`${m}은(는) 아직 쌩쌩해 보인다.`, `${m}의 기세가 여전히 사납다.`, `${m}은(는) 물러설 기색이 없다.`]],
   [.5, m => [`${m}이(가) 숨을 거칠게 몰아쉰다.`, `${m}의 움직임이 조금 둔해졌다.`, `${m}의 몸 곳곳에 상처가 늘어간다.`]],
@@ -649,11 +678,11 @@ const OPENERS = {
 };
 const ATK_ONE = [(m, d) => `${m}에게 일격을 가했다. (-${d})`, (m, d) => `틈을 노려 ${m}의 옆구리를 베었다. (-${d})`, (m, d) => `${m}이(가) 주춤할 만큼 강하게 쳤다. (-${d})`, (m, d) => `재빠르게 파고들어 ${m}을(를) 때렸다. (-${d})`];
 const ATK_MANY = [(m, d) => `연이은 공격으로 ${m}을(를) 몰아붙였다. (-${d})`, (m, d) => `숨 돌릴 틈 없이 ${m}을(를) 두들겼다. (-${d})`, (m, d) => `흐름을 타고 ${m}에게 공격을 쏟아부었다. (-${d})`];
-const ATK_NONE = [m => `공격이 허공을 갈랐다. ${m}은(는) 무사하다.`, m => `${m}이(가) 몸을 틀어 공격을 피했다.`, m => `칼끝이 ${m}의 털끝만 스치고 지나갔다.`];
-const HURT_LINE = [(m, d) => `${m}의 반격에 맞았다. (피해 ${d})`, (m, d) => `${m}에게 밀려 자세가 흐트러졌다. (피해 ${d})`, (m, d) => `${m}의 공격을 막지 못했다. (피해 ${d})`];
+const ATK_NONE = [m => `기회를 놓쳤다. ${m}이(가) 날쌔게 빠져나갔다.`, m => `${m}의 몸에 닿기 직전 공격이 빗나갔다.`, m => `공격이 허공을 갈랐다. ${m}은(는) 무사하다.`, m => `${m}이(가) 몸을 틀어 공격을 피했다.`, m => `칼끝이 ${m}의 털끝만 스치고 지나갔다.`];
+const HURT_LINE = [(m, d) => `${m}의 돌진에 정면으로 부딪혔다. (피해 ${d})`, (m, d) => `${m}이(가) 파고든 틈에 옆구리를 내주었다. (피해 ${d})`, (m, d) => `${m}의 반격에 맞았다. (피해 ${d})`, (m, d) => `${m}에게 밀려 자세가 흐트러졌다. (피해 ${d})`, (m, d) => `${m}의 공격을 막지 못했다. (피해 ${d})`];
 const GLANCE_LINE = [m => `${m}의 공격에 크게 휘청였지만 이를 악물고 버텼다.`, m => `${m}에게 한 방 맞았지만 아슬아슬하게 견뎌 냈다.`];
-const DODGE_LINE = [m => `${m}의 공격을 가까스로 피했다.`, m => `뒤로 물러나 ${m}과(와) 거리를 벌렸다.`, m => `${m}이(가) 휘두른 발톱이 허공을 갈랐다.`];
-const QUIET = [m => `${m}과(와) 서로 틈을 노리며 맴돈다.`, m => `숨을 고르며 ${m}의 움직임을 살폈다.`, m => `${m}의 눈치를 보며 천천히 거리를 좁혔다.`];
+const DODGE_LINE = [m => `${m}이(가) 달려드는 순간 옆으로 굴러 피했다.`, m => `${m}의 이빨이 소매를 스치고 지나갔다.`, m => `${m}의 공격을 가까스로 피했다.`, m => `뒤로 물러나 ${m}과(와) 거리를 벌렸다.`, m => `${m}이(가) 휘두른 발톱이 허공을 갈랐다.`];
+const QUIET = [m => `${m}의 발톱이 땅을 긁는 소리가 날카롭게 울렸다.`, m => `잠시 정적이 흐르고, ${m}과(와) 시선이 얽혔다.`, m => `${m}이(가) 몸을 낮추고 도약할 기회를 노린다.`, m => `${m}과(와) 서로 틈을 노리며 맴돈다.`, m => `숨을 고르며 ${m}의 움직임을 살폈다.`, m => `${m}의 눈치를 보며 천천히 거리를 좁혔다.`];
 function battleSlotLine(m, runs, ci, slot, act) { // 회차 ci 의 slot(0~5)번째 1분 묘사
   const b = runs[ci], n = b.rs.length, r = rngFor(act, 1000 + ci * 10 + slot), nm = m.name, top = act.bs && act.bs.top || null;
   const from = Math.floor(slot * n / 6), to = Math.floor((slot + 1) * n / 6), rs = b.rs.slice(from, to), parts = [];
@@ -670,6 +699,7 @@ function battleSlotLine(m, runs, ci, slot, act) { // 회차 ci 의 slot(0~5)번�
     const pct = (rs[rs.length - 1].mhp) / (b.mhp0 || m.hp);
     if (b.rs[to - 1] && pct > 0) { const st = FOE_STATE.find(([lim]) => pct > lim) || FOE_STATE[3]; parts.push(pickR(r, st[1](nm))); }
   }
+  { const re = seededRng((act.seed || 1) * 31 + ci * 97 + slot * 13 + 7), ln = re() < .22 && slot > 0 && slot < 5 ? equipLine('b', re) : ''; if (ln) parts.push(ln); }
   let kind = hurt > 0 || glance ? 'hurt' : dealt > 0 ? 'hit' : dodges ? 'dodge' : 'note';
   if (slot === 5) {
     const last = b.rs[n - 1], dead = last && last.mhp <= 0;
@@ -704,12 +734,15 @@ const TRAVEL_STYLE = {
 };
 const TRAVEL_SCENE = [
   t => `${t}의 풍경을 구경하며 느긋하게 걸었다.`, t => `${t}의 바람이 얼굴을 스치고 지나간다.`, t => `${t}에 들어서자 공기가 사뭇 달라졌다.`,
-  t => `${t}의 땅을 밟을 때마다 발밑에서 소리가 난다.`, t => `${t} 너머로 공중도시의 그림자가 아득하게 보인다.`, t => `${t}의 낯선 식물이 눈에 들어왔다.`
+  t => `${t}의 땅을 밟을 때마다 발밑에서 소리가 난다.`, t => `${t}의 하늘 한 켠에 구름이 천천히 흘러갔다.`, t => `${t}의 길이 구불구불 이어져 있다. 서두르지 않고 걸었다.`,
+  t => `${t}에서 멀리 공중도시의 불빛이 깜박이는 것이 보였다.`, t => `${t}의 땅이 조금씩 경사져 올라간다.`, t => `${t}의 고요함 속에서 자신의 숨소리만 들렸다.`, t => `${t}에 희미한 짐승의 발자국이 남아 있다.`, t => `${t} 너머로 공중도시의 그림자가 아득하게 보인다.`, t => `${t}의 낯선 식물이 눈에 들어왔다.`
 ];
 const TRAVEL_FLOURISH = [
   '들키지 않도록 몸을 낮추고 숨어서 이동했다.', '수상한 발자국을 발견했지만 조용히 지나쳤다.', '작은 개울가에서 잠시 숨을 돌렸다.',
   '바람결에 낯선 냄새가 실려 와 발걸음을 서둘렀다.', '멀리서 정체 모를 울음소리가 들렸다. 소리를 죽이고 나아갔다.', '옛 문명의 잔해 사이를 지나며 주위를 살폈다.',
-  '풀숲이 흔들려 멈칫했지만 바람 탓이었다.', '새 떼가 한꺼번에 날아올라 가슴이 철렁했다.', '발밑의 돌이 굴러 소리가 나자 숨을 죽였다.', '잠시 멈춰 서서 가야 할 방향을 다시 확인했다.'
+  '풀숲이 흔들려 멈칫했지만 바람 탓이었다.', '길가에 떨어진 낡은 표식을 발견했다. 누군가 먼저 지나간 흔적이다.', '구름 사이로 햇살이 쏟아져 잠시 눈을 가렸다.',
+  '허리춤의 물통을 열어 한 모금 마시고 다시 걸음을 옮겼다.', '발을 헛디딜 뻔했지만 재빨리 균형을 잡았다.', '멀리 다른 대원의 모닥불 연기가 가늘게 피어올랐다.', '낯선 새가 머리 위를 맴돌다가 사라졌다.',
+  '바닥에 흩어진 금속 조각이 햇빛에 반짝였다. 옛 문명의 흔적일까.', '숨을 가다듬고 장비를 점검했다. 아직 문제없다.', '새 떼가 한꺼번에 날아올라 가슴이 철렁했다.', '발밑의 돌이 굴러 소리가 나자 숨을 죽였다.', '잠시 멈춰 서서 가야 할 방향을 다시 확인했다.'
 ];
 function travelPlace(act, k) { // k분째에 지나는 칸의 지형 이름
   try {
@@ -728,6 +761,7 @@ function travelLogFor(act, now = nowMs()) {
     if (top && roll < .3) out.push({ text: pickR(r, TRAVEL_STYLE[top]), kind: 'dodge' });
     else if (roll < .65) out.push({ text: pickR(r, TRAVEL_SCENE)(place), kind: 'note' });
     else out.push({ text: pickR(r, TRAVEL_SCENE)(place) + ' ' + pickR(r, TRAVEL_FLOURISH), kind: 'note' });
+    { const re = seededRng(base * 53 + k * 911 + 5), ln = re() < .25 ? equipLine('t', re) : ''; if (ln) out[out.length - 1] = { text: ln, kind: 'note' }; }
   }
   return out;
 }
@@ -869,7 +903,9 @@ function itemEffect(name) {
   if (it.use) { if (it.use.hp) p.push(`HP +${it.use.hp} 회복`); if (it.use.sp) p.push(`기력 +${it.use.sp} 회복`); }
   if (it.atk) p.push(`공격력 +${it.atk}`);
   if (it.mods) p.push(...modText(it.mods));
-  if (state.enchants[name]) p.push(`강화: ${enchantText(state.enchants[name])}`);
+  if (reinforceLv(name)) p.push(`강화 ${REINFORCE_RANKS[reinforceLv(name)]}랭 (공격력 +${reinforceBonus(name)})`);
+  if (state.enchants[name]) p.push(`세공: ${enchantText(state.enchants[name])}`);
+  { const st = ITEM_SETS.find(x => x.need.includes(name)); if (st) p.push(`세트 ${st.name}(${st.need.join('+')}): ${modText(st.mods).join(' ')}`); }
   if (it.capacity) p.push(`소지 칸 ${it.capacity}칸`);
   return p.join(' · ') || '제작 재료';
 }
@@ -1204,8 +1240,10 @@ const jobNeed = lv => 2 + lv;       // 납품 개수: Lv1 3개 … Lv10 12개
 const jobProgNeed = lv => lv + 1;   // 다음 레벨까지 필요한 납품 일수
 const jobBuffed = () => jobActive();
 /* 레벨별 버프. tags마다 다르다: 채집/채굴/낚시 = 해당 수확 +1개 확률, 목공/재봉/대장 = 제작 시간 단축, 농사 = 성장 단축 + 수확 +1개 확률, 요리/약학 = 회복량 증가 */
-/* 버프는 오늘(최근 24시간 안에) 납품을 마쳤을 때만 적용된다. always = true면 납품 여부와 상관없이 레벨 기준 효과를 계산(미리보기용) */
-const jobActive = () => !!state.subjob && state.subjob.lastAt > 0 && nowMs() - state.subjob.lastAt < JOB_DAY_MS;
+/* 버프는 오늘(자정 0시 기준) 납품을 마쳤을 때만 적용된다. always = true면 납품 여부와 상관없이 레벨 기준 효과를 계산(미리보기용) */
+/* 서브잡 납품은 한국 시간 자정(0시)에 리셋된다: 마지막 납품과 같은 날이면 오늘은 이미 끝낸 것 */
+const kstDayOf = t => Math.floor((t + 9 * 3600000) / 86400000), nextKstMidnight = t => (kstDayOf(t) + 1) * 86400000 - 9 * 3600000;
+const jobActive = () => !!state.subjob && state.subjob.lastAt > 0 && nowMs() < nextKstMidnight(state.subjob.lastAt);
 function jobFx(always) {
   const fx = { craftTime: 0, farmTime: 0, farmYield: 0, gather: {}, heal: {} }, j = state.subjob;
   if (!j || (!always && !jobActive())) return fx;
@@ -1234,7 +1272,7 @@ function jobStock() {
   ['소모품', '재료'].forEach(tab => state.inventory[tab].forEach(s => { const it = ITEMS[s.n]; if (it.sell && (it.tags || []).some(t => j.tags.includes(t))) m[s.n] = (m[s.n] || 0) + s.q; }));
   return Object.entries(m).map(([n, q]) => ({ n, q, price: ITEMS[n].sell })).sort((a, b) => a.price - b.price);
 }
-const jobCooldown = () => state.subjob ? Math.max(0, state.subjob.lastAt + JOB_DAY_MS - nowMs()) : 0;
+const jobCooldown = () => state.subjob && state.subjob.lastAt > 0 ? Math.max(0, nextKstMidnight(state.subjob.lastAt) - nowMs()) : 0;
 function joinSubjob(name, tags) {
   name = cleanText(name, JOB_NAME_MAX);
   if (!state.created) return '먼저 캐릭터를 만드세요.';
@@ -1253,7 +1291,7 @@ function deliverJob(picks) {
   const j = state.subjob;
   if (!j) return '서브잡이 없습니다.';
   if (state.location !== '상점가') return '납품은 상점가에서 할 수 있습니다.';
-  if (jobCooldown()) return '오늘은 이미 납품했습니다. 24시간 뒤에 다시 할 수 있습니다.';
+  if (jobCooldown()) return '오늘은 이미 납품했습니다. 자정(0시)에 다시 할 수 있습니다.';
   const need = jobNeed(j.level), stock = jobStock();
   if (stock.reduce((a, r) => a + r.q, 0) < need) return `납품할 아이템이 부족합니다. (${j.tags.join('/')} 태그 ${need}개 필요)`;
   let list = [];
@@ -1469,7 +1507,7 @@ function sendMail(to, subject, body, items = []) {
   if (!state.created) return '먼저 캐릭터를 만드세요.';
   if (!state.friends.includes(to)) return '받는 사람은 친구 목록에서 골라야 합니다.';
   if (!subject) return '제목을 입력하세요.';
-  const list = [], seen = new Set();
+  const list = [], seen = new Set(); sendMail.sent = [];
   for (const [n, q] of items) {
     if (!ITEMS[n] || seen.has(n) || n === MAIL_SHIP_ITEM) continue;
     seen.add(n); list.push([n, intIn(q, 1, 99, 1)]);
@@ -1479,6 +1517,7 @@ function sendMail(to, subject, body, items = []) {
   if (list.some(([n, q]) => countItem(n) < q)) return '가지고 있는 수량보다 많이 담을 수 없습니다.';
   if (list.length && countItem(MAIL_SHIP_ITEM) < 1) return `아이템을 담아 보내려면 ${MAIL_SHIP_ITEM}(상점 구매)가 1개 필요합니다.`;
   if (list.length) { removeItem(MAIL_SHIP_ITEM, 1); list.forEach(([n, q]) => removeItem(n, q)); }
+  sendMail.sent = list.map(r => r.slice()); // 실제로 가방에서 뺀 첨부 (중복·운송장치 제외 후)
   save();
   return null;
 }

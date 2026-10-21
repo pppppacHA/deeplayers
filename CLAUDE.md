@@ -36,7 +36,7 @@
 - **쓰러짐/구조**: 죽지 않는다. 지상에서 HP 1이 되거나, 기력이 모자라 움직일 수 없고 회복 아이템도 없으면 본부로 구조(HP 1, 부상, 보유 CR의 10% 최대 80 차감). 안전구역끼리 이동은 기력이 들지 않는다.
 - **레시피/단련**: 처음에는 `STARTER_RECIPES` 7종만 안다. 나머지는 개인실 '단련'(kind `train`, 3시간, 기력 10)으로 무작위 1종씩 배운다(`state.learned`). 후보는 `RECIPE_RANK`의 등급(F/E/D) 이하만(`learnableRecipes`). 장비·장신구·무기 레시피 포함. 단련 도입 전 저장은 로드할 때 등급 기준으로 이어받는다.
 - **레벨 제한**: 서브잡 Lv.5(`SUBJOB_MIN_LV`), 펫 Lv.7(`PET_MIN_LV`) — `levelGate(id)`. 레벨업 EXP는 `EXP_SLOW`=1.18배, 몬스터 CR은 `CR_BONUS`=1.1배.
-- **장비 강화**: 본부 '장비 강화'(kind `enhance`). `ENCHANT_COST`=100 CR을 내면 그 장비 이름에 무작위 효과 1개(스탯 +1~2 또는 최대 HP/기력 +5~15, `ENCHANT_POOL`)가 붙고, 다시 하면 바뀐다(`state.enchants`). 장착한 장비만 적용되며 최대치는 `syncMax()`가 100+보너스로 맞춘다.
+- **장비 강화/세공**: 본부 '장비 강화'(kind `enhance`) 창에 탭 2개(`view.enhTab`). **강화**=무기 F→A랭(`state.reinforce`, `REINFORCE_*`: 보너스 [0,2,4,7,10,14]·비용·성공률, 실패하면 CR만 잃고 랭크는 유지, `reinforceItem`, `weaponAtk`에 반영). **세공**(옛 강화)=아래 설명대로 `ENCHANT_COST`=100 CR을 내면 그 장비 이름에 무작위 효과 1개(스탯 +1~2 또는 최대 HP/기력 +5~15, `ENCHANT_POOL`)가 붙고, 다시 하면 바뀐다(`state.enchants`). 장착한 장비만 적용되며 최대치는 `syncMax()`가 100+보너스로 맞춘다.
 - **교환**: 주위 대원과 하루 `TRADE_DAILY`=3회 (`tradeWith`, `state.trades`). 상대는 `NEARBY_PLAYERS`의 `[이름, 상태, [[아이템,수량]]]`뿐이다(서버 전까지 테스트용).
 - **길드 알림**: `settings.guildAlert`. 새 메시지는 `receiveGuildMessage`/`onGuildMessage`로 들어온다(서버 연결용 훅).
 - **이동 규칙**: 안전구역끼리는 즉시·기력 0. 이동장치→지상은 1분(`ZONE_TRIP_SEC`, 확인창, 도착하면 미궁 입구 자동 입장, `startTrip`). 미궁 퇴장은 바로 이동장치로. 가 본 칸은 `state.explored`에 구역별로 저장되어 다시 들어가도 보인다.
@@ -104,3 +104,19 @@ STUB_ICONS=1 python3 tests/smoke.py   # 아이콘 폰트를 못 받는 환경(�
 - `#buffIcons`(날씨 포함)는 프로필 패널(`.profile-panel`) 오른쪽 위에 절대 배치. 스테이터스 제목(`.panel-title`)은 nowrap, 포인트 배지는 `flex:none`.
 - 이름·아이콘에 `data-user="이름"`을 달면 클릭 시 `viewUser(name)`(대원 정보 창; 나는 내 프로필). 서버 로그인 시 `searchPlayers`로 레벨·등급을 가져옴(SQL 변경 없음). 채팅/친구/길드/신청 목록에 적용.
 - 세계관 게시판에 'cr(크레딧)' 항목(별명 "체리") 추가.
+
+## 2026-10-21 추가
+- 버프/디버프 아이콘은 종류별 1개만 표시(`renderBuffs`), 초과분은 `data-tip-more`로 툴팁에 함께 표시(`+N` 배지).
+- 묘사: `EQUIP_LINES`(착용 장비별 이동 t / 전투 b 한 줄)·`EQUIP_SET_LINES`(data.js)를 `equipLine()`이 가끔 끼워 넣는다(이동 25%, 전투 슬롯 22%; 별도 시드라 기존 묘사/결과 계산에 영향 없음). 이동/전투 문구 풀 확장.
+- 장비 세트: `ITEM_SETS`(닌자 두건+닌자 복면 → 민첩 +1, `statMods`). 신규 장비 6종(상점가): 페르소나(eyeglasses), 운명의 붉은실(손 2), 꼬깔콘(손 1), 비닐바지, 닌자 두건, 닌자 복면.
+- 임무 정렬: 메인 → 완수 가능 → 원래 순서. 농장: 다 자란 밭은 `tick`에서 한 번 알림(`view.farmBack`). 도박 '낡은 서랍 뒤지기'·'수상한 승차권 뽑기' 삭제.
+- 서브잡 납품 리셋은 한국 시간 자정(`kstDayOf`/`nextKstMidnight`, `jobActive`/`jobCooldown`).
+- 프로필 이미지: 선택 후 `startCrop`(정사각형 범위 지정·드래그/모서리/슬라이더) → `crop-ok`에서 기존 `compressImage(bmp, rect)`로 압축.
+- 친구 삭제·길드 해산/탈퇴는 `askConfirm`(취소 시 원래 창으로) 후 `friend-remove-do`/`guild-leave-do`.
+- 총기 아이콘은 직접 그린 SVG(`CUSTOM_ICONS.pistol`, `icon()`이 처리).
+- 타인 프로필(`viewUser`): 칭호·이름, 2열 정보, 이능력/설명. 서버 `get_profile(p_name)` RPC(`friends.sql` 전체 재실행 필요), 없으면 `search_players`로 기본 정보만.
+- 메일: 첨부는 소지품과 같은 칸 UI(`renderMailAttach`, 탭/페이지, `view.mailAtt`), 창은 단말기 스타일(`#modal.terminal`). `sendMail.sent`=실제로 가방에서 뺀(중복·운송장치 제외) 첨부 목록이며 서버로도 이것만 보낸다(같은 아이템을 두 줄 넣으면 서버엔 두 번 가고 운송장치/가방에선 한 번만 빠지던 문제 수정).
+- 메일 창은 친구·길드 창과 같은 기본 창 스타일(단말기 스타일은 롤백). 첨부는 "소지품에서 고르기" 버튼 → `#mailPicker`(소지품과 같은 칸·탭·페이지)에서 선택.
+- 상점 장비 행에 효과 줄(`itemEffect`: 공격력·스탯·세트). 아이템 설명은 모두 '~다' 체로 통일(새 아이템도 ~다 체로 쓴다).
+- 최적화: 전투/이동 묘사는 같은 분에는 다시 계산하지 않고(`#battleLog` `data-key`), 탭이 가려져 있으면 채팅 폴링을 24초에 한 번으로 줄인다. 저장 데이터는 건드리지 않는다.
+- 공지 게시판 맨 위에 '업데이트 · 10월 21일' 패치 내역 추가(POSTS['공지'][0]). 새 업데이트마다 맨 위에 추가한다.
