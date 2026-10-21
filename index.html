@@ -117,19 +117,21 @@
           <div class="map-info"><h2 id="mapLocation"></h2><p id="mapDescription"></p></div>
           <div class="map-meta" id="mapMeta"></div>
         </div>
+        <div class="map-body">
         <div class="map-stage" id="mapStage">
           <div class="map-world" id="mapWorld"></div>
           <div class="map-tools">
             <button class="icon" id="zoomIn" title="확대"><span class="material-symbols-rounded" aria-hidden="true">add</span></button>
             <button class="icon" id="zoomOut" title="축소"><span class="material-symbols-rounded" aria-hidden="true">remove</span></button>
             <button class="icon" id="resetMap" title="중앙 정렬"><span class="material-symbols-rounded" aria-hidden="true">center_focus_strong</span></button>
-            <button class="icon" id="mapHelp" data-tip-title="지도 사용법" data-tip-desc="마우스 휠(가운데) 버튼을 누른 채 끌기: 지도 이동 (터치는 그냥 끌기) · 노드 선택: 구역 이동 (이동에는 기력이 듭니다)" aria-label="지도 도움말"><span class="material-symbols-rounded" aria-hidden="true">help</span></button>
+            <button class="icon" id="mapHelp" data-tip-title="지도 사용법" data-tip-desc="마우스 휠(가운데) 버튼을 누른 채 끌기: 지도 이동 — 던전 타일 지도에서도 가능 (터치는 그냥 끌기) · 노드 선택: 구역 이동 (이동에는 기력이 듭니다)" aria-label="지도 도움말"><span class="material-symbols-rounded" aria-hidden="true">help</span></button>
           </div>
                     <div class="compass"><span class="north">N</span><span class="west">W</span><span class="needle"></span><span class="east">E</span><span class="south">S</span></div>
         </div>
         <div class="map-log">
           <div class="map-log-head"><span class="map-log-label">LOG</span><button class="flat" id="clearLog" title="기록 비우기"><span class="material-symbols-rounded" aria-hidden="true">delete_sweep</span></button></div>
           <div class="scroll log-list" id="logList"></div>
+        </div>
         </div>
       </section>
 

@@ -5,7 +5,7 @@
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 
-let view = { petBack: {}, phase: 'idle', mult: 0, equipSlot: null, quest: null, target: null }; // 저장하지 않는 임시 화면 상태 (phase: idle | confirm(id))
+let view = { dpan: { x: 0, y: 0 }, dzoom: 1, petBack: {}, phase: 'idle', mult: 0, equipSlot: null, quest: null, target: null }; // 저장하지 않는 임시 화면 상태 (phase: idle | confirm(id))
 const resetPhase = () => { view.phase = 'idle'; view.id = null; view.lastResult = null; };
 
 /* ---------- 공통 UI ---------- */
@@ -100,13 +100,11 @@ function renderBuffs(force) {
   renderStatus();
 }
 function renderStatus() {
-  const t = totalStats(), fx = effects(t), pts = state.statPoints, buffs = allBuffs();
+  const t = totalStats(), fx = effects(t), pts = state.statPoints;
   const badge = $('#statPoints');
   badge.textContent = `남은 포인트 ${pts}`;
   badge.classList.toggle('hidden', !pts);
-  const buffHtml = buffs.length
-    ? `<div class="fx-list">${buffs.map(b => `<div class="fx-row ${b.type}">${icon(b.icon)}<b>${esc(b.id)}</b><span>${esc(b.desc.split('. ')[1] || b.desc)}</span>${b.endAt ? `<em class="fx-time" data-end="${b.endAt}">${fmtTime(b.endAt - nowMs())}</em>` : '<em>상시</em>'}</div>`).join('')}</div>` : '';
-  $('#statusBody').innerHTML = buffHtml + '<div class="stat-grid">' + STAT_DEFS.map(d => {
+  $('#statusBody').innerHTML = '<div class="stat-grid">' + STAT_DEFS.map(d => {
     const bonus = t[d.key] - state.stats[d.key];
     const eff = d.fx.map(([k, label, sign, unit]) => `<span>${label} <b>${sign}${round1(fx[k] * 100)}${unit}</b></span>`).join('');
     return `<div class="stat" data-tip-title="${d.name} · ${d.fx[0][1]}" data-tip-desc="${esc(d.tip)}"><div class="stat-head"><b>${d.name}</b><small>${d.en}</small><span class="stat-val">${state.stats[d.key]}${bonus ? `<em class="${bonus < 0 ? 'neg' : ''}">${bonus > 0 ? '+' : ''}${bonus}</em>` : ''}</span>` +
@@ -222,7 +220,7 @@ function renderCraft() {
 const renderBag = () => { renderEquip(); renderInventory(); renderCraft(); renderStatus(); renderLeftTab(); };
 
 /* ---------- 지도 / 구역 ---------- */
-function applyMapTransform() { $('#mapWorld').style.transform = state.dungeon ? 'none' : `translate(${state.pan.x}px,${state.pan.y}px) scale(${state.zoom})`; }
+function applyMapTransform() { $('#mapWorld').style.transform = state.dungeon ? (view.dpan.x || view.dpan.y || view.dzoom !== 1 ? `translate(${view.dpan.x}px,${view.dpan.y}px) scale(${view.dzoom})` : 'none') : `translate(${state.pan.x}px,${state.pan.y}px) scale(${state.zoom})`; }
 function renderMap() {
   $('#mapStage').classList.toggle('dungeon', !!state.dungeon); // 타일 지도에서는 지도 이동·확대 버튼을 숨긴다
   applyMapTransform();
@@ -237,6 +235,7 @@ function renderMap() {
 /* 미궁: 보이는 칸만 그린다. 아무 칸이나 누르면 이동 확인창이 뜬다 (멀면 칸 수만큼 시간·기력이 든다) */
 function renderDungeon() {
   refreshEvents(state.dungeon);
+  if (view.dpanSeed !== state.dungeon.seed) { view.dpanSeed = state.dungeon.seed; view.dpan = { x: 0, y: 0 }; view.dzoom = 1; applyMapTransform(); } // 새 던전에 들어가면 이동 초기화
   const d = state.dungeon, z = zoneOf(d.zone), dest = state.active && state.active.path ? state.active.path[state.active.path.length - 1] : null;
   const cells = z.map.map((row, y) => [...row].map((ch, x) => {
     if (ch === '.') return '<div class="tile void"></div>';
@@ -409,7 +408,6 @@ function tick() {
     else toast(`${name} 제작 완료. 가방을 비우고 제작 탭에서 수령하세요.`);
   }
   updateCraftTimer();
-  $$('.fx-time').forEach(el => { el.textContent = fmtTime(+el.dataset.end - nowMs()); });
 }
 
 /* ---------- 로그 / 오른쪽 패널 / 채팅 / 게시판 ---------- */
@@ -1386,29 +1384,62 @@ let drag = null;
 const stage = $('#mapStage');
 stage.addEventListener('pointerdown', e => {
   if (e.pointerType === 'mouse' && e.button !== 1) return; // 마우스는 가운데(휠) 버튼으로만 지도를 움직인다 (터치는 그대로 끌기)
-  if (e.target.closest('button') || state.dungeon) return;
+  const mid = e.pointerType === 'mouse'; // 가운데 버튼은 노드·타일 위에서도 끌 수 있다
+  if (!mid && (e.target.closest('button') || state.dungeon)) return;
   e.preventDefault();
-  drag = { x: e.clientX, y: e.clientY, px: state.pan.x, py: state.pan.y };
+  drag = state.dungeon ? { x: e.clientX, y: e.clientY, px: view.dpan.x, py: view.dpan.y, d: 1 } : { x: e.clientX, y: e.clientY, px: state.pan.x, py: state.pan.y };
   stage.classList.add('dragging');
   stage.setPointerCapture(e.pointerId);
 });
 stage.addEventListener('mousedown', e => { if (e.button === 1) e.preventDefault(); }); // 휠 클릭 자동 스크롤 방지
 stage.addEventListener('pointermove', e => {
   if (!drag) return;
-  state.pan = { x: drag.px + e.clientX - drag.x, y: drag.py + e.clientY - drag.y };
+  const nx = drag.px + e.clientX - drag.x, ny = drag.py + e.clientY - drag.y;
+  if (drag.d) { const lim = (v, n) => clamp(v, -n, n); view.dpan = { x: lim(nx, stage.clientWidth), y: lim(ny, stage.clientHeight) }; } else state.pan = { x: nx, y: ny };
   applyMapTransform();
 });
-const endDrag = () => { if (drag) { drag = null; stage.classList.remove('dragging'); save(); } };
+const endDrag = () => { if (drag) { const was = drag; drag = null; stage.classList.remove('dragging'); if (!was.d) save(); } };
 stage.addEventListener('pointerup', endDrag);
 stage.addEventListener('pointercancel', endDrag);
-const zoomBy = d => { state.zoom = clamp(+(state.zoom + d).toFixed(2), .65, 1.8); applyMapTransform(); save(); };
+const zoomBy = d => { if (state.dungeon) { view.dzoom = clamp(+(view.dzoom + d).toFixed(2), .65, 1.8); applyMapTransform(); return; } state.zoom = clamp(+(state.zoom + d).toFixed(2), .65, 1.8); applyMapTransform(); save(); };
 $('#zoomIn').onclick = () => zoomBy(.12);
 $('#zoomOut').onclick = () => zoomBy(-.12);
-$('#resetMap').onclick = () => { state.zoom = 1; state.pan = { x: 0, y: 0 }; applyMapTransform(); save(); };
+$('#resetMap').onclick = () => { if (state.dungeon) { view.dpan = { x: 0, y: 0 }; view.dzoom = 1; applyMapTransform(); return; } state.zoom = 1; state.pan = { x: 0, y: 0 }; applyMapTransform(); save(); };
 
 /* 컬럼 가로 폭 조절 (데스크톱) */
 const rootStyle = document.documentElement.style;
-function applyLayout() { rootStyle.setProperty('--left', state.layout.left + 'px'); rootStyle.setProperty('--right', state.layout.right + 'px'); }
+function applyLayout() {
+  const L = state.layout = state.layout || {};
+  L.left = clamp(+L.left || 292, 230, 430); L.right = clamp(+L.right || 315, 250, 430);
+  L.statusH = intIn(L.statusH, 0, 2000, 0); L.mapH = intIn(L.mapH, 0, 3000, 0); // 0 = 자동 높이
+  rootStyle.setProperty('--left', L.left + 'px'); rootStyle.setProperty('--right', L.right + 'px');
+  rootStyle.setProperty('--status-h', L.statusH + 'px'); rootStyle.setProperty('--map-h', L.mapH + 'px');
+  $('.status-panel').classList.toggle('sized', L.statusH > 0); $('.map-panel').classList.toggle('sized', L.mapH > 0);
+}
+/* 패널 사이 틈을 끌어 세로 높이 조절 (더블클릭: 자동 높이로) */
+function addVGrip(sel, key, minH, maxFn) {
+  const panel = $(sel), el = document.createElement('div');
+  el.className = 'vgrip'; el.title = '끌어서 높이 조절 · 더블클릭: 원래대로';
+  panel.after(el);
+  el.addEventListener('dblclick', () => { state.layout[key] = 0; applyLayout(); if (state.dungeon) renderDungeon(); save(); });
+  el.addEventListener('pointerdown', e => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const startY = e.clientY, start = panel.offsetHeight; let raf = 0;
+    el.classList.add('on'); document.body.style.userSelect = 'none';
+    const move = ev => {
+      state.layout[key] = clamp(Math.round(start + ev.clientY - startY), minH, Math.max(minH, maxFn()));
+      applyLayout();
+      if (state.dungeon && !raf) raf = requestAnimationFrame(() => { raf = 0; renderDungeon(); });
+    };
+    const up = () => { el.classList.remove('on'); document.body.style.userSelect = ''; window.removeEventListener('pointermove', move); save(); if (state.dungeon) renderDungeon(); };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up, { once: true });
+  });
+}
+const colGap = col => parseFloat(getComputedStyle(col).rowGap) || 6;
+addVGrip('.status-panel', 'statusH', 90, () => { const c = $('.left-column'); return c.clientHeight - $('.profile-panel').offsetHeight - 200 - colGap(c) * 2; });
+addVGrip('.map-panel', 'mapH', 300, () => { const c = $('.center-column'); return c.clientHeight - $('#actionPanel').offsetHeight - colGap(c); });
 function addGutter(which) {
   const el = document.createElement('div');
   el.className = 'gutter ' + which;

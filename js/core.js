@@ -308,7 +308,7 @@ function totalStats() {
 }
 /* 스탯 -> 효과 수치(0.1 = 10%). 스탯당 1개, 모두 상한 50% */
 function effects(t = totalStats()) {
-  return { bgreat: Math.min(.5, t.str * .006), evade: Math.min(.5, t.agi * .005), ggreat: Math.min(.5, t.int * .006), rare: Math.min(.5, t.wil * .005), craftTime: Math.min(.5, t.sen * .006 + jobFx().craftTime), craftGreat: Math.min(.5, t.luk * .006) };
+  return { atk: Math.min(.5, t.str * .006), evade: Math.min(.5, t.agi * .005), ggreat: Math.min(.5, t.int * .006), rare: Math.min(.5, t.wil * .005), craftTime: Math.min(.5, t.sen * .006 + jobFx().craftTime), craftGreat: Math.min(.5, t.luk * .006) };
 }
 const modText = mods => Object.entries(mods).map(([k, v]) => `${STAT_DEFS.find(d => d.key === k).name} ${v > 0 ? '+' : ''}${v}`);
 const weaponAtk = () => (state.equipment['무기'] && ITEMS[state.equipment['무기']].atk) || 0;
@@ -375,7 +375,7 @@ function actionPreview(id, mi = 0) {
     const m = monsterOf(a);
     costs.push('전투 피해로 HP 감소', '패배 시 부상(민첩 -2)', `HP ${HP_RETREAT} 이하가 되면 중단`);
     const bo = battleOdds(m), rep = repeatChance(n0 + 1);
-    const odds = `승리 약 ${bo.win}% · 다칠 확률 약 ${bo.hurt}% (1회 최대 HP -${m.hpCap || BATTLE_HP_CAP}) · 대성공 ${pct(fx.bgreat)} · 재료 ${pct(BATTLE_MAT * rep)} · ${m.drops.map(([n, p]) => `${n} ${pct(p * rep)}`).join(' · ')}`;
+    const odds = `승리 약 ${bo.win}% · 다칠 확률 약 ${bo.hurt}% (1회 최대 HP -${m.hpCap || BATTLE_HP_CAP}) · 재료 ${pct(BATTLE_MAT * rep)} · ${m.drops.map(([n, p]) => `${n} ${pct(p * rep)}`).join(' · ')}`;
     return { time, gain: `승리 시 EXP +${m.exp} · CR +${m.cr} · 재료 (회당)`, cost: costs.join(' · '), note, odds };
   }
   if (a.kind === 'tame') return { time: '10분', gain: `성공하면 펫을 얻음 (성공 확률 약 ${Math.round(tameChance() * 100)}% · 감각이 높을수록 유리) · EXP +12`, cost: `기력 -${sp} · 먹이 1개(작물/펫 사료) 소모 · 실패하면 HP 손실 가능` };
@@ -505,7 +505,7 @@ function travelTo(id) {
 
 /* 전투 시뮬레이션 (실시간 아님). hp0에서 시작해 { win, rounds, lost } */
 function simulateBattle(m, hp0) {
-  const fx = effects(), dmg = 3 + weaponAtk(), jitter = () => .85 + Math.random() * .3;
+  const fx = effects(), dmg = (3 + weaponAtk()) * (1 + fx.atk), jitter = () => .85 + Math.random() * .3;
   let hp = hp0, mhp = m.hp, rounds = 0, lost = 0;
   while (mhp > 0 && hp > 1 && rounds < 40) {
     rounds++;
@@ -560,7 +560,7 @@ function resolveAction(id, cycles = 1, spPaid = 0) {
   const rep0 = repeatCount(id);
   for (let i = 0; i < cycles; i++) {
     if (i > 0 && state.vitals.hp + r.hp <= HP_RETREAT) { stop = `HP가 ${HP_RETREAT} 이하로 떨어져 중단했습니다.`; break; }
-    const great = chance(a.kind === 'gather' ? fx.ggreat : fx.bgreat), mult = great ? 2 : 1, keep = chance((a.kind === 'gather' ? GATHER_FIND : 1) * repeatChance(rep0 + i + 1));
+    const great = a.kind === 'gather' && chance(fx.ggreat), mult = great ? 2 : 1, keep = chance((a.kind === 'gather' ? GATHER_FIND : 1) * repeatChance(rep0 + i + 1));
     if (!keep) lowered++;
     if (great) greats++;
     if (a.kind === 'gather') {

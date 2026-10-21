@@ -88,6 +88,22 @@ textarea{min-height:75px;resize:vertical}
   .chat-panel{flex:1 1 0;min-height:250px}
 }
 
+/* 세로 높이 조절 손잡이: 패널 사이 틈 (데스크톱에서만) */
+.vgrip{display:none}
+@media(min-width:1201px){
+  .vgrip{display:block;flex:none;height:0;margin-top:calc(-1*var(--gap));position:relative;z-index:5}
+  .vgrip::before{content:'';position:absolute;left:0;right:0;top:-2px;height:calc(var(--gap) + 4px);cursor:row-resize;border-radius:3px}
+  .vgrip:hover::before,.vgrip.on::before{background:var(--accent-soft)}
+  .left-column .status-panel.sized{flex:0 1 auto;height:var(--status-h);min-height:90px}
+  .status-panel.sized #statusBody{flex:1;min-height:0;overflow:auto}
+  .center-column .map-panel.sized{flex:0 1 auto;height:var(--map-h);min-height:300px}
+  /* 넓은 화면: 로그는 지도 오른쪽 */
+  .map-panel .map-body{flex-direction:row}
+  .map-body .map-stage{flex:1;min-width:0}
+  .map-body .map-log{width:clamp(170px,24%,260px);height:auto;border-top:0;border-left:1px solid var(--line)}
+  .map-body .log-list{flex:1;min-height:0}
+}
+
 /* 컬럼 폭 조절 손잡이 (데스크톱에서만) */
 .gutter{display:none;position:absolute;top:0;bottom:0;width:6px;cursor:col-resize;z-index:5}
 .gutter.left{left:calc(var(--left) + var(--gap)/2 - 3px)}
@@ -113,6 +129,7 @@ textarea{min-height:75px;resize:vertical}
 
 .buff-icons{display:flex;gap:4px;margin-left:6px}
 .buff-icon{width:24px;height:24px;padding:0;display:grid;place-items:center;border-radius:6px;font-size:calc(14px*var(--fs))}
+.buff-icon .material-symbols-rounded{display:block;font-size:inherit;line-height:1;margin:0}
 .buff-icon.buff{color:var(--good);background:var(--good-soft);border-color:var(--good-line)}
 .buff-icon.debuff{color:var(--danger-text);background:var(--danger-soft);border-color:var(--danger-line)}
 
@@ -284,6 +301,7 @@ textarea{min-height:75px;resize:vertical}
 .action-panel.showing-reward{grid-template-columns:minmax(0,1fr)}
 .action-panel.showing-reward .choices{display:none}
 
+.map-body{flex:1;min-height:0;display:flex;flex-direction:column}
 .map-log{flex:none;height:84px;display:flex;flex-direction:column;padding-top:4px;border-top:1px solid var(--line);background:var(--panel-2)}
 .map-log-head{display:flex;align-items:center;gap:4px;flex:none;padding:0 8px 0 10px;height:20px}
 .map-log-label{font-size:calc(9px*var(--fs));font-weight:800;letter-spacing:1px;color:var(--accent)}
@@ -519,7 +537,6 @@ textarea{min-height:75px;resize:vertical}
 .tile.t4{background:color-mix(in srgb,var(--tone) 35%,var(--panel));color:color-mix(in srgb,var(--tone) 85%,var(--text))}
 .tile.going{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-line)}
 .tile.me{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-line)}
-.map-stage.dungeon .map-tools,.map-stage.dungeon .compass{display:none}
 .map-stage.dungeon{cursor:default}
 @media(max-width:480px){.tile-board{--tile:38px;gap:2px}}
 
