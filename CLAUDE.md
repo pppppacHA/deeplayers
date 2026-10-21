@@ -34,7 +34,7 @@
 - **T9 추가 기능**: 상점 탭+판매, 본부 승급(F→E→D), 임무 24시간 리셋, 농장, 펫(동행/보관/24시간 탐험/별도 도감), 서브잡(납품·레벨·태그), 메일(운송장치·15일 만료·보존 30통·친구 선택, 현재는 샘플 친구), 칭호, 이동장치(구역 선택), 글자 크기, BGM 페이드, 맵 이동=마우스 휠 버튼, 타일 이동 1분, 휴식 30분/잠자기 6시간, 용어 '대원'.
 - **전투 드롭/요리/귀환**: 몬스터는 `drops`(짐승=고기·가죽, 이능=이능 조직)를 확률로 떨어뜨리고, 고기 요리 레시피로 기력을 보충한다. 귀환 신호기(상점)는 어디서든 본부로 돌아온다.
 - **쓰러짐/구조**: 죽지 않는다. 지상에서 HP 1이 되거나, 기력이 모자라 움직일 수 없고 회복 아이템도 없으면 본부로 구조(HP 1, 부상, 보유 CR의 10% 최대 80 차감). 안전구역끼리 이동은 기력이 들지 않는다.
-- **레시피/단련**: 처음에는 `STARTER_RECIPES` 7종만 안다. 나머지는 개인실 '단련'(kind `train`, 3시간, 기력 10)으로 무작위 1종씩 배운다(`state.learned`). 후보는 `RECIPE_RANK`의 등급(F/E/D) 이하만(`learnableRecipes`). 장비·장신구·무기 레시피 포함. 단련 도입 전 저장은 로드할 때 등급 기준으로 이어받는다.
+- **레시피/단련**: 처음에는 `STARTER_RECIPES` 7종만 안다. 나머지는 개인실 '단련'(kind `train`, 25분, 기력 10)으로 무작위 1종씩 배운다(`state.learned`). 후보는 `RECIPE_RANK`의 등급(F/E/D) 이하만(`learnableRecipes`). 장비·장신구·무기 레시피 포함. 단련 도입 전 저장은 로드할 때 등급 기준으로 이어받는다.
 - **레벨 제한**: 서브잡 Lv.5(`SUBJOB_MIN_LV`), 펫 Lv.7(`PET_MIN_LV`) — `levelGate(id)`. 레벨업 EXP는 `EXP_SLOW`=1.18배, 몬스터 CR은 `CR_BONUS`=1.1배.
 - **장비 강화/세공**: 본부 '장비 강화'(kind `enhance`) 창에 탭 2개(`view.enhTab`). **강화**=무기 F→A랭(`state.reinforce`, `REINFORCE_*`: 보너스 [0,2,4,7,10,14]·비용·성공률, 실패하면 CR만 잃고 랭크는 유지, `reinforceItem`, `weaponAtk`에 반영). **세공**(옛 강화)=아래 설명대로 `ENCHANT_COST`=100 CR을 내면 그 장비 이름에 무작위 효과 1개(스탯 +1~2 또는 최대 HP/기력 +5~15, `ENCHANT_POOL`)가 붙고, 다시 하면 바뀐다(`state.enchants`). 장착한 장비만 적용되며 최대치는 `syncMax()`가 100+보너스로 맞춘다.
 - **교환**: 주위 대원과 하루 `TRADE_DAILY`=3회 (`tradeWith`, `state.trades`). 상대는 `NEARBY_PLAYERS`의 `[이름, 상태, [[아이템,수량]]]`뿐이다(서버 전까지 테스트용).
@@ -85,7 +85,7 @@ STUB_ICONS=1 python3 tests/smoke.py   # 아이콘 폰트를 못 받는 환경(�
 - 전투/이동 묘사: 진행 중 화면의 남은 시간 아래 임시 로그(`#battleLog`, `activityLogFor`)가 **1분에 한 줄**(`BATTLE_LOG_SEC`=60) 나온다. 전투는 시작 때 `state.active`에 저장한 `seed/hp0/bs/d`로 `battleRuns`가 실제 결과(`resolveAction`)와 **같은 시드 계산**을 다시 돌려 6분 회차를 1분 6칸으로 풀어 쓴다(`battleSlotLine`, 문구 변형 다수). 이동은 지나는 칸 지형 이름+능력치 스타일을 섞는다(`travelLogFor`). 결과 화면이 되면 사라진다. 모의 전투(`mockRound`)만 별도 계산.
 - 스테이터스 2페이지(`view.statusPage`, `combatPageHtml`)와 '추가 기능' → 모의 전투 오버레이(`openMock`/`mockStart`, 실제 진행에 영향 없음).
 - 재료: 타일/구역 노드 툴팁에 `[채집]`/`[재료]`, 지도 왼쪽 위 검색창(`#mapSearch`, `view.mapQ`)이 해당 지형 칸(`.tile.hl`)·구역 노드를 하이라이트.
-- 개방 알림: `newUnlocks()`가 승급 시험 가능·레벨 개방(`LEVEL_UNLOCK_NOTES`)을 한 번만 알린다(`state.unlockSeen`). 단련 1시간(`TRAIN_SEC`).
+- 개방 알림: `newUnlocks()`가 승급 시험 가능·레벨 개방(`LEVEL_UNLOCK_NOTES`)을 한 번만 알린다(`state.unlockSeen`). 단련 25분(`TRAIN_SEC`).
 - 난이도: 입구(S)에서 걸어서 멀수록 몬스터가 강해진다. `entranceDist`/`tileDifficulty`(0~1)/`scaleMonster`(체력 ×0.7~×17, 공격·피격률·보상 증가), 전투 시작 때 `active.d`에 고정. `simulateBattle`은 개체마다 체력 ×0.6~1.5 변동. 모의 전투 목록은 약한 몬스터가 위(`mockMonsters`, hp×atk 순).
 - 도박성 선택지(`GAMBLES`, kind `gamble`): 상점가·본부·개인실·이동장치·캠프 칸. 80% 좋은 일/20% 나쁜 일(`GAMBLE_WIN`), 즉시 결과, 장소별 1시간에 한 번(`state.gambleAt`), 판돈이 있으면 CR 부족 시 불가. 손실 CR은 보유량 이하로 제한.
 - 알림 탭 글쓰기: 서버 `admins` 표 등록 계정이면 `view.isAdmin`(개발자 도구 없이)으로 가능. 실제 권한은 서버 `post_notice`가 검사.
@@ -120,3 +120,12 @@ STUB_ICONS=1 python3 tests/smoke.py   # 아이콘 폰트를 못 받는 환경(�
 - 상점 장비 행에 효과 줄(`itemEffect`: 공격력·스탯·세트). 아이템 설명은 모두 '~다' 체로 통일(새 아이템도 ~다 체로 쓴다).
 - 최적화: 전투/이동 묘사는 같은 분에는 다시 계산하지 않고(`#battleLog` `data-key`), 탭이 가려져 있으면 채팅 폴링을 24초에 한 번으로 줄인다. 저장 데이터는 건드리지 않는다.
 - 공지 게시판 맨 위에 '업데이트 · 10월 21일' 패치 내역 추가(POSTS['공지'][0]). 새 업데이트마다 맨 위에 추가한다.
+- 프로필 창: '캐릭터 정보 수정' 제목 오른쪽 위 '편집'(`profile-edit`)/'편집 취소' 버튼(`.pf-edit`)으로 입력칸을 열고, 하단 '저장'(`char-save`)은 편집 중에만 활성. 닫기·이미지 삭제는 항상 표시.
+- 채집·채굴·낚시(kind `gather`)도 진행 중 `#battleLog`에 1분마다 묘사(`gatherLogFor`, `GATHER_STYLE`): 능력치 비율로 근력/지능/민첩/의지/감각/행운 문장이 섞이고(전투 문장은 5 이상만, 채집은 1 이상), 나머지는 방식별 풍경 문장. 결과 계산과 무관한 묘사.
+- 프로필 창: 스위치는 편집 버튼 아래 세로·오른쪽 정렬(`.pf-side/.pf-sw`), 하단 닫기 없음(헤더 X로만), 편집 전 입력칸은 테두리·배경 없음. 테스트는 `#closeModal`로 닫는다.
+- 스테이터스 카드 슬라이드(`STAT_BUFFS`, 카드 숫자 아래 화살표 `stat-slide`/`view.statSlide`로 기본 효과↔추가 효과 전환, 3페이지는 없음;  `effects()`의 petTime/travelHurt/farmTime/repeatKeep/travelFind/reinforce): 펫 탐험 시간(`p.exp.ms`에 시작 시점 값 저장)·이동 중 사건 피해 회피(`applyMove`)·작물 성장(`growMs`)·반복 채집(`gatherRepeat`)·이동 중 줍기·무기 강화 확률에 반영. 1페이지와 같은 칸 크기.
+- 오른쪽 탭: 임무 / 서브잡(가입 후만 표시, `jobPanelHtml(true)`, 그만두기 없음, 선택 수량은 `view.jobPicks`) / 펫(보유 시 표시, `petPanelHtml`, 탐험 상태·수확, 도감·펫 돌보기 버튼) / 주위 대원. 도감 '펫' 탭은 지금 보유한 펫만 발견으로 표시. 펫 이름 `p.name`(최대 `PET_NAME_MAX`=8, 빈 값=종 이름, `renamePet`/`petName`).
+- 펫 탭(`petPanelHtml`)은 소지품과 같은 하위탭(`.subtabs`: 상태/도감/돌보기, `view.petSub`). 돌보기는 `petCareHtml()`(펫 돌보기 창과 공용, 핸들러는 `petRoot(el)`/`petRefresh(el)`로 탭·창 모두 처리).
+- 단련은 25분(`TRAIN_SEC`=1500).
+- 길들이기 확인창에 먹이 선택(`baitPickHtml`, `#tameBait`, `view.bait`) → `startAction(id, mi, baitName)`. 탐험 보내기도 돌보기의 '줄 먹이'(`view.feed`)를 `sendExpedition(i, zone, baitName)`에 넘긴다. 이름을 안 넘기면(코드 호출) 가장 약한 먹이가 기본.
+- 다중행동 옵션에 '직접 입력'(`MULTI_OPTIONS` 마지막, `custom:true`): 분 단위 5~1440(`CUSTOM_MIN_*`), `customMultiMin`/`setCustomMin`/`multiOpt(mi)`가 core에서 실제 시간을 계산, UI는 `#customMin` 입력(실행 시 값 반영).

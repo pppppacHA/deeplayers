@@ -72,7 +72,7 @@ function hardenState(s) {
   if (!['light', 'dark', 'custom'].includes(s.settings.theme)) s.settings.theme = 'light';
   if (!['light', 'dark'].includes(s.settings.customBase)) s.settings.customBase = 'light';
   s.settings.guildAlert = s.settings.guildAlert !== false;
-  if (!['임무', '주위 대원'].includes(s.side)) s.side = '임무';
+  if (!['임무', '서브잡', '펫', '주위 대원'].includes(s.side)) s.side = '임무';
   const ex = {}; // 가 본 칸: 구역/좌표 형식만 남긴다
   DANGER_ZONES.forEach(z => { const src = s.explored && typeof s.explored === 'object' ? s.explored[z.id] : null; ex[z.id] = {}; if (src && typeof src === 'object') Object.keys(src).filter(k => /^-?\d{1,3},-?\d{1,3}$/.test(k)).slice(0, 4000).forEach(k => { ex[z.id][k] = 1; }); });
   if (s.dungeon) Object.keys(s.dungeon.seen || {}).filter(k => /^-?\d{1,3},-?\d{1,3}$/.test(k)).forEach(k => { ex[s.dungeon.zone][k] = 1; });
@@ -91,7 +91,7 @@ function hardenState(s) {
   s.questAt = Object.fromEntries(Object.entries(s.questAt && typeof s.questAt === 'object' ? s.questAt : {}).filter(([k, v]) => known(k) && Number.isFinite(v)));
   const fp = Array.isArray(s.farm && s.farm.plots) ? s.farm.plots : [];
   s.farm = { plots: Array.from({ length: 6 }, (_, i) => { const p = fp[i]; return p && CROPS[p.crop] && Number.isFinite(p.at) ? { crop: p.crop, at: p.at } : null; }) };
-  s.pets = (Array.isArray(s.pets) ? s.pets : []).filter(p => p && PET_SPECIES[p.id]).map(p => ({ id: p.id, bond: intIn(p.bond, 0, 100, PET_BOND_START), fedAt: Number.isFinite(p.fedAt) ? p.fedAt : 0, exp: p.exp && DANGER_ZONES.some(z => z.id === p.exp.zone) && Number.isFinite(p.exp.at) ? { zone: p.exp.zone, at: p.exp.at } : null }))
+  s.pets = (Array.isArray(s.pets) ? s.pets : []).filter(p => p && PET_SPECIES[p.id]).map(p => ({ id: p.id, bond: intIn(p.bond, 0, 100, PET_BOND_START), fedAt: Number.isFinite(p.fedAt) ? p.fedAt : 0, name: cleanText(p.name, PET_NAME_MAX), exp: p.exp && DANGER_ZONES.some(z => z.id === p.exp.zone) && Number.isFinite(p.exp.at) ? { zone: p.exp.zone, at: p.exp.at, ms: Number.isFinite(p.exp.ms) ? clamp(p.exp.ms, 3600000, PET_EXP_MS) : PET_EXP_MS } : null }))
     .filter((p, i, a) => a.findIndex(q => q.id === p.id) === i).slice(0, Object.keys(PET_SPECIES).length);
   if (s.pets[s.petActive] && s.pets[s.petActive].exp) s.petActive = -1;
   s.petActive = intIn(s.petActive, -1, s.pets.length - 1, -1);
@@ -233,7 +233,7 @@ function reinforceItem(name, rnd = Math.random) { // 성공 { ok, lv } / 실패 
   const cost = REINFORCE_COST[lv];
   if (state.money < cost) return `CR이 부족합니다. (필요 ${cost})`;
   state.money -= cost;
-  const ok = rnd() < REINFORCE_RATE[lv];
+  const ok = rnd() < Math.min(.95, REINFORCE_RATE[lv] + effects().reinforce); // 행운 보정
   if (ok) state.reinforce[name] = lv + 1;
   save();
   return { ok, lv: ok ? lv + 1 : lv };
@@ -336,7 +336,8 @@ function totalStats() {
 }
 /* 스탯 -> 효과 수치(0.1 = 10%). 스탯당 1개, 모두 상한 50% */
 function effects(t = totalStats()) {
-  return { atk: Math.min(.5, t.str * .006), evade: Math.min(.5, t.agi * .005), ggreat: Math.min(.5, t.int * .006), rare: Math.min(.5, t.wil * .005), craftTime: Math.min(.5, t.sen * .006 + jobFx().craftTime), craftGreat: Math.min(.5, t.luk * .006) };
+  return { atk: Math.min(.5, t.str * .006), evade: Math.min(.5, t.agi * .005), ggreat: Math.min(.5, t.int * .006), rare: Math.min(.5, t.wil * .005), craftTime: Math.min(.5, t.sen * .006 + jobFx().craftTime), craftGreat: Math.min(.5, t.luk * .006),
+    petTime: Math.min(.5, t.str * .01), travelHurt: Math.min(.6, t.agi * .02), farmTime: Math.min(.5, t.int * .01), repeatKeep: Math.min(.5, t.wil * .02), travelFind: Math.min(.1, t.sen * .002), reinforce: Math.min(.3, t.luk * .01) };
 }
 /* ---- 오늘의 날씨 (한국 시간 하루마다 바뀐다): 비·눈이 오는 날은 채집·채굴·낚시 재료 획득 확률 +, 그렇지 않은 날은 사냥 공격력 + ---- */
 const WEATHERS = [
@@ -385,6 +386,10 @@ const spOf = a => (a.cost ? a.cost.sp : 0);
 /* 이동 기력. 지상이 끼면 더 든다 */
 const moveCost = id => (LOCATIONS[id].danger || LOCATIONS[state.location].danger) ? MOVE_SP_DANGER : MOVE_SP_SAFE;
 
+let customMultiMin = 45; // '직접 입력' 시간(분)
+const setCustomMin = v => { customMultiMin = clamp(Math.floor(Number(v)) || 45, CUSTOM_MIN_MIN, CUSTOM_MIN_MAX); return customMultiMin; };
+const multiOpt = mi => { const o = MULTI_OPTIONS[mi] || MULTI_OPTIONS[0]; return o.custom ? { label: fmtSpan(customMultiMin * 60), sec: customMultiMin * 60 } : o; };
+function fmtSpan(sec) { const h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60); return h && m ? `${h}시간 ${m}분` : h ? `${h}시간` : `${m}분`; }
 /* 확인 화면용 예상 { time, gain, cost } 문장. mi = MULTI_OPTIONS 인덱스 */
 /* 전투 확률 추정: 같은 몬스터와 100번 싸워 본 결과 (승리 %, 다치는 %) */
 function battleOdds(m) {
@@ -435,12 +440,12 @@ function scaleMonster(m, d) {
 const monsterBase = a => a.monster || a.terrain.monster;
 const monsterOf = (a, d) => scaleMonster(monsterBase(a), d === undefined ? curDifficulty() : d);
 function actionPreview(id, mi = 0) {
-  const a = ACTIONS[id], fx = effects(), sp = spOf(a), opt = MULTI_OPTIONS[mi] || MULTI_OPTIONS[0];
+  const a = ACTIONS[id], fx = effects(), sp = spOf(a), opt = multiOpt(mi);
   const multi = (a.kind === 'gather' || a.kind === 'battle') && opt.sec > 0;
   const cMin = multi ? Math.floor(opt.sec / (a.kind === 'gather' ? GATHER_SEC : MAX_CYCLE)) : 1, cMax = multi ? Math.floor(opt.sec / (a.kind === 'gather' ? GATHER_SEC : MIN_CYCLE)) : 1;
   const rng = (lo, hi, f = x => x) => lo === hi ? `${f(lo)}` : `${f(lo)}~${f(hi)}`;
   const costs = [], per = multi ? ` (${rng(cMin, cMax)}회 반복)` : '';
-  const n0 = repeatCount(id), note = (a.kind === 'gather' || a.kind === 'battle') ? (n0 >= REPEAT_FREE ? `이 장소에서 이 행동을 ${n0}번 했습니다. 지금은 아이템 획득 확률이 ${Math.round(repeatChance(n0 + 1) * 100)}%로 떨어져 있어요. (12시간 뒤 초기화)` : `이 장소에서 같은 행동 ${n0}회 (${REPEAT_FREE + 1}번째부터 아이템 획득 확률 저하 · 12시간 뒤 초기화)`) : '';
+  const n0 = repeatCount(id), note = (a.kind === 'gather' || a.kind === 'battle') ? (n0 >= REPEAT_FREE ? `이 장소에서 이 행동을 ${n0}번 했습니다. 지금은 아이템 획득 확률이 ${Math.round((a.kind === 'gather' ? gatherRepeat : repeatChance)(n0 + 1) * 100)}%로 떨어져 있어요. (12시간 뒤 초기화)` : `이 장소에서 같은 행동 ${n0}회 (${REPEAT_FREE + 1}번째부터 아이템 획득 확률 저하 · 12시간 뒤 초기화)`) : '';
   if (a.kind === 'gather' || a.kind === 'battle') {
     const time = multi ? `${opt.label}${per}` : a.kind === 'gather' ? '5분' : '6분';
     costs.push(`기력 -${rng(sp * cMin, sp * cMax)}`);
@@ -448,7 +453,7 @@ function actionPreview(id, mi = 0) {
     if (a.kind === 'gather') {
       const h = a.hazard;
       costs.push(`${h.text} 사고 시 HP -${h.hp[0]}~${h.hp[1]} (회당 ${Math.round(h.chance * 100)}%)`);
-      const find = Math.min(1, GATHER_FIND + weatherFx().gather) * repeatChance(n0 + 1);
+      const find = Math.min(1, GATHER_FIND + weatherFx().gather) * gatherRepeat(n0 + 1);
       const odds = `재료 획득 ${pct(find)} (빈손 ${pct(1 - find)}) · 대성공(2배) ${pct(fx.ggreat)}${a.rare ? ` · 희귀 ${a.rare} ${pct(.05 + fx.rare)}` : ''} · 사고로 다칠 확률 ${pct(h.chance)} (안 다칠 확률 ${pct(1 - h.chance)})`;
       return { time, gain: `${a.items.join(' / ')} 회당 1~3개 · EXP +6/회 (총 ${rng(cMin * 6, cMax * 6)})`, cost: costs.join(' · '), note, odds };
     }
@@ -458,8 +463,8 @@ function actionPreview(id, mi = 0) {
     const odds = `승리 약 ${bo.win}% · 다칠 확률 약 ${bo.hurt}% (1회 최대 HP -${m.hpCap || BATTLE_HP_CAP}) · 재료 ${pct(BATTLE_MAT * rep)} · ${m.drops.map(([n, p]) => `${n} ${pct(p * rep)}`).join(' · ')}`;
     return { time, gain: `승리 시 EXP +${m.exp} · CR +${m.cr} · 재료 (회당)`, cost: costs.join(' · '), note, odds };
   }
-  if (a.kind === 'tame') return { time: '10분', gain: `성공하면 펫을 얻음 (성공 확률 약 ${Math.round(tameChance() * 100)}% · 감각이 높을수록 유리) · EXP +12`, cost: `기력 -${sp} · 먹이 1개(작물/펫 사료) 소모 · 실패하면 HP 손실 가능` };
-  if (a.kind === 'train') { const n = learnableRecipes().length; return { time: '1시간', gain: `새 제작 레시피 1종을 무작위로 습득 · EXP +${TRAIN_EXP}`, cost: `기력 -${sp}`, note: n ? `지금 배울 수 있는 레시피 ${n}종 (승급하면 후보가 늘어납니다)` : '지금은 더 배울 수 있는 레시피가 없습니다.' }; }
+  if (a.kind === 'tame') return { time: '10분', gain: `성공하면 펫을 얻음 (성공 확률 약 ${Math.round(tameChance() * 100)}% · 감각이 높을수록 유리) · EXP +12`, cost: `기력 -${sp} · 먹이 1개(직접 고른 작물/펫 사료) 소모 · 실패하면 HP 손실 가능` };
+  if (a.kind === 'train') { const n = learnableRecipes().length; return { time: '25분', gain: `새 제작 레시피 1종을 무작위로 습득 · EXP +${TRAIN_EXP}`, cost: `기력 -${sp}`, note: n ? `지금 배울 수 있는 레시피 ${n}종 (승급하면 후보가 늘어납니다)` : '지금은 더 배울 수 있는 레시피가 없습니다.' }; }
   if (a.kind === 'rest') return { time: a.sec >= 3600 ? `${a.sec / 3600}시간` : a.sec >= 120 ? `${a.sec / 60}분` : '1분', gain: a.full ? 'HP · 기력 완전 회복 · 충분한 휴식(의지 +2, 5분)' : `HP +30 · 기력 +${a.restSp ?? REST_SP} · 충분한 휴식(의지 +2, 5분)`, cost: '없음' };
   if (a.kind === 'travel') return { time: LOCATIONS[a.to].danger ? `${ZONE_TRIP_SEC / 60}분` : '즉시', gain: `이동 후 그 구역의 선택지를 이용할 수 있음${ZONE_MIN_RANK[a.to] ? ` (${ZONE_MIN_RANK[a.to]}등급 이상)` : ''}`, cost: moveCost(a.to) ? `기력 -${moveCost(a.to)}` : '기력 소모 없음' };
   if (a.kind === 'enter') return { time: '즉시', gain: '타일 지도 탐색 시작 (타일 1칸 이동 = 3분 · 기력 1)', cost: '없음' };
@@ -483,6 +488,7 @@ function actionBlocked(id) {
 /* 같은 행동의 반복 횟수(12시간이 지나면 0으로 돌아간다)와 그 다음 회차의 아이템 획득 확률 */
 const repKey = id => state.dungeon ? `${id}@${tileKey(state.dungeon)}` : id; // 같은 장소에서 같은 행동일 때만 누적
 function repeatCount(id) { const r = state.repeats[repKey(id)]; return r && r.at + REPEAT_RESET_SEC * 1000 > nowMs() ? r.n : 0; }
+const gatherRepeat = nth => nth <= REPEAT_FREE ? 1 : Math.min(1, repeatChance(nth) + effects().repeatKeep); // 의지: 반복할수록 떨어지는 채집 성공 확률을 일부 되살린다
 const repeatChance = nth => nth <= REPEAT_FREE ? 1 : Math.max(.2, 1 - .2 * (nth - REPEAT_FREE));
 function noteRepeat(id, n) {
   const k = repKey(id), r = state.repeats[k];
@@ -503,7 +509,7 @@ function tileGatherIds(z, x, y, seed) {
 }
 
 /* 시작할 수 있으면 null, 없으면 사유 문자열 */
-function startAction(id, mi = 0) {
+function startAction(id, mi = 0, baitName = null) {
   const a = ACTIONS[id];
   if (a.kind === 'todo') return '아직 구현되지 않은 기능입니다.';
   if (!['gather', 'battle', 'rest', 'investigate', 'gamble', 'tame', 'train'].includes(a.kind)) return '시작할 수 없는 행동입니다.';
@@ -539,14 +545,15 @@ function startAction(id, mi = 0) {
   if (a.kind === 'tame') {
     const sp = PET_SPECIES[a.terrain.monster.name];
     if (state.pets.some(p => p.id === a.terrain.monster.name)) return '이미 길들인 종입니다.';
-    bait = baitItems()[0];
-    if (!bait) return '먹이가 될 작물이나 펫 사료가 필요합니다. 농장에서 키워 보세요.';
+    if (!baitItems().length) return '먹이가 될 작물이나 펫 사료가 필요합니다. 농장에서 키워 보세요.';
+    bait = baitName == null ? baitItems()[0] : baitName; // 먹일 먹이는 직접 고른다 (고르지 않은 호출만 기본값)
+    if (!baitItems().includes(bait)) return '고른 먹이가 가방에 없습니다. 먹일 먹이를 다시 골라 주세요.';
     if (v.sp < cost) return `기력이 부족합니다. (필요 ${cost})`;
   }
-  const multi = (a.kind === 'gather' || a.kind === 'battle') && MULTI_OPTIONS[mi].sec > 0;
+  const mopt = multiOpt(mi), multi = (a.kind === 'gather' || a.kind === 'battle') && mopt.sec > 0;
   const cycleSec = a.kind === 'rest' || a.kind === 'train' ? a.sec : a.kind === 'tame' ? TAME_SEC : a.kind === 'gather' ? GATHER_SEC : rand(MIN_CYCLE, MAX_CYCLE);
-  const cycles = multi ? Math.max(1, Math.floor(MULTI_OPTIONS[mi].sec / cycleSec)) : 1;
-  const total = multi ? MULTI_OPTIONS[mi].sec : cycleSec, spCost = cost * cycles;
+  const cycles = multi ? Math.max(1, Math.floor(mopt.sec / cycleSec)) : 1;
+  const total = multi ? mopt.sec : cycleSec, spCost = cost * cycles;
   if (v.sp < spCost) return `기력이 부족합니다. (필요 ${spCost}) 식량을 먹거나 휴식하세요.`;
   v.sp -= spCost;
   if (bait) removeItem(bait);
@@ -765,7 +772,39 @@ function travelLogFor(act, now = nowMs()) {
   }
   return out;
 }
-const activityLogFor = (act, now) => { const a = ACTIONS[act.id], k = a && a.kind; return k === 'battle' ? battleLogFor(act, now) : k === 'step' || k === 'trip' ? travelLogFor(act, now) : []; };
+
+/* ---------- 채집·채굴·낚시 묘사 (스테이터스에 따라 달라지는 문장) ---------- */
+const eulReul = w => { const c = (w || '').charCodeAt((w || '').length - 1) - 0xAC00; return c >= 0 && c % 28 !== 0 ? '을' : '를'; };
+const GATHER_START = { '채집': '주위를 둘러보며 손을 뻗었다.', '채굴': '곡괭이를 고쳐 쥐고 암벽 앞에 섰다.', '낚시': '낚싯줄을 풀어 물가에 드리웠다.' };
+const GATHER_SCENE = {
+  '채집': [p => `${p}의 풀숲을 헤치며 쓸 만한 것을 찾았다.`, p => `${p}의 바닥을 살피며 천천히 걸었다.`, p => `허리를 숙여 ${p}의 흙을 털어 냈다.`, p => `${p}의 바람 소리를 들으며 잠시 손을 쉬었다.`, p => `${p}에서 가방을 고쳐 메고 다시 손을 뻗었다.`],
+  '채굴': [p => `${p}의 바위를 두드려 소리를 확인했다.`, p => `곡괭이 끝에서 불꽃이 튀었다. ${p}는 단단하다.`, p => `${p}의 암벽 틈에 먼지가 자욱하게 일었다.`, p => `땀을 닦으며 ${p}의 바위를 올려다보았다.`, p => `부서진 돌 조각이 ${p}의 바닥에 흩어졌다.`],
+  '낚시': [p => `${p}의 수면이 잔잔하게 일렁였다.`, p => `찌가 살짝 흔들렸지만 아직 아니다.`, p => `${p}의 물가에 앉아 숨을 죽이고 기다렸다.`, p => `줄을 감았다 풀며 ${p}의 물살을 가늠했다.`, p => `멀리서 물새가 울었다. 낚싯대는 조용하다.`]
+};
+const GATHER_STYLE = { // [능력치][방식] = 문장 목록 (it = 대상 이름)
+  str: { '채집': [it => `근력으로 뿌리째 단단히 박힌 ${it}${eulReul(it)} 힘껏 뽑아 올렸다.`, it => `굵은 줄기도 맨손으로 꺾어 ${it}${eulReul(it)} 거뜬히 챙겼다.`], '채굴': [it => `근력을 실어 곡괭이를 내리찍자 바위가 쩍 갈라졌다.`, it => `묵직한 곡괭이질에 ${it}이(가) 박힌 단단한 바위가 부서졌다.`], '낚시': [it => `팔 힘으로 낚싯대를 강하게 당겨 버티는 줄을 끌어올렸다.`, it => `요동치는 낚싯대를 근력으로 꽉 붙들었다.`] },
+  int: { '채집': [it => `지식을 떠올려 ${it}이(가) 자랄 만한 자리를 정확히 짚었다.`, it => `주변 식생을 분석해 ${it}의 위치를 어림했다.`], '채굴': [it => `암석의 결을 읽어 가장 약한 지점에 곡괭이를 겨눴다.`, it => `광맥의 방향을 머릿속으로 그려 보고 파 들어갔다.`], '낚시': [it => `물살과 수심을 계산해 미끼를 던질 자리를 골랐다.`, it => `물고기가 모이는 길목을 추리해 줄을 옮겼다.`] },
+  agi: { '채집': [it => `가벼운 몸놀림으로 수풀 사이를 오가며 ${it}${eulReul(it)} 재빠르게 모았다.`, it => `발소리를 죽이고 빠르게 움직여 ${it}${eulReul(it)} 하나씩 낚아챘다.`], '채굴': [it => `재빠른 손놀림으로 흔들리는 돌 사이를 피해 파냈다.`, it => `무너지는 돌 조각을 날렵하게 피하며 곡괭이를 휘둘렀다.`], '낚시': [it => `입질이 오자마자 번개같이 낚싯대를 채 올렸다.`, it => `재빠른 손목 놀림으로 줄을 감았다.`] },
+  wil: { '채집': [it => `지칠 법도 하지만 의지로 버티며 ${it}${eulReul(it)} 찾아 걸었다.`, it => `포기하지 않고 같은 자리를 한 번 더 뒤졌다.`], '채굴': [it => `팔이 저려도 의지로 곡괭이를 멈추지 않았다.`, it => `단단한 바위에 맞서 묵묵히 같은 곳을 계속 두드렸다.`], '낚시': [it => `입질이 없어도 의지로 끈기 있게 줄을 지켜보았다.`, it => `긴 기다림에도 흔들리지 않고 자세를 유지했다.`] },
+  sen: { '채집': [it => `예민한 감각으로 풀잎 사이의 ${it} 냄새를 먼저 알아챘다.`, it => `손끝의 감각만으로 ${it}${eulReul(it)} 상하지 않게 따냈다.`], '채굴': [it => `곡괭이를 타고 오는 진동으로 안쪽의 빈 공간을 느꼈다.`, it => `소리의 미세한 차이로 ${it}이(가) 있는 곳을 짐작했다.`], '낚시': [it => `줄 끝에 닿는 작은 떨림을 감각으로 먼저 알아챘다.`, it => `물결의 미세한 변화를 읽고 때를 맞췄다.`] },
+  luk: { '채집': [it => `무심코 발길이 닿은 곳에 ${it}이(가) 눈에 띄었다.`, it => `우연히 들춘 잎 아래에서 좋은 느낌이 났다.`], '채굴': [it => `아무렇게나 내리친 곳에서 반짝이는 것이 보였다.`, it => `운이 따랐는지 곡괭이가 광맥의 결을 정확히 갈랐다.`], '낚시': [it => `아무 데나 던진 줄에 묘한 기운이 느껴졌다.`, it => `우연히 던진 자리에 물고기 떼가 지나갔다.`] }
+};
+function gatherLogFor(act, now = nowMs()) {
+  const a = ACTIONS[act.id] || {}, how = a.method || '채집', it = (a.items && a.items[0]) || '재료', place = a.terrain && a.terrain.name || '이 일대';
+  const n = Math.floor(Math.max(0, now - act.startAt) / 1000 / BATTLE_LOG_SEC), out = [{ text: `${place}에서 ${GATHER_START[how] || GATHER_START['채집']}`, kind: 'note' }];
+  const base = (act.seed || Math.floor(act.startAt / 1000)) >>> 0, t = totalStats();
+  const keys = Object.keys(STAT_STYLE).filter(k => (t[k] || 0) >= 1);
+  const sum = keys.reduce((x, k) => x + t[k], 0);
+  for (let k = 1; k <= n && k <= 600; k++) { if (k < n - 40) continue;
+    const r = seededRng(base * 41 + k * 4219), roll = r();
+    if (sum > 0 && roll < .55) { // 스테이터스가 높을수록 그 능력치의 묘사가 자주 나온다
+      let x = r() * sum, st = keys[0]; for (const kk of keys) { x -= t[kk]; if (x <= 0) { st = kk; break; } }
+      out.push({ text: pickR(r, GATHER_STYLE[st][how] || GATHER_STYLE[st]['채집'])(it), kind: 'hit' });
+    } else out.push({ text: pickR(r, GATHER_SCENE[how] || GATHER_SCENE['채집'])(place), kind: 'note' });
+  }
+  return out;
+}
+const activityLogFor = (act, now) => { const a = ACTIONS[act.id], k = a && a.kind; return k === 'battle' ? battleLogFor(act, now) : k === 'step' || k === 'trip' ? travelLogFor(act, now) : k === 'gather' ? gatherLogFor(act, now) : []; };
 /* 모의 전투 한 라운드 (실제 결과에는 영향 없음). st = { hp, mhp }  */
 const MOCK_HIT = .35;
 function mockRound(m, st, r = Math.random) {
@@ -822,7 +861,7 @@ function resolveAction(id, cycles = 1, spPaid = 0, act = null) {
   if (a.kind === 'train') {
     const pool = learnableRecipes(), rc = pool.length ? pick(pool) : null;
     r.exp = TRAIN_EXP; r.sp = 0;
-    if (rc) { state.learned.push(rc.out); r.recipe = rc.out; r.text = `1시간의 단련 끝에 「${rc.out}」 제작법을 익혔습니다. (재료: ${Object.entries(rc.mats).map(([n, q]) => `${n} ×${q}`).join(', ')})`; }
+    if (rc) { state.learned.push(rc.out); r.recipe = rc.out; r.text = `25분의 단련 끝에 「${rc.out}」 제작법을 익혔습니다. (재료: ${Object.entries(rc.mats).map(([n, q]) => `${n} ×${q}`).join(', ')})`; }
     else r.text = '단련을 마쳤습니다. 더 익힐 제작법은 없었습니다.';
     return r;
   }
@@ -840,7 +879,7 @@ function resolveAction(id, cycles = 1, spPaid = 0, act = null) {
   const rep0 = repeatCount(id);
   for (let i = 0; i < cycles; i++) {
     if (i > 0 && state.vitals.hp + r.hp <= HP_RETREAT) { stop = `HP가 ${HP_RETREAT} 이하로 떨어져 중단했습니다.`; break; }
-    const great = a.kind === 'gather' && chance(fx.ggreat), mult = great ? 2 : 1, keep = chance((a.kind === 'gather' ? Math.min(1, GATHER_FIND + weatherFx().gather) : 1) * repeatChance(rep0 + i + 1));
+    const great = a.kind === 'gather' && chance(fx.ggreat), mult = great ? 2 : 1, keep = chance((a.kind === 'gather' ? Math.min(1, GATHER_FIND + weatherFx().gather) : 1) * (a.kind === 'gather' ? gatherRepeat : repeatChance)(rep0 + i + 1));
     if (!keep) lowered++;
     if (great) greats++;
     if (a.kind === 'gather') {
@@ -1057,7 +1096,7 @@ function applyMove(path, done) {
     const tz = terrainIndex(tileOf(z, x, y));
     if (tz >= 0) {
       discover('zones', `${z.id}:${z.terrains[tz].name}`);
-      if (chance(TRAVEL_FIND + effects().rare * .05)) { const n = pick(z.terrains[tz].gather); if (addItem(n, 1)) travelFinds.push(n); } // 길가에서 아주 드물게 재료를 줍는다
+      if (chance(TRAVEL_FIND + effects().rare * .05 + effects().travelFind)) { const n = pick(z.terrains[tz].gather); if (addItem(n, 1)) travelFinds.push(n); } // 길가에서 아주 드물게 재료를 줍는다
     }
   }
   const ch = tileOf(z, d.x, d.y);
@@ -1067,6 +1106,7 @@ function applyMove(path, done) {
       d.done.push(idx); state.eventAt[`${d.zone}:${idx}`] = nowMs();
       const ev = z.events[idx % z.events.length];
       const er = { text: `${ev.title} — ${ev.text}`, items: ev.items || [], exp: ev.exp || 0, money: ev.money || 0, hp: ev.hp || 0, sp: ev.sp || 0, spCost: 0, buff: null };
+      if (er.hp < 0 && chance(effects().travelHurt)) { er.hp = 0; er.text += ' 민첩하게 몸을 피해 다치지 않았다.'; } // 민첩: 이동 중 사건으로 다칠 확률 감소
       floorLoss(er);
       state.pending = { id: `${z.id} 이벤트`, result: er };
       return 'event';
@@ -1318,7 +1358,7 @@ function deliverJob(picks) {
 
 /* ---------- 농장 ---------- */
 const farmPlotCount = () => FARM_PLOTS[state.character.rank] || FARM_PLOTS.F;
-const growMs = crop => Math.round(CROPS[crop].grow * 60000 * (1 - jobFx().farmTime));
+const growMs = crop => Math.round(CROPS[crop].grow * 60000 * (1 - Math.min(.7, jobFx().farmTime + effects().farmTime)));
 const plotReady = p => !!p && nowMs() - p.at >= growMs(p.crop);
 function plantCrop(i, seed) {
   const crop = ITEMS[seed] && ITEMS[seed].seed;
@@ -1374,19 +1414,26 @@ function setActivePet(i) {
   return null;
 }
 /* ---- 펫 자동 탐험: 24시간 뒤 선택한 지상 구역의 재료를 가져온다 ---- */
-const expLeft = p => p.exp ? Math.max(0, p.exp.at + PET_EXP_MS - nowMs()) : 0;
+const PET_NAME_MAX = 8;
+const petName = p => (p && p.name) || PET_SPECIES[p.id].name; // 이름을 붙이지 않았으면 종 이름
+function renamePet(i, name) { // 빈 이름이면 종 이름으로 되돌린다
+  const p = state.pets[i]; if (!p) return '펫이 없습니다.';
+  p.name = cleanText(name, PET_NAME_MAX); save(); return null;
+}
+const expLeft = p => p.exp ? Math.max(0, p.exp.at + (p.exp.ms || PET_EXP_MS) - nowMs()) : 0;
 const expReady = p => !!p.exp && expLeft(p) === 0;
-function sendExpedition(i, zoneId) {
+function sendExpedition(i, zoneId, baitName = null) {
   const p = state.pets[i], z = DANGER_ZONES.find(x => x.id === zoneId);
   if (!p) return '펫이 없습니다.';
   if (!z) return '갈 수 있는 구역이 아닙니다.';
   if (state.location !== '개인실') return '탐험 보내기는 개인실에서 할 수 있습니다.';
   if (p.exp) return '이미 탐험 중입니다.';
   if (state.petActive === i) return '동행 중인 펫은 먼저 동행을 해제하세요.';
-  const bait = baitItems()[0];
-  if (!bait) return '탐험을 떠나는 펫에게 줄 먹이(작물·펫 사료)가 필요합니다.';
+  if (!baitItems().length) return '탐험을 떠나는 펫에게 줄 먹이(작물·펫 사료)가 필요합니다.';
+  const bait = baitName == null ? baitItems()[0] : baitName;
+  if (!baitItems().includes(bait)) return '고른 먹이가 가방에 없습니다. 줄 먹이를 다시 골라 주세요.';
   removeItem(bait);
-  p.exp = { zone: zoneId, at: nowMs() }; p.fedAt = nowMs(); save();
+  p.exp = { zone: zoneId, at: nowMs(), ms: Math.round(PET_EXP_MS * (1 - effects().petTime)) }; p.fedAt = nowMs(); save();
   return null;
 }
 /* 탐험 결과 계산: 구역 지형들의 재료 풀에서 확률로 가져온다 */

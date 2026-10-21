@@ -85,7 +85,7 @@ function renderBars() {
 /* 시간제 버프 + 펫(든든한 동안) + 서브잡(상시) */
 function allBuffs() {
   const list = activeBuffs(), p = activePet(), j = state.subjob;
-  if (p && petFed(p)) list.push({ id: `펫 · ${PET_SPECIES[p.id].name}`, type: 'buff', icon: 'pets', desc: `함께 다니는 펫. 타일 이동 시간 -${Math.round(petBuff(p) * 100)}%`, endAt: p.fedAt + PET_FED_MS });
+  if (p && petFed(p)) list.push({ id: `펫 · ${petName(p)}`, type: 'buff', icon: 'pets', desc: `함께 다니는 펫. 타일 이동 시간 -${Math.round(petBuff(p) * 100)}%`, endAt: p.fedAt + PET_FED_MS });
   if (j) list.push({ id: `서브잡 · ${j.name}`, type: 'buff', icon: 'work', desc: jobActive() ? `Lv.${j.level} ${jobFxText()}` : `Lv.${j.level} 오늘 납품을 마치면 적용: ${jobFxText(true)}`, endAt: jobActive() ? nextKstMidnight(j.lastAt) : 0 });
   { const w = todayWeather(); list.push({ id: `날씨 · ${w.name}`, type: 'buff', icon: w.icon, desc: w.desc, endAt: 0, weather: true }); }
   return list;
@@ -120,9 +120,12 @@ function renderStatus() {
   badge.classList.toggle('hidden', !pts);
   $('#statusBody').innerHTML = '<div class="stat-grid">' + STAT_DEFS.map(d => {
     const bonus = t[d.key] - state.stats[d.key];
-    const eff = d.fx.map(([k, label, sign, unit]) => `<span class="eff-l">${label}</span><b class="eff-v">${sign}${round1(fx[k] * 100)}${unit}</b>`).join('');
-    return `<div class="stat" data-tip-title="${d.name} · ${d.fx[0][1]}" data-tip-desc="${esc(d.tip)}"><div class="stat-head"><b>${d.name}</b><small>${d.en}</small><span class="stat-val">${state.stats[d.key]}${bonus ? `<em class="${bonus < 0 ? 'neg' : ''}">${bonus > 0 ? '+' : ''}${bonus}</em>` : ''}</span>` +
-      `${pts ? `<button class="stat-plus" data-act="stat-up" data-stat="${d.key}" title="포인트 사용">${icon('add')}</button>` : ''}</div><div class="stat-eff">${eff}</div></div>`;
+    // 카드마다 효과가 2개(기본 효과 + 추가 효과): 숫자 아래 화살표로 슬라이드쇼처럼 넘겨 본다 (카드 크기는 그대로)
+    const bf = STAT_BUFFS.find(x => x.stat === d.key), [k0, l0, s0, u0] = d.fx[0], idx = (view.statSlide && view.statSlide[d.key]) ? 1 : 0;
+    const cur = idx ? { label: bf.label, val: `${bf.sign}${round1(fx[bf.key] * 100)}${bf.unit}`, tip: bf.tip } : { label: l0, val: `${s0}${round1(fx[k0] * 100)}${u0}`, tip: d.tip };
+    return `<div class="stat" data-tip-title="${d.name} · ${cur.label}" data-tip-desc="${esc(cur.tip)}"><div class="stat-head"><b>${d.name}</b><small>${d.en}</small><span class="stat-val">${state.stats[d.key]}${bonus ? `<em class="${bonus < 0 ? 'neg' : ''}">${bonus > 0 ? '+' : ''}${bonus}</em>` : ''}</span>` +
+      `${pts ? `<button class="stat-plus" data-act="stat-up" data-stat="${d.key}" title="포인트 사용">${icon('add')}</button>` : ''}</div>` +
+      `<div class="stat-eff stat-slide"><div class="se-main"><span class="eff-l">${cur.label}</span><b class="eff-v">${cur.val}</b></div><button class="se-next" data-act="stat-slide" data-stat="${d.key}" title="${idx ? '이전 효과' : '다음 효과'} (${idx + 1}/2)" aria-label="${idx ? '이전 효과 보기' : '다음 효과 보기'}">${icon(idx ? 'chevron_left' : 'chevron_right')}<i>${idx + 1}/2</i></button></div></div>`;
   }).join('') + '</div>';
   const g = $('#statusBody .stat-grid'); if (g) view.statH = Math.round(g.getBoundingClientRect().height) || view.statH;
 }
@@ -238,7 +241,7 @@ function renderCraft() {
     const it = ITEMS[rc.out], ok = canCraft(rc) && !state.crafting;
     const mats = Object.entries(rc.mats).map(([n, q]) => `<span class="${countItem(n) >= q ? '' : 'lack'}">${esc(n)} ${countItem(n)}/${q}</span>`).join(' · ');
     return `<div class="recipe"><div class="round-avatar">${icon(it.icon)}</div><div class="grow"><strong>${esc(rc.out)} <em class="tag">${esc(craftCat(rc.out))}</em></strong><small class="effect">${esc(itemEffect(rc.out))}</small><small>제작 시간 ${fmtTime(craftSec(rc) * 1000)} · ${mats}</small></div><button class="primary" data-act="craft" data-index="${i}" ${ok ? '' : 'disabled'}>제작</button></div>`;
-  }).join('') + (() => { const n = RECIPES.filter(rc => !recipeKnown(rc)).length; return n ? `<div class="empty">개인실의 '단련'(1시간)으로 새 레시피를 배울 수 있어요. (남은 ${n}종 · 승급하면 후보가 늘어납니다)</div>` : ''; })() || '<div class="empty">레시피가 없습니다.</div>';
+  }).join('') + (() => { const n = RECIPES.filter(rc => !recipeKnown(rc)).length; return n ? `<div class="empty">개인실의 '단련'(25분)으로 새 레시피를 배울 수 있어요. (남은 ${n}종 · 승급하면 후보가 늘어납니다)</div>` : ''; })() || '<div class="empty">레시피가 없습니다.</div>';
 }
 const renderBag = () => { renderEquip(); renderInventory(); renderCraft(); renderStatus(); renderLeftTab(); };
 
@@ -315,6 +318,12 @@ function setLocation(id) { // 시작할 때 저장된 위치를 화면에 반영
   renderMapHead(); renderMap(); renderAction(); renderSide();
 }
 /* 시간이 걸리는 행동(타일 이동 등)만 확인창을 거친다. 지도 이동·입장·퇴장은 즉시라 바로 실행한다 */
+function baitPickHtml() { // 길들일 때 먹일 먹이를 직접 고른다
+  const have = {}; baitItems().forEach(n => { have[n] = (have[n] || 0) + 1; });
+  const names = Object.keys(have); if (!names.length) return '';
+  if (!names.includes(view.bait)) view.bait = names[0];
+  return `<div class="row-gap"><label class="tiny" for="tameBait">먹일 먹이</label><select id="tameBait">${names.map(n => `<option value="${esc(n)}" ${n === view.bait ? 'selected' : ''}>${esc(n)} ×${countItem(n)} (친밀도 +${ITEMS[n].feed})</option>`).join('')}</select></div>`;
+}
 function askAction(id, target) { view.phase = 'confirm'; view.id = id; view.mult = 0; view.target = target || null; renderAction(); }
 function doTravel(id) {
   const res = travelTo(id);
@@ -375,7 +384,7 @@ function renderAction() {
     const act = state.active, a = ACTIONS[act.id], rep = act.cycles > 1 ? ` · ${act.cycles}회 반복` : '';
     main.innerHTML = `<h3>${icon('hourglass_top')} 진행 중 · ${esc(a.title)}${rep}</h3><p>${esc(a.action)}</p>` +
       `<div class="progress"><span id="runBar"></span></div><div class="run-meta"><span id="runLeft"></span><span>창을 닫아도 시간은 흐릅니다</span></div>` +
-      (['battle', 'step', 'trip'].includes(a.kind) ? '<div class="battle-log" id="battleLog" aria-live="off"></div>' : '') +
+      (['battle', 'step', 'trip', 'gather'].includes(a.kind) ? '<div class="battle-log" id="battleLog" aria-live="off"></div>' : '') +
       `<div class="reward-actions">${devBtn()}<button data-act="action-abort">중단</button></div>`;
     $('#choices').innerHTML = choicesHtml(true);
     updateRunning();
@@ -392,7 +401,8 @@ function renderAction() {
     const a = ACTIONS[view.id], todo = a.kind === 'todo', multi = a.kind === 'gather' || a.kind === 'battle', pv = previewOf(view.id, view.mult);
     if (pv.err) { resetPhase(); renderAction(); return; }
     html += `<div class="action-confirm-inline"><div class="cf-head"><strong>${esc(confirmTitle(a))}</strong>${todo ? '' : `<span class="cf-time">${icon('schedule')} ${esc(pv.time)}</span>`}</div><p>${esc(pv.desc || a.action)}</p>` +
-      (multi ? `<div class="chips mult">${MULTI_OPTIONS.map((o, i) => `<button class="chip ${i === view.mult ? 'active' : ''}" data-act="mult" data-i="${i}">${o.label}</button>`).join('')}</div>` : '') +
+      (a.kind === 'tame' ? baitPickHtml() : '') +
+      (multi ? `<div class="chips mult">${MULTI_OPTIONS.map((o, i) => `<button class="chip ${i === view.mult ? 'active' : ''}" data-act="mult" data-i="${i}">${o.label}</button>`).join('')}</div>${MULTI_OPTIONS[view.mult].custom ? `<div class="row-gap custom-time"><label class="tiny" for="customMin">직접 입력</label><input id="customMin" type="number" min="${CUSTOM_MIN_MIN}" max="${CUSTOM_MIN_MAX}" step="1" value="${customMultiMin}"><span class="tiny">분 (${CUSTOM_MIN_MIN}분~${CUSTOM_MIN_MAX / 60}시간)</span></div>` : ''}` : '') +
       (todo ? '' : `${pv.odds ? `<small class="odds">확률 · ${esc(pv.odds)}</small>` : ''}<small class="gain"><b>보상</b> ${esc(pv.gain)}</small><small class="risk"><b>위험</b> ${esc(pv.cost)}</small>${pv.note ? `<small class="repeat-note">${esc(pv.note)}</small>` : ''}`) +
       `<div class="confirm-actions"><button data-act="action-cancel">${todo ? '닫기' : '취소'}</button>${todo ? '' : `<button class="primary" data-act="action-run">${esc(runLabel(a))}</button>`}</div></div>`;
   }
@@ -435,10 +445,10 @@ function tick() {
   if (pruneBuffs()) { renderBuffs(); save(); }
   renderBuffs(); // 펫의 든든함이 끝나면 버프 아이콘도 사라진다
   if (resetBoardQuests()) { renderSide(); toast('수주한 임무가 24시간이 지나 리셋되었습니다.'); }
-  farmRefresh();
+  farmRefresh(); petSideRefresh();
   awardTitles();
   newUnlocks().forEach(t => { addLog(t); toast(t); sfx('levelup'); notifyDone(t); });
-  state.pets.forEach(p => { const k = p.id + (p.exp ? p.exp.at : 0); if (expReady(p) && !view.petBack[k]) { view.petBack[k] = true; toast(`${PET_SPECIES[p.id].name}이(가) ${p.exp.zone} 탐험에서 돌아왔어요. 개인실에서 수확물을 받으세요.`); sfx('done'); } });
+  state.pets.forEach(p => { const k = p.id + (p.exp ? p.exp.at : 0); if (expReady(p) && !view.petBack[k]) { view.petBack[k] = true; toast(`${petName(p)}이(가) ${p.exp.zone} 탐험에서 돌아왔어요. 개인실에서 수확물을 받으세요.`); sfx('done'); } });
   state.farm.plots.forEach((p, i) => { const k = i + ':' + (p ? p.at : 0); if (p && plotReady(p) && !view.farmBack[k]) { view.farmBack[k] = true; const msg = `밭 ${i + 1}번의 ${p.crop}이(가) 다 자랐어요. 개인실에서 수확하세요.`; toast(msg); addLog(msg); sfx('done'); notifyDone(msg); } });
   if (pruneMail()) renderMailBadge();
   if (renderMailBadge.n !== unreadMail()) { renderMailBadge.n = unreadMail(); renderMailBadge(); }
@@ -467,11 +477,48 @@ function renderLogs() {
   $('#logList').innerHTML = state.logs.map(l => `<div class="log-row"><time>${esc(l.time)}</time><p>${esc(l.text)}</p></div>`).join('') || '<div class="empty">기록이 없습니다.</div>';
 }
 const rewardText = q => `보상 · EXP +${q.reward.exp} · CR +${q.reward.money}${(q.reward.items || []).map(([n, c]) => ` · ${n} ×${c}`).join('')}`;
+/* 오른쪽 '펫' 탭: 보유 펫과 탐험 중인 펫의 상태를 한눈에 */
+const petRoot = el => (el && el.closest && el.closest('#sideView')) || $('#modalBody');
+const petRefresh = el => { if (el && el.closest && el.closest('#sideView')) renderSide(); else { openPets(true); renderSide(); } };
+const petSig = () => state.pets.map(p => `${p.id}|${p.name || ''}|${p.exp ? (expReady(p) ? 'R' : 'E') + p.exp.zone : state.petActive === state.pets.indexOf(p) ? 'A' : 'W'}|${p.bond}`).join(';') + '|' + state.side + '|' + (view.petSub || '상태') + '|' + view.petNaming + '|' + state.petActive;
+function petPanelHtml() {
+  const sub = ['상태', '도감', '돌보기'].includes(view.petSub) ? view.petSub : '상태', tabs = `<div class="subtabs">${['상태', '도감', '돌보기'].map(t => `<button class="${t === sub ? 'active' : ''}" data-act="pet-sub" data-sub="${t}">${t}</button>`).join('')}</div>`;
+  if (sub === '돌보기') return tabs + petCareHtml();
+  if (sub === '도감') { const l = codexEntries('펫'); return tabs + `<p class="tiny codex-count">지금 데리고 있는 펫 ${l.filter(e => e.known).length} / ${l.length}</p><div class="codex-list">` + l.map(e => e.known
+    ? `<div class="nearby-row"><div class="round-avatar">${icon(e.icon)}</div><div class="grow"><strong>${esc(e.name)}</strong><small>${esc(e.desc)}</small></div></div>`
+    : `<div class="nearby-row unknown"><div class="round-avatar">${icon('help')}</div><div class="grow"><strong>???</strong><small>아직 길들이지 못했습니다. 서식지: ${esc(e.where)}</small></div></div>`).join('') + '</div>'; }
+  const rows = state.pets.map((p, i) => {
+    const sp = PET_SPECIES[p.id], away = !!p.exp, ready = expReady(p), act = state.petActive === i;
+    const st = away ? (ready ? `${p.exp.zone} 탐험에서 돌아왔어요!` : `${p.exp.zone} 탐험 중 · <span class="pet-left" data-i="${i}">${fmtLeft(expLeft(p))}</span> 남음`) : act ? '동행 중' : '대기 중';
+    const pct = away && !ready ? Math.round((1 - expLeft(p) / (p.exp.ms || PET_EXP_MS)) * 100) : 0;
+    return `<div class="nearby-row pet-side-row ${away ? 'away' : ''}"><div class="round-avatar">${icon(sp.icon || 'pets')}</div><div class="grow"><strong>${esc(petName(p))}${p.name ? ` <small>(${esc(sp.name)})</small>` : ''}</strong>` +
+      `<small>${st}</small><small>친밀도 ${p.bond}/100</small>` + (away && !ready ? `<div class="bar thin"><span class="pet-bar" data-i="${i}" style="width:${pct}%"></span></div>` : '') + `</div>` +
+      (ready ? `<button class="primary" data-act="pet-claim" data-i="${i}">수확물 받기</button>` : '') + `</div>`;
+  }).join('');
+  return tabs + rows;
+}
+function petSideRefresh() { // 매 초: 남은 시간 갱신, 상태가 바뀌면 다시 그린다
+  if (state.side !== '펫') return;
+  if (view.petSig !== petSig()) { renderSide(); return; }
+  $$('#sideView .pet-left').forEach(e => { const p = state.pets[+e.dataset.i]; if (p && p.exp) e.textContent = fmtLeft(expLeft(p)); });
+  $$('#sideView .pet-bar').forEach(e => { const p = state.pets[+e.dataset.i]; if (p && p.exp) e.style.width = Math.round((1 - expLeft(p) / (p.exp.ms || PET_EXP_MS)) * 100) + '%'; });
+}
 function renderSide() {
   $$('[data-side]').forEach(b => b.classList.toggle('active', b.dataset.side === state.side));
   const mine = takenQuests().filter(x => !state.questDone[x.id]), q = mine.length;
-  $('#rightTitle').textContent = state.side; $('#rightTitleIcon').textContent = state.side === '임무' ? 'assignment' : 'groups';
-  $('#rightMeta').textContent = state.side === '임무' ? `진행 ${q}` : `${NEARBY_PLAYERS.length}명`;
+  const jt = $('#sideJobTab'); if (jt) jt.classList.toggle('hidden', !state.subjob);
+  if (state.side === '서브잡' && !state.subjob) state.side = '임무'; // 서브잡을 그만두면 탭도 사라진다
+  const pt = $('#sidePetTab'); if (pt) pt.classList.toggle('hidden', !state.pets.length);
+  if (state.side === '펫' && !state.pets.length) state.side = '임무';
+  $$('[data-side]').forEach(b => b.classList.toggle('active', b.dataset.side === state.side));
+  $('#rightTitle').textContent = state.side; $('#rightTitleIcon').textContent = state.side === '임무' ? 'assignment' : state.side === '서브잡' ? 'work' : state.side === '펫' ? 'pets' : 'groups';
+  $('#rightMeta').textContent = state.side === '임무' ? `진행 ${q}` : state.side === '서브잡' ? (state.subjob ? `Lv.${state.subjob.level}` : '') : state.side === '펫' ? `${state.pets.length}마리 · 탐험 ${state.pets.filter(p => p.exp).length}` : `${NEARBY_PLAYERS.length}명`;
+  if (state.side === '펫') { $('#sideView').innerHTML = petPanelHtml(); view.petSig = petSig(); return; }
+  if (state.side === '서브잡') {
+    $('#sideView').innerHTML = jobPanelHtml(true);
+    const pk = view.jobPicks || {}; $$('#sideView .job-pick').forEach(i => { if (pk[i.dataset.n] != null) i.value = Math.min(+i.max, pk[i.dataset.n]); }); jobPickSum($('#sideView'));
+    return;
+  }
   if (state.side === '주위 대원') {
     $('#sideView').innerHTML = NEARBY_PLAYERS.map(([n, s]) =>
       `<div class="nearby-row"><div class="round-avatar">${icon('person')}</div><div class="grow"><strong>${esc(n)}</strong><small>${esc(LOCATIONS[state.location].name)} · ${esc(s)}</small></div><button data-act="player" data-player="${esc(n)}">정보</button><button data-act="trade-open" data-player="${esc(n)}">교환</button></div>`).join('') +
@@ -637,8 +684,8 @@ function openSettings() {
 }
 
 /* ---------- 도감: 구역 / 아이템 / 몬스터 / 레시피 (서브 분류 칩) ---------- */
-const CODEX_TABS = ['구역', '아이템', '몬스터', '레시피'];
-const CODEX_SUBS = { '구역': ['공중', '지상', '지형'], '아이템': ITEM_CATEGORIES, '몬스터': MONSTER_KINDS, '레시피': [] };
+const CODEX_TABS = ['구역', '아이템', '몬스터', '펫', '레시피'];
+const CODEX_SUBS = { '구역': ['공중', '지상', '지형'], '아이템': ITEM_CATEGORIES, '몬스터': MONSTER_KINDS, '펫': [], '레시피': [] };
 const codexView = { tab: '구역', sub: null };
 const defaultGuildName = () => `${state.character.name}의 길드`.slice(0, GUILD_NAME_MAX);
 /* 아이템 획득처: 데이터에서 한 번만 계산해 둔다 */
@@ -670,6 +717,8 @@ function codexEntries(tab) {
     ...DANGER_ZONES.flatMap(z => z.terrains.map(t => ({ sub: '지형', icon: t.icon, name: `${t.name} · ${z.id}`, desc: t.desc, known: c.zones[`${z.id}:${t.name}`] })))
   ];
   if (tab === '아이템') return Object.entries(ITEMS).map(([n, it]) => ({ sub: it.tab, icon: it.icon, name: n, desc: it.desc, src: sourceText(n), known: c.items[n] }));
+  if (tab === '펫') return Object.entries(PET_SPECIES).map(([id, sp]) => { const p = state.pets.find(x => x.id === id); // 지금 데리고 있는 펫만 '발견'으로 보인다
+    return { sub: '', icon: sp.icon || 'pets', name: p ? `${petName(p)}${p.name ? ` (${sp.name})` : ''}` : sp.name, desc: p ? `고향 ${sp.zone} · 친밀도 ${p.bond}/100 · 동행 시 이동 시간 -${Math.round(petBuff(p) * 100)}%` : '', where: p ? '' : sp.zone, known: !!p }; });
   if (tab === '몬스터') return DANGER_ZONES.flatMap(z => z.terrains.flatMap(t => t.monsters.map(m => ({ sub: m.kind, icon: m.kind === '짐승' ? 'pets' : 'bug_report', name: m.name,
     desc: `${m.desc} (HP ${m.hp} · 공격 ${m.atk})`, where: `${z.name} · ${t.name}`, known: c.monsters[m.name] }))));
   return RECIPES.map(rc => ({ sub: '', icon: ITEMS[rc.out].icon, name: rc.out, desc: Object.entries(rc.mats).map(([n, q]) => `${n} ×${q}`).join(' + '), known: recipeKnown(rc), badge: recipeKnown(rc) ? (c.recipes[rc.out] ? '제작 완료' : '미제작') : (rankAtLeast(rc.rank) ? '단련으로 습득 가능' : `${rc.rank}등급부터 단련으로 습득`) }));
@@ -1041,29 +1090,34 @@ const A = {
     if (txt) { sfx('ok'); toast(`수확: ${txt}${err ? ` (${err})` : ''}`); } else { toast(err || '수확할 작물이 없습니다.'); sfx('error'); }
   },
   'pet-feed': el => {
-    const sel = $('#feedSel'); if (sel && sel.value) view.feed = sel.value;
+    const sel = petRoot(el).querySelector('#feedSel'); if (sel && sel.value) view.feed = sel.value;
     const err = feedPet(+el.dataset.i, view.feed);
     if (err) { toast(err); sfx('error'); return; }
-    renderBag(); renderBuffs(true); sfx('ok'); toast('펫이 맛있게 먹었습니다.'); openPets(true);
+    renderBag(); renderBuffs(true); sfx('ok'); toast('펫이 맛있게 먹었습니다.'); petRefresh(el);
   },
-  'pet-active': el => { const i = +el.dataset.i, err = setActivePet(state.petActive === i ? -1 : i); if (err) { toast(err); sfx('error'); return; } renderBuffs(true); openPets(true); },
+  'pet-name': el => { view.petNaming = +el.dataset.i; petRefresh(el); const e = $('#petNameIn'); if (e) e.focus(); },
+  'pet-name-cancel': el => { view.petNaming = -1; petRefresh(el); },
+  'pet-name-save': el => { const err = renamePet(+el.dataset.i, petRoot(el).querySelector('#petNameIn').value); if (err) { toast(err); sfx('error'); return; } view.petNaming = -1; renderBuffs(true); sfx('ok'); toast('펫 이름을 저장했습니다.'); petRefresh(el); },
+  'pet-sub': el => { view.petSub = el.dataset.sub; renderSide(); },
+  'pet-active': el => { const i = +el.dataset.i, err = setActivePet(state.petActive === i ? -1 : i); if (err) { toast(err); sfx('error'); return; } renderBuffs(true); petRefresh(el); },
   'pet-send': el => {
-    const sel = $('#expZone'); if (sel) view.expZone = sel.value;
-    const err = sendExpedition(+el.dataset.i, view.expZone);
+    const sel = petRoot(el).querySelector('#expZone'); if (sel) view.expZone = sel.value;
+    const fsel = petRoot(el).querySelector('#feedSel'); if (fsel && fsel.value) view.feed = fsel.value;
+    const err = sendExpedition(+el.dataset.i, view.expZone, view.feed);
     if (err) { toast(err); sfx('error'); return; }
-    renderBag(); sfx('ok'); toast(`펫이 ${view.expZone} 탐험을 떠났습니다. 24시간 뒤에 돌아와요.`); openPets(true);
+    renderBag(); sfx('ok'); toast(`펫이 ${view.expZone} 탐험을 떠났습니다. 24시간 뒤에 돌아와요.`); petRefresh(el);
   },
   'pet-claim': el => {
     const r = claimExpedition(+el.dataset.i);
     if (typeof r === 'string') { toast(r); sfx('error'); return; }
     renderBag(); sfx('ok'); toast(`탐험 수확: ${r.items.map(([n, q]) => `${n} ×${q}`).join(', ')}`);
     if (r.lost.length) toast(`가방이 가득 차 ${r.lost.map(([n, q]) => `${n} ${q}개`).join(', ')}을(를) 얻지 못했습니다.`);
-    addLog(`펫 탐험 수확: ${r.items.map(([n, q]) => `${n} ×${q}`).join(' · ')}`); openPets(true);
+    addLog(`펫 탐험 수확: ${r.items.map(([n, q]) => `${n} ×${q}`).join(' · ')}`); petRefresh(el);
   },
   'job-join': () => {
     const err = joinSubjob($('#jobName').value, $$('.job-tag:checked').map(c => c.value));
     if (err) { toast(err); sfx('error'); return; }
-    renderProfile(); renderBuffs(true); addLog(`서브잡에 가입했습니다: ${state.subjob.name}`); sfx('ok'); toast('서브잡에 가입했습니다.'); openJob();
+    renderProfile(); renderBuffs(true); addLog(`서브잡에 가입했습니다: ${state.subjob.name}`); sfx('ok'); toast('서브잡에 가입했습니다.'); renderSide(); openJob();
   },
   'dev-open': () => openDevPanel(),
   'bug-send': async () => {
@@ -1117,22 +1171,25 @@ const A = {
   'local-load-ok': () => { if (view.localSave) cloudApply(view.localSave.data); },
   'cloud-use-server': () => { if (view.cloudServer) cloudApply(view.cloudServer.data); },
   'cloud-use-local': async () => { try { await Cloud.push(JSON.parse(JSON.stringify(state))); toast('이 기기의 진행을 서버에 저장했어요.'); closeModal(); } catch (e) { toast('서버에 저장하지 못했어요.'); } },
-  'job-auto': () => {
+  'job-auto': el => {
     let left = jobNeed(state.subjob.level);
-    const want = {}; jobStock().forEach(r => { const q = Math.min(left, r.q); want[r.n] = q; left -= q; });
-    $$('.job-pick').forEach(i => { i.value = want[i.dataset.n] || 0; }); jobPickSum();
+    const root = jobRoot(el), want = {}; jobStock().forEach(r => { const q = Math.min(left, r.q); want[r.n] = q; left -= q; });
+    root.querySelectorAll('.job-pick').forEach(i => { i.value = want[i.dataset.n] || 0; }); jobPickSum(root);
+    if (root.id === 'sideView') view.jobPicks = want;
   },
-  'job-deliver': () => {
-    const picks = {}; $$('.job-pick').forEach(i => { picks[i.dataset.n] = Number(i.value) || 0; });
+  'job-deliver': el => {
+    const picks = {}; jobRoot(el).querySelectorAll('.job-pick').forEach(i => { picks[i.dataset.n] = Number(i.value) || 0; });
+    const fromSide = !!el.closest('#sideView'); view.jobPicks = {};
     const r = deliverJob(picks);
     if (typeof r === 'string') { toast(r); sfx('error'); return; }
     renderProfile(); renderBag(); renderBuffs(true); sfx(r.up ? 'levelup' : 'ok');
     toast(`납품 완료: ${r.n}개 · +${r.pay} CR${r.up ? ` · 서브잡 레벨 업! Lv.${state.subjob.level}` : ''}`);
     if (r.up) addLog(`서브잡 레벨 업: ${state.subjob.name} Lv.${state.subjob.level}`);
-    openJob();
+    if (fromSide) renderSide(); else openJob();
   },
-  'job-quit': () => { if (!view.quitAsk) { view.quitAsk = true; openJob(true); return; } view.quitAsk = false; quitSubjob(); renderProfile(); renderBuffs(true); toast('서브잡을 그만두었습니다.'); openJob(); },
+  'job-quit': () => { if (!view.quitAsk) { view.quitAsk = true; openJob(true); return; } view.quitAsk = false; quitSubjob(); renderProfile(); renderBuffs(true); toast('서브잡을 그만두었습니다.'); renderSide(); openJob(); },
   'status-page': el => { view.statusPage = +el.dataset.p === 1 ? 1 : 0; renderStatus(); },
+  'stat-slide': el => { view.statSlide = view.statSlide || {}; view.statSlide[el.dataset.stat] = !view.statSlide[el.dataset.stat]; renderStatus(); },
   'extras-open': () => openMock(),
   'mock-start': () => mockStart(),
   'guild-open': () => openGuild(),
@@ -1213,7 +1270,7 @@ const A = {
     if (m.err) { toast(m.err); sfx('error'); return; }
     askAction('타일 이동', [x, y]);
   },
-  mult: el => { view.mult = +el.dataset.i; renderAction(); },
+  mult: el => { view.mult = +el.dataset.i; renderAction(); const e = $('#customMin'); if (e) { e.focus(); e.select(); } },
   'action-cancel': () => { resetPhase(); renderAction(); },
   'action-run': () => {
     const a = ACTIONS[view.id];
@@ -1224,7 +1281,9 @@ const A = {
     if (a.kind === 'step') { doMove(); return; }
     if (a.kind === 'enter') { enterDungeon(a.zone); resetPhase(); renderMapHead(); renderMap(); renderAction(); renderSide(); return; }
     if (a.kind === 'leave') { leaveDungeon(); resetPhase(); renderMapHead(); renderMap(); renderAction(); return; }
-    const msg = startAction(view.id, view.mult);
+    { const ce = $('#customMin'); if (ce && MULTI_OPTIONS[view.mult].custom) setCustomMin(ce.value); }
+    const bsel = $('#tameBait'); if (bsel) view.bait = bsel.value;
+    const msg = startAction(view.id, view.mult, ACTIONS[view.id].kind === 'tame' && bsel ? view.bait : null);
     if (msg) { toast(msg); sfx('error'); return; }
     renderBars();
     resetPhase(); renderAction();
@@ -1630,16 +1689,16 @@ function openProfile(keepScroll) {
     `<div class="pc-ability"><b>${icon('bolt')} 이능력 · ${esc(c.ability || '미설정')}</b><p>${esc(c.abilityDesc || '이능력 설명이 없습니다.')}</p></div>` +
     `<div class="choice-label">칭호 ${state.titles.length}개 보유 · 눌러서 착용</div><div class="title-chips">${TITLE_DEFS.filter(([n]) => state.titles.includes(n)).map(([n, d]) =>
       `<button class="tchip ${c.title === n ? 'on' : ''}" data-act="title-set" data-title="${esc(n)}" title="달성: ${esc(d)}">${esc(n)}</button>`).join('')}</div>` +
-    `<div class="setting-group"><h3>캐릭터 정보 수정</h3>` +
+    `<div class="setting-group"><div class="pf-head"><h3>캐릭터 정보 수정</h3><div class="pf-side">${editing ? `<button class="pf-edit on" data-act="profile-edit-cancel">${icon('close')} 편집 취소</button>` : `<button class="pf-edit" data-act="profile-edit" ${lock > 0 ? 'disabled' : ''}>${icon('edit')} 편집</button>`}<div class="pf-sw">${sw('cFriend', '친구 추가 허용', dr ? dr.fr : c.allowFriend, 'near', dis)}${sw('cGuild', '길드 초대 허용', dr ? dr.gu : c.allowGuild, 'near', dis)}</div></div></div>` +
     (lock > 0 ? `<p class="tiny">프로필(칭호 제외)은 수정 후 24시간이 지나야 다시 바꿀 수 있어요. 남은 시간 ${fmtLong(lock)}</p>` : state.profileEditAt ? '' : '<p class="tiny">첫 수정은 바로 가능하고, 그 뒤에는 24시간마다 한 번 수정할 수 있어요.</p>') +
     row('이름', `<input id="cName" maxlength="12" ${dis} value="${esc(dr ? dr.name : c.name)}">`) +
     row('이능력 이름', `<input id="cAbility" maxlength="20" ${dis} value="${esc(dr ? dr.ab : c.ability)}">`) +
     row('나이', `<input id="cAge" ${dis} type="number" min="${AGE_MIN}" max="${AGE_MAX}" value="${esc(dr ? dr.age : c.age)}">`) +
     row('키워드', `<input id="cKeywords" maxlength="60" ${dis} placeholder="쉼표로 구분 (예: 과묵, 정찰)" value="${esc(dr ? dr.kw : c.keywords)}">`) +
     row('이능력 설명', `<textarea id="cAbilityDesc" maxlength="300" ${dis} placeholder="어떤 능력인지 자유롭게 적어 주세요">${esc(dr ? dr.desc : c.abilityDesc)}</textarea>`) +
-    `<div class="sw-cols">${sw('cFriend', '친구 추가 허용', dr ? dr.fr : c.allowFriend, 'near', dis)}${sw('cGuild', '길드 초대 허용', dr ? dr.gu : c.allowGuild, 'near', dis)}</div></div>` +
+    `</div>` +
     `<p class="tiny">사진 버튼을 눌러 이미지를 고르면 ${AVATAR_PX}px로 자동 압축됩니다. (png·jpg·webp·gif)</p>`,
-    [editing ? '<button data-act="profile-edit-cancel">수정 취소</button>' : btnClose, `<button data-act="avatar-clear" ${img ? '' : 'disabled'}>이미지 삭제</button>`, editing ? '<button class="primary" data-act="char-save">저장</button>' : `<button class="primary" data-act="profile-edit" ${lock > 0 ? 'disabled' : ''}>${icon('edit')} 수정</button>`]);
+    [`<button data-act="avatar-clear" ${img ? '' : 'disabled'}>이미지 삭제</button>`, `<button class="primary" data-act="char-save" ${editing ? '' : 'disabled'}>저장</button>`]);
   $('#modalBody').scrollTop = st0;
 }
 $('#avatarButton').onclick = () => { view.profEdit = false; openProfile(); };
@@ -1788,8 +1847,8 @@ function farmRefresh() {
 }
 
 /* ---------- 펫 (개인실) ---------- */
-function openPets(keepScroll) {
-  const st = keepScroll ? $('#modalBody').scrollTop : 0, feeds = Object.values(state.inventory).flat().filter(x => ITEMS[x.n].feed);
+function petCareHtml() { // 펫 돌보기 화면 (창과 오른쪽 '펫' 탭이 함께 쓴다)
+  const feeds = Object.values(state.inventory).flat().filter(x => ITEMS[x.n].feed);
   if (!feeds.some(x => x.n === view.feed)) view.feed = feeds[0] ? feeds[0].n : null;
   if (!DANGER_ZONES.some(z => z.id === view.expZone)) view.expZone = DANGER_ZONES[0].id;
   const owned = Object.fromEntries(state.pets.map(p => [p.id, p]));
@@ -1798,27 +1857,32 @@ function openPets(keepScroll) {
   const rows = state.pets.map((p, i) => {
     const sp = PET_SPECIES[p.id], fed = petFed(p), act = state.petActive === i, away = !!p.exp, ready = expReady(p);
     const state1 = away ? (ready ? `${p.exp.zone} 탐험에서 돌아왔어요!` : `${p.exp.zone} 탐험 중 · ${fmtLeft(expLeft(p))} 남음`) : act ? '동행 중' : '대기 중';
-    return `<div class="pet-row ${act ? 'active' : ''}"><div class="round-avatar">${icon('pets')}</div><div class="grow"><strong>${esc(sp.name)} <span class="tag">${esc(state1)}</span></strong>` +
+    return `<div class="pet-row ${act ? 'active' : ''}"><div class="round-avatar">${icon('pets')}</div><div class="grow">${view.petNaming === i ? `<div class="search-row"><input id="petNameIn" maxlength="${PET_NAME_MAX}" placeholder="${esc(sp.name)}" value="${esc(p.name || '')}"><button class="primary" data-act="pet-name-save" data-i="${i}">저장</button><button data-act="pet-name-cancel">취소</button></div>` : `<strong>${esc(petName(p))} ${p.name ? `<small>(${esc(sp.name)})</small> ` : ''}<span class="tag">${esc(state1)}</span> <button class="mini" data-act="pet-name" data-i="${i}" title="이름 짓기" aria-label="이름 짓기">${icon('edit')}</button></strong>`}` +
       `<small>친밀도 ${p.bond}/100 · ${fed ? `든든함 ${fmtLeft(Math.max(0, p.fedAt + PET_FED_MS - nowMs()))} 남음` : '배고픔'} · 동행 시 이동 시간 -${Math.round(petBuff(p) * 100)}%${fed ? '' : ' (먹이를 줘야 적용)'}</small>` +
       `<div class="bar thin"><span style="width:${p.bond}%"></span></div></div>` +
       `<div class="col-btns">${away ? (ready ? `<button class="primary" data-act="pet-claim" data-i="${i}">수확물 받기</button>` : '<button disabled>탐험 중</button>')
         : `<button data-act="pet-feed" data-i="${i}" ${feeds.length ? '' : 'disabled'}>먹이 주기</button><button data-act="pet-active" data-i="${i}">${act ? '동행 해제' : '함께 다니기'}</button><button data-act="pet-send" data-i="${i}" ${act || !feeds.length ? 'disabled' : ''}>탐험 보내기</button>`}</div></div>`;
   }).join('');
-  modal('펫 돌보기', `<p class="tiny">펫은 지상의 짐승 지형에서 <b>길들이기</b>로 얻어요. 펫 보관함은 소지품과 별도이고, 같은 종은 한 마리만 모을 수 있어요. 한 마리는 <b>동행</b>(먹이를 준 뒤 24시간 타일 이동 시간 단축), 나머지는 <b>24시간 자동 탐험</b>을 보낼 수 있어요.</p>` +
+  return `<p class="tiny">펫은 지상의 짐승 지형에서 <b>길들이기</b>로 얻어요. 펫 보관함은 소지품과 별도이고, 같은 종은 한 마리만 모을 수 있어요. 한 마리는 <b>동행</b>(먹이를 준 뒤 24시간 타일 이동 시간 단축), 나머지는 <b>24시간 자동 탐험</b>을 보낼 수 있어요.</p>` +
     `<div class="choice-label">펫 도감 ${state.pets.length}/${petCap()}</div><div class="pet-dex-grid">${dex}</div>` +
     `<div class="row-gap"><label class="tiny" for="feedSel">줄 먹이</label><select id="feedSel" ${feeds.length ? '' : 'disabled'}>${feeds.length ? feeds.map(x => `<option value="${esc(x.n)}" ${x.n === view.feed ? 'selected' : ''}>${esc(x.n)} ×${x.q} (친밀도 +${ITEMS[x.n].feed})</option>`).join('') : '<option>먹이 없음 (작물·펫 사료)</option>'}</select>` +
     `<label class="tiny" for="expZone">탐험 구역</label><select id="expZone">${DANGER_ZONES.map(z => `<option value="${esc(z.id)}" ${z.id === view.expZone ? 'selected' : ''}>${esc(z.name)}</option>`).join('')}</select></div>` +
     `<p class="tiny">탐험을 보내면 먹이 1개가 들고, 돌아오면 그 구역의 재료·희귀 재료·특산 씨앗을 확률로 가져와요. (친밀도가 높고 고향 구역이면 더 많이)</p>` +
-    (rows || '<div class="empty">아직 길들인 펫이 없습니다. 지상에서 작물이나 펫 사료를 들고 짐승을 길들여 보세요.</div>'), [btnClose]);
+    (rows || '<div class="empty">아직 길들인 펫이 없습니다. 지상에서 작물이나 펫 사료를 들고 짐승을 길들여 보세요.</div>');
+}
+function openPets(keepScroll) {
+  const st = keepScroll ? $('#modalBody').scrollTop : 0;
+  modal('펫 돌보기', petCareHtml(), [btnClose]);
   $('#modalBody').scrollTop = st;
 }
 
 /* ---------- 서브잡 (상점가) ---------- */
-function jobPickSum() {
-  const t = $$('.job-pick').reduce((a, i) => a + (Number(i.value) || 0), 0), el = $('#jobPickTotal');
+const jobRoot = el => (el && el.closest && el.closest('#sideView')) || $('#modalBody');
+function jobPickSum(root = $('#modalBody')) {
+  const t = [...root.querySelectorAll('.job-pick')].reduce((a, i) => a + (Number(i.value) || 0), 0), el = root.querySelector('.job-total');
   if (el && state.subjob) el.textContent = `고른 수량 ${t} / ${jobNeed(state.subjob.level)}`;
 }
-document.addEventListener('input', e => { if (e.target.classList && e.target.classList.contains('job-pick')) jobPickSum(); });
+document.addEventListener('input', e => { if (e.target.classList && e.target.classList.contains('job-pick')) { jobPickSum(jobRoot(e.target)); if (e.target.closest('#sideView')) { view.jobPicks = view.jobPicks || {}; view.jobPicks[e.target.dataset.n] = e.target.value; } } });
 function openTrade(name, keepScroll) {
   const st0 = keepScroll === true && $('#modalBody') ? $('#modalBody').scrollTop : 0, p = NEARBY_PLAYERS.find(x => x[0] === name);
   if (!p) { toast('주위에 없는 대원입니다.'); return; }
@@ -1901,6 +1965,19 @@ function openEnhance(keepScroll) {
   modal('장비 강화', tabs + intro + rows, [btnClose], true);
   $('#modalBody').scrollTop = st0;
 }
+function jobPanelHtml(side) { // 서브잡 납품 화면 (창과 오른쪽 '서브잡' 탭이 함께 쓴다. 탭에서는 그만두기가 없다)
+  const j = state.subjob;
+  const need = jobNeed(j.level), stock = jobStock(), have = stock.reduce((a, r) => a + r.q, 0), cd = jobCooldown(), act = jobActive();
+  const picks = stock.length ? stock.map(r => `<div class="job-pick-row"><span class="grow">${icon(ITEMS[r.n].icon)} ${esc(r.n)} <small>(보유 ${r.q} · 판매가 ${r.price})</small></span><input type="number" class="job-pick" data-n="${esc(r.n)}" min="0" max="${r.q}" value="0" ${cd ? 'disabled' : ''}></div>`).join('') : `<div class="empty">납품할 수 있는 ${esc(j.tags.join('/'))} 태그 아이템이 없습니다.</div>`;
+  return (`<div class="job-card"><div class="job-head"><strong>${esc(j.name)}</strong><span class="tag">Lv.${j.level}${j.level >= JOB_MAX_LV ? ' MAX' : ''}</span>${j.tags.map(t => `<span class="tag">#${t}</span>`).join('')}</div>` +
+    `<div class="bar thin"><span style="width:${j.level >= JOB_MAX_LV ? 100 : j.prog / jobProgNeed(j.level) * 100}%"></span></div>` +
+    `<small>${j.level >= JOB_MAX_LV ? '최고 레벨입니다.' : `다음 레벨까지 납품 ${j.prog}/${jobProgNeed(j.level)}일`}</small>` +
+    `<small>${act ? `<b>버프 적용 중</b> (${fmtLeft(cd)} 남음): ${esc(jobFxText())}` : `<b>버프 꺼짐</b> — 오늘 납품을 마치면 적용: ${esc(jobFxText(true))}`}</small>` +
+    `<small>오늘의 납품: ${j.tags.join('/')} 태그 아이템 <b>${need}개</b>를 직접 골라 내세요 (납품 대금 = 판매가의 125%)</small>` +
+    (cd ? `<small class="risk">다음 납품까지 ${fmtLeft(cd)}</small>` : '') + `</div>` +
+    `<div class="job-picks">${picks}</div><small class="job-total">고른 수량 0 / ${need}</small>` +
+    `<div class="row-gap"><button data-act="job-auto" ${cd || have < need ? 'disabled' : ''}>싼 것부터 채우기</button><button class="primary" data-act="job-deliver" ${cd || have < need ? 'disabled' : ''}>납품하기</button>${side ? '' : `<button data-act="job-quit" class="${view.quitAsk ? 'danger' : ''}">${view.quitAsk ? '정말 그만두기 (레벨 초기화)' : '서브잡 그만두기'}</button>`}</div>`);
+}
 function openJob(keepScroll) {
   const j = state.subjob, st = keepScroll ? $('#modalBody').scrollTop : 0;
   const lore = `<div class="job-lore">${icon('memory')}<p>클론 인간의 몸은 새로 만들어 낼 수 있어도, <b>근본이 되는 인간의 기억</b>은 가만히 두면 조금씩 닳아 없어집니다. 사람다운 일상을 반복하는 것 — 무언가를 만들고, 거두고, 나누는 것 — 이 기억을 붙잡아 두는 유일한 방법입니다. 서브잡은 그래서 필요한 일입니다.</p></div>`;
@@ -1911,17 +1988,7 @@ function openJob(keepScroll) {
       [btnClose, '<button class="primary" data-act="job-join">가입</button>'], true);
     return;
   }
-  const need = jobNeed(j.level), stock = jobStock(), have = stock.reduce((a, r) => a + r.q, 0), cd = jobCooldown(), act = jobActive();
-  const picks = stock.length ? stock.map(r => `<div class="job-pick-row"><span class="grow">${icon(ITEMS[r.n].icon)} ${esc(r.n)} <small>(보유 ${r.q} · 판매가 ${r.price})</small></span><input type="number" class="job-pick" data-n="${esc(r.n)}" min="0" max="${r.q}" value="0" ${cd ? 'disabled' : ''}></div>`).join('') : `<div class="empty">납품할 수 있는 ${esc(j.tags.join('/'))} 태그 아이템이 없습니다.</div>`;
-  modal(`서브잡 · ${j.name}`, lore +
-    `<div class="job-card"><div class="job-head"><strong>${esc(j.name)}</strong><span class="tag">Lv.${j.level}${j.level >= JOB_MAX_LV ? ' MAX' : ''}</span>${j.tags.map(t => `<span class="tag">#${t}</span>`).join('')}</div>` +
-    `<div class="bar thin"><span style="width:${j.level >= JOB_MAX_LV ? 100 : j.prog / jobProgNeed(j.level) * 100}%"></span></div>` +
-    `<small>${j.level >= JOB_MAX_LV ? '최고 레벨입니다.' : `다음 레벨까지 납품 ${j.prog}/${jobProgNeed(j.level)}일`}</small>` +
-    `<small>${act ? `<b>버프 적용 중</b> (${fmtLeft(cd)} 남음): ${esc(jobFxText())}` : `<b>버프 꺼짐</b> — 오늘 납품을 마치면 적용: ${esc(jobFxText(true))}`}</small>` +
-    `<small>오늘의 납품: ${j.tags.join('/')} 태그 아이템 <b>${need}개</b>를 직접 골라 내세요 (납품 대금 = 판매가의 125%)</small>` +
-    (cd ? `<small class="risk">다음 납품까지 ${fmtLeft(cd)}</small>` : '') + `</div>` +
-    `<div class="job-picks">${picks}</div><small id="jobPickTotal">고른 수량 0 / ${need}</small>` +
-    `<div class="row-gap"><button data-act="job-auto" ${cd || have < need ? 'disabled' : ''}>싼 것부터 채우기</button><button class="primary" data-act="job-deliver" ${cd || have < need ? 'disabled' : ''}>납품하기</button><button data-act="job-quit" class="${view.quitAsk ? 'danger' : ''}">${view.quitAsk ? '정말 그만두기 (레벨 초기화)' : '서브잡 그만두기'}</button></div>`, [btnClose], true);
+  modal(`서브잡 · ${j.name}`, lore + jobPanelHtml(false), [btnClose], true);
   $('#modalBody').scrollTop = st;
 }
 /* ---- 서버 길드: 초대/가입 신청은 상대(또는 길드장)가 수락해야 이루어진다 ---- */
@@ -2302,3 +2369,5 @@ function onGuildMessage(name, text) {
   renderChat();
   if (alert && state.chatTab !== '길드') { sfx('ok'); toast(`[길드] ${name}: ${text.slice(0, 40)}`); }
 }
+
+document.addEventListener('change', e => { if (e.target && e.target.id === 'customMin') { setCustomMin(e.target.value); renderAction(); const n = $('#customMin'); if (n) n.blur(); } });
