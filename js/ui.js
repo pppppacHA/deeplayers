@@ -729,7 +729,10 @@ async function friendPoll() { // 서버에서 친구 신청·메일·교환 소�
     } catch (e) { /* 서버 준비 전 */ }
     try { // 서버 친구 목록(메일·교환 주소)
       const fl = await Cloud.listFriends(); view.friendUid = {};
-      for (const f of fl) { const n = cleanText(f.name, 12); if (n && /^[0-9a-f-]{36}$/i.test(f.uid)) { view.friendUid[n] = f.uid; if (!state.friends.includes(n)) { addFriendAccepted(n); changed = true; } } }
+      const names = [];
+      for (const f of fl) { const n = cleanText(f.name, 12); if (n && /^[0-9a-f-]{36}$/i.test(f.uid)) { view.friendUid[n] = f.uid; if (!names.includes(n)) names.push(n); } }
+      // 서버 친구 목록이 기준이다: 친구가 닉네임을 바꿔도 옛 이름이 따로 남지 않는다
+      if (names.join('\n') !== state.friends.join('\n')) { state.friends = names.slice(0, FRIEND_MAX); save(); changed = true; }
     } catch (e) { /* 서버 준비 전 */ }
     try { // 메일
       const ml = await Cloud.fetchMail(), ids = [];
@@ -768,7 +771,12 @@ if (Cloud.enabled) { setTimeout(friendPoll, 5000); setInterval(friendPoll, 60000
 function openFriends(noPoll) {
   Object.keys(view.avatars).forEach(k => { if (!view.avatars[k]) delete view.avatars[k]; }); // 못 찾았던 이름은 창을 열 때 다시 물어본다
   renderMailBadge();
-  const list = state.friends.map(n => `<div class="nearby-row"><div class="round-avatar" data-user="${esc(n)}">${avatarOf(n)}</div><div class="grow"><strong data-user="${esc(n)}">${esc(n)}</strong><small>${esc((samplePlayer(n) || ['', '온라인'])[1])}</small></div>${Cloud.enabled && Cloud.user() ? `<button data-act="ftrade-open" data-name="${esc(n)}">교환</button>` : ''}<button data-act="friend-remove" data-name="${esc(n)}">삭제</button></div>`).join('');
+  const on = Cloud.enabled && Cloud.user(), master = !!(state.guild && state.guild.master) && guildOnline();
+  const list = state.friends.map(n => { const uid = (view.friendUid || {})[n]; return `<div class="nearby-row"><div class="round-avatar" data-user="${esc(n)}">${avatarOf(n)}</div><div class="grow"><strong data-user="${esc(n)}">${esc(n)}</strong><small>${esc((samplePlayer(n) || ['', '온라인'])[1])}</small></div><div class="row-btns">` +
+    `<button data-act="friend-mail" data-name="${esc(n)}">메일</button>` +
+    (on ? `<button data-act="ftrade-open" data-name="${esc(n)}">교환</button>` : '') +
+    `<button data-act="friend-guild-invite" data-name="${esc(n)}" ${master && uid ? '' : 'disabled'} title="${master ? '길드에 초대합니다' : '길드장만 초대할 수 있어요'}">길드 초대</button>` +
+    `<button data-act="friend-remove" data-name="${esc(n)}">삭제</button></div></div>`; }).join('');
   modal('친구', `<div class="search-row"><input id="friendSearch" placeholder="대원 이름으로 검색" aria-label="대원 검색"><button data-act="friend-search">검색</button></div><div id="friendResult"></div><div id="friendInbox">${inboxHtml()}</div>` +
     `<div class="choice-label">친구 ${state.friends.length}/${FRIEND_MAX}</div><div id="friendList">${list || '<div class="empty">아직 친구가 없습니다. 주위 대원의 정보 창이나 검색으로 추가하세요.</div>'}</div>` +
     `<p class="tiny">서버에 로그인하면 이름으로 다른 대원을 찾을 수 있어요. 메일은 친구에게만 보낼 수 있어요.</p>`, [btnClose]);
@@ -806,7 +814,7 @@ function openMail(keepScroll) {
   let body;
   if (tab === '메일 보내기') {
     body = tabs + (state.friends.length ? '' : '<p class="tiny risk">받는 사람은 친구 목록에서 고를 수 있어요. 먼저 친구를 추가하세요. (친구 버튼)</p>') +
-      `<div class="srow fontrow"><span>받는 사람</span><select id="mailTo" ${state.friends.length ? '' : 'disabled'}>${state.friends.length ? state.friends.map(n => `<option>${esc(n)}</option>`).join('') : '<option value="">친구 없음</option>'}</select></div>` +
+      `<div class="srow fontrow"><span>받는 사람</span><select id="mailTo" ${state.friends.length ? '' : 'disabled'}>${state.friends.length ? state.friends.map(n => `<option ${n === view.mailTo ? 'selected' : ''}>${esc(n)}</option>`).join('') : '<option value="">친구 없음</option>'}</select></div>` +
       `<div class="srow fontrow"><span>제목</span><input id="mailSubject" maxlength="30" placeholder="메일 제목"></div>` +
       `<div class="srow fontrow"><span>내용</span><textarea id="mailBody" maxlength="300" placeholder="내용을 입력하세요 (300자)"></textarea></div>` +
       `<div class="choice-label">아이템 첨부 (선택)</div><div class="mail-att" id="mailItems"></div><div class="row-gap"><button data-act="mail-pick-open">${icon('inventory_2')} 소지품에서 고르기</button></div><small class="tiny" id="mailAttInfo"></small>` +
@@ -1161,6 +1169,21 @@ const A = {
     } catch (e) { toast('처리하지 못했어요.'); }
   },
   'guild-cancel': async el => { try { await Cloud.guildCancel(+el.dataset.id); openGuildOnline(true); } catch (e) { toast('취소하지 못했어요.'); } },
+  'guild-rename': async () => {
+    const name = cleanText($('#guildRename').value, GUILD_NAME_MAX);
+    if (name.length < GUILD_NAME_MIN) { toast(`길드 이름은 ${GUILD_NAME_MIN}~${GUILD_NAME_MAX}자로 입력하세요.`); sfx('error'); return; }
+    if (guildOnline()) {
+      try {
+        const r = await Cloud.guildRename(name);
+        if (!r || !r.ok) { sfx('error'); toast({ dup: '이미 있는 길드 이름이에요.', not_master: '길드장만 이름을 바꿀 수 있어요.', bad_name: `길드 이름은 ${GUILD_NAME_MIN}~${GUILD_NAME_MAX}자로 입력하세요.` }[r && r.msg] || '이름을 바꾸지 못했어요.'); return; }
+        sfx('ok'); toast(`길드 이름을 「${name}」(으)로 바꿨어요.`); addLog(`길드 이름을 「${name}」(으)로 바꿨습니다.`); openGuildOnline();
+      } catch (e) { toast('이름을 바꾸지 못했어요. 서버에 friends.sql 을 실행했는지 확인해 주세요.'); }
+      return;
+    }
+    const err = renameGuild(name);
+    if (err) { toast(err); sfx('error'); return; }
+    sfx('ok'); toast(`길드 이름을 「${name}」(으)로 바꿨어요.`); addLog(`길드 이름을 「${name}」(으)로 바꿨습니다.`); renderChat(); openGuild();
+  },
   'guild-create': async () => {
     if (guildOnline()) {
       const name = cleanText($('#guildName').value, GUILD_NAME_MAX);
@@ -1298,6 +1321,8 @@ const A = {
   },
 
   /* 캐릭터 / 설정 */
+  'profile-edit': () => { if (profileLockLeft() > 0) return; view.profEdit = true; openProfile(true); },
+  'profile-edit-cancel': () => { view.profEdit = false; openProfile(); },
   'char-save': () => {
     const c = state.character, left = profileLockLeft();
     if (left > 0) { toast(`프로필은 ${fmtLong(left)} 뒤에 다시 수정할 수 있어요.`); return; }
@@ -1305,7 +1330,7 @@ const A = {
       ability: cleanText($('#cAbility').value, 20) || c.ability, abilityDesc: cleanText($('#cAbilityDesc').value, 300),
       allowFriend: $('#cFriend').checked, allowGuild: $('#cGuild').checked };
     if (Object.keys(next).some(k => next[k] !== c[k])) { Object.assign(c, next); state.profileEditAt = nowMs(); toast('프로필을 수정했습니다. 24시간 뒤에 다시 수정할 수 있어요.'); }
-    renderProfile(); save(); closeModal();
+    view.profEdit = false; renderProfile(); save(); closeModal();
   },
   'settings-save': () => {
     state.settings = { bgmOn: $('#bgmOn').checked, bgmVolume: +$('#bgmVolume').value, clickOn: $('#clickOn').checked, alertOn: $('#alertOn').checked, sfxVolume: +$('#sfxVolume').value,
@@ -1465,6 +1490,17 @@ const A = {
     if (err) { toast(err); sfx('error'); return; }
     sfx('ok'); toast(`${el.dataset.name} 대원과 친구가 되었습니다.`); if ($('#friendList')) openFriends(); else closeModal();
   },
+  'friend-mail': el => { view.mailTab = '메일 보내기'; view.mailOpen = null; view.mailAtt = {}; view.mailInvPage = 1; view.mailTo = el.dataset.name; openMail(); },
+  'friend-guild-invite': async el => {
+    const name = el.dataset.name, uid = (view.friendUid || {})[name];
+    if (!uid || !(state.guild && state.guild.master)) { toast('길드장만 초대할 수 있어요.'); sfx('error'); return; }
+    el.disabled = true;
+    try {
+      const r = await Cloud.guildInvite(uid);
+      if (r && r.ok) { sfx('ok'); toast(`${name} 대원에게 길드 초대를 보냈어요. 수락하면 가입돼요.`); el.disabled = false; return; }
+      el.disabled = false; sfx('error'); toast({ full: '길드가 가득 찼어요.', limit: '대기 중인 초대가 너무 많아요. (최대 10건)', target_in_guild: '이미 길드가 있는 대원이에요.', not_found: '초대할 수 없는 대원이에요.', not_master: '길드장만 초대할 수 있어요.' }[r && r.msg] || '초대하지 못했어요.');
+    } catch (e) { el.disabled = false; toast('초대하지 못했어요.'); }
+  },
   'friend-remove': el => askConfirm('친구 삭제', `정말로 ${el.dataset.name} 대원을 친구에서 삭제할까요?`, '삭제하기', 'friend-remove-do', { name: el.dataset.name }, () => openFriends(true)),
   'friend-remove-do': el => { const uid = view.friendUid && view.friendUid[el.dataset.name]; removeFriend(el.dataset.name); if (uid && Cloud.enabled && Cloud.user()) Cloud.removeFriend(uid).catch(() => {}); if (view.friendUid) delete view.friendUid[el.dataset.name]; openFriends(true); },
   'codex-tab': el => { codexView.tab = el.dataset.codex; codexView.sub = null; $('#codexRoot').innerHTML = codexHtml(); },
@@ -1472,30 +1508,32 @@ const A = {
   'logout-ok': () => { closeModal(); if (Cloud.enabled && Cloud.user()) { if (_cloudTimer) { clearTimeout(_cloudTimer); _cloudTimer = 0; cloudAutoPush().finally(() => A['cloud-logout']()); } else A['cloud-logout'](); } else toast('서버 인증 기능은 아직 연결되지 않았습니다.'); },
 };
 async function viewUser(name) { // 이름·아이콘을 누르면 그 대원의 프로필을 보여준다 (나는 내 프로필)
-  if (name === '나' || name === state.character.name) { openProfile(); return; }
+  if (name === '나' || name === state.character.name) { view.profEdit = false; openProfile(); return; }
   const cell = (k, v) => `<div class="uc"><span>${esc(k)}</span><b>${esc(v)}</b></div>`;
-  const draw = (r, uid) => {
+  const draw = (r, uid, note) => {
     const has = state.friends.includes(name), p = samplePlayer(name), pr = r && r.ability !== undefined ? r : null;
     const st = r ? (r.online ? '온라인' : '자리 비움') : (REMOTE_PLAYERS[name] || (p && p[1]) || '알 수 없음');
     const kw = pr ? String(pr.keywords || '').split(',').map(t => t.trim()).filter(Boolean).map(t => '#' + cleanText(t, 10)).join(' ') : '';
     modal('프로필', `<div class="user-card"><div class="round-avatar big">${avatarOf(name)}</div><div class="uc-name">${pr && pr.title ? `<span class="title-chip">${esc(cleanText(pr.title, 20))}</span>` : ''}<strong>${esc(name)}</strong></div></div>` +
       `<div class="user-grid">${cell('상태', st)}${r ? cell('레벨', 'Lv.' + intIn(r.level, 1, MAX_LEVEL, 1)) + cell('등급', ('FEDCBAS'.includes(r.rank) ? r.rank : 'F') + '등급') : ''}${pr ? cell('나이', intIn(pr.age, 0, 999, 0) + '세') : ''}${cell('관계', has ? '친구' : '친구 아님')}${pr ? cell('길드', pr.guild ? cleanText(pr.guild, 12) : '-') : ''}</div>` +
       (kw ? `<div class="char-tags">${esc(kw)}</div>` : '') +
-      (pr ? `<div class="pc-ability"><b>${icon('bolt')} 이능력 · ${esc(cleanText(pr.ability, 20) || '미설정')}</b><p>${esc(cleanText(pr.abilityDesc, 300) || '이능력 설명이 없습니다.')}</p></div>` : (Cloud.enabled && Cloud.user() ? '<p class="tiny">자세한 프로필을 불러오는 중…</p>' : '<p class="tiny">서버에 로그인하면 이능력 등 자세한 프로필을 볼 수 있어요.</p>')),
+      (pr ? `<div class="pc-ability"><b>${icon('bolt')} 이능력 · ${esc(cleanText(pr.ability, 20) || '미설정')}</b><p>${esc(cleanText(pr.abilityDesc, 300) || '이능력 설명이 없습니다.')}</p></div>` : (Cloud.enabled && Cloud.user() ? `<p class="tiny">${esc(note || '자세한 프로필을 불러오는 중…')}</p>` : '<p class="tiny">서버에 로그인하면 이능력 등 자세한 프로필을 볼 수 있어요.</p>')),
       [btnClose, !has && uid ? `<button class="primary" data-act="friend-req" data-uid="${esc(uid)}" data-name="${esc(name)}">친구 신청</button>` : ''].filter(Boolean));
     view.userShown = name;
   };
   draw(null, '');
   if (!(Cloud.enabled && Cloud.user())) return;
   const ok = f => f && view.userShown === name && $('#overlay').classList.contains('open') && $('#modalBody').querySelector('.user-card');
+  let why = '프로필을 찾지 못했어요. (닉네임이 바뀌었거나 없는 대원일 수 있어요)';
   try {
     const f = await Cloud.getProfile(name);
     if (f && typeof f === 'object' && f.name) { if (ok(f)) draw(f, /^[0-9a-f-]{36}$/i.test(f.uid) ? f.uid : ''); return; }
-  } catch (e) { /* get_profile 이 아직 없으면 아래 검색 결과로 기본 정보만 보여준다 */ }
+  } catch (e) { why = '자세한 프로필(이능력 등)은 서버에 supabase/friends.sql 최신본을 실행해야 볼 수 있어요.'; }
   try {
     const f = (await Cloud.searchPlayers(name)).find(r => r && cleanText(r.name, 12) === name);
-    if (ok(f)) draw(f, /^[0-9a-f-]{36}$/i.test(f.uid) ? f.uid : '');
+    if (ok(f)) { draw(f, /^[0-9a-f-]{36}$/i.test(f.uid) ? f.uid : '', why); return; }
   } catch (e) { /* 서버 정보를 못 받아도 기본 정보는 보여준다 */ }
+  if (ok(true)) draw(null, '', why);
 }
 document.addEventListener('click', e => {
   const u = e.target.closest('[data-user]');
@@ -1585,7 +1623,7 @@ function openProfile(keepScroll) {
   const c = state.character, img = getAvatar(), tags = c.keywords.split(',').map(t => t.trim()).filter(Boolean).map(t => '#' + t).join(' ');
   // 이미 열려 있는 입력칸에 쓴 내용은 창을 다시 그려도 지우지 않는다
   const dr = $('#cName') ? { ab: $('#cAbility').value, name: $('#cName').value, age: $('#cAge').value, kw: $('#cKeywords').value, desc: $('#cAbilityDesc').value, fr: $('#cFriend').checked, gu: $('#cGuild').checked } : null;
-  const lock = profileLockLeft(), dis = lock > 0 ? 'disabled' : '';
+  const lock = profileLockLeft(), editing = !!view.profEdit && lock <= 0, dis = editing ? '' : 'disabled'; // 수정 버튼을 눌러야 입력칸이 열린다
   const row = (label, inner) => `<div class="srow fontrow pf-row"><span>${label}</span>${inner}</div>`;
   modal('프로필', `<div class="profile-card"><button class="avatar big ${img ? '' : 'empty'}" data-act="avatar-pick" title="이미지 변경" aria-label="프로필 이미지 변경">${img ? `<img src="${esc(img)}" alt="프로필">` : icon('add_a_photo')}<span class="avatar-edit">${icon('photo_camera')}</span></button>` +
     `<div class="pc-info"><div class="title-chip" id="pcTitle">${esc(c.title)}</div><strong>${esc(c.name || '-')}</strong><div class="char-meta">LV.${c.level}　${esc(c.rank)}등급　${c.age}세</div><div class="char-tags">${esc(tags)}</div>${state.subjob ? `<div class="char-job">${esc(`서브잡 · ${state.subjob.name} Lv.${state.subjob.level}`)}</div>` : ''}</div></div>` +
@@ -1601,10 +1639,10 @@ function openProfile(keepScroll) {
     row('이능력 설명', `<textarea id="cAbilityDesc" maxlength="300" ${dis} placeholder="어떤 능력인지 자유롭게 적어 주세요">${esc(dr ? dr.desc : c.abilityDesc)}</textarea>`) +
     `<div class="sw-cols">${sw('cFriend', '친구 추가 허용', dr ? dr.fr : c.allowFriend, 'near', dis)}${sw('cGuild', '길드 초대 허용', dr ? dr.gu : c.allowGuild, 'near', dis)}</div></div>` +
     `<p class="tiny">사진 버튼을 눌러 이미지를 고르면 ${AVATAR_PX}px로 자동 압축됩니다. (png·jpg·webp·gif)</p>`,
-    [btnClose, `<button data-act="avatar-clear" ${img ? '' : 'disabled'}>이미지 삭제</button>`, `<button class="primary" data-act="char-save" ${dis}>저장</button>`]);
+    [editing ? '<button data-act="profile-edit-cancel">수정 취소</button>' : btnClose, `<button data-act="avatar-clear" ${img ? '' : 'disabled'}>이미지 삭제</button>`, editing ? '<button class="primary" data-act="char-save">저장</button>' : `<button class="primary" data-act="profile-edit" ${lock > 0 ? 'disabled' : ''}>${icon('edit')} 수정</button>`]);
   $('#modalBody').scrollTop = st0;
 }
-$('#avatarButton').onclick = openProfile;
+$('#avatarButton').onclick = () => { view.profEdit = false; openProfile(); };
 $('#avatarFile').onchange = async e => {
   const f = e.target.files[0]; e.target.value = '';
   if (!f) return;
@@ -1636,9 +1674,13 @@ async function syncNotices() {
   state.chats['알림'] = [...NOTICE_FEED(), ...rows.slice().reverse().map(r => [cleanText(r.head, 20), cleanText(r.body, 300)])];
   if ($('#chatFeed')) renderChat();
 }
+const CHAT_COOL_MS = 3000; // 도배 방지: 채팅은 3초에 한 번
 function sendChat(val) {
   if (state.chatTab === '알림') { if (canNotice()) postNotice(val); else { toast('알림 채널은 공지만 받을 수 있어요.'); sfx('error'); } return; }
   if (state.chatTab === '길드' && !state.guild) { toast('길드가 없습니다. 위의 버튼으로 길드를 만들거나 가입하세요.'); sfx('error'); return; }
+  const wait = (view.chatAt || 0) + CHAT_COOL_MS - nowMs();
+  if (wait > 0) { toast(`채팅은 3초에 한 번만 보낼 수 있어요. (${Math.ceil(wait / 1000)}초 뒤)`); sfx('error'); return false; }
+  view.chatAt = nowMs();
   if (chatOnline() && CHAT_CH[state.chatTab]) { // 서버 채팅: 다른 대원에게도 보인다
     const tab = state.chatTab; state.flags.chatted = true;
     Cloud.chatSend(CHAT_CH[tab], val).then(r => { if (r && r.ok === false) { toast(r.msg === 'too_fast' ? '너무 빨리 보내고 있어요. 잠시 뒤에 보내 주세요.' : r.msg === 'no_channel' ? '길드가 없어 보낼 수 없어요.' : '보내지 못했어요.'); sfx('error'); } else chatPoll(); }).catch(() => { toast('보내지 못했어요. 서버에 friends.sql 을 실행했는지 확인해 주세요.'); sfx('error'); });
@@ -1892,7 +1934,7 @@ function guildSyncState(info) { // 서버의 길드 정보를 내 상태에 반�
   const others = members.filter((n, i) => i !== mine);
   const next = { name: cleanText(sg.name, GUILD_NAME_MAX), master: !!sg.master, members: others.slice(0, GUILD_MAX - 1) };
   if (!was || was.name !== next.name || was.master !== next.master || was.members.join() !== next.members.join()) {
-    const joined = !was || was.name !== next.name;
+    const joined = !was; // 이름만 바뀐 경우(길드장이 이름 변경)에는 길드 채팅 기록을 지우지 않는다
     state.guild = next;
     if (joined) state.chats['길드'] = [['시스템', `길드 「${next.name}」에 속해 있습니다.`]];
     save(); renderChat();
@@ -1918,6 +1960,7 @@ async function openGuildOnline(keepForm) {
   const mem = (g.members || []).map(m => ({ uid: m.uid, name: cleanText(m.name, 12), master: !!m.master }));
   modal(`길드 · ${cleanText(g.name, GUILD_NAME_MAX)}`, (g.master ? `<div class="search-row"><input id="guildQ" placeholder="대원 이름으로 검색" aria-label="대원 검색" value="${esc(dr.s)}"><button data-act="guild-find-player">검색</button></div><div id="guildFound"></div>` : '') + incHtml + sentHtml +
     `<div class="choice-label">길드원 ${mem.length}/${GUILD_MAX}</div><div class="member-grid">` + mem.map(m => `<div class="member-row"><div class="round-avatar" data-user="${esc(m.name)}">${avatarOf(m.name)}</div><div class="grow"><strong data-user="${esc(m.name)}">${esc(m.name)}</strong><small>${m.master ? '길드장' : '길드원'}${m.uid === Cloud.userUid ? ' (나)' : ''}</small></div></div>`).join('') + '</div>' +
+    (g.master ? `<div class="choice-label">길드 이름 변경</div><div class="search-row"><input id="guildRename" maxlength="${GUILD_NAME_MAX}" placeholder="${GUILD_NAME_MIN}~${GUILD_NAME_MAX}자" aria-label="새 길드 이름" value="${esc(cleanText(g.name, GUILD_NAME_MAX))}"><button data-act="guild-rename">변경</button></div>` : '') +
     `<p class="tiny">${g.master ? '길드장입니다. 위 검색으로 대원을 초대하거나 가입 신청을 수락할 수 있어요.' : '길드원입니다.'}</p>`,
     [btnClose, `<button class="danger" data-act="guild-leave">${g.master ? '길드 해산' : '길드 탈퇴'}</button>`]);
 }
@@ -1935,6 +1978,7 @@ function openGuild() {
   modal(`길드 · ${g.name}`, `<p class="tiny">${g.members.length + 1}/${GUILD_MAX}명 · ${g.master ? '길드장입니다. 아래에서 대원을 초대할 수 있어요.' : '길드원입니다.'}</p>` +
     `<div class="member-grid"><div class="member-row"><div class="round-avatar" data-user="${esc('나')}">${avatarOf('나')}</div><div class="grow"><strong data-user="${esc('나')}">${esc(state.character.name || '나')}</strong><small>${g.master ? '길드장 (나)' : '나'}</small></div></div>` +
     g.members.map(n => `<div class="member-row"><div class="round-avatar" data-user="${esc(n)}">${avatarOf(n)}</div><div class="grow"><strong data-user="${esc(n)}">${esc(n)}</strong><small>길드원</small></div></div>`).join('') + '</div>' +
+    (g.master ? `<div class="choice-label">길드 이름 변경</div><div class="search-row"><input id="guildRename" maxlength="${GUILD_NAME_MAX}" placeholder="${GUILD_NAME_MIN}~${GUILD_NAME_MAX}자" aria-label="새 길드 이름" value="${esc(g.name)}"><button data-act="guild-rename">변경</button></div>` : '') +
     (g.master && rest.length ? '<div class="choice-label">초대</div>' + rest.map(([n, st]) => `<div class="member-row"><div class="grow"><strong>${esc(n)}</strong><small>${esc(st)}</small></div><button data-act="guild-invite" data-name="${esc(n)}">초대</button></div>`).join('') : ''),
     [btnClose, `<button class="danger" data-act="guild-leave">${g.master ? '길드 해산' : '길드 탈퇴'}</button>`]);
 }
@@ -1942,8 +1986,7 @@ $('#chatForm').onsubmit = e => {
   e.preventDefault();
   const val = $('#chatInput').value.trim();
   if (!val) return;
-  $('#chatInput').value = '';
-  sendChat(val);
+  if (sendChat(val) !== false) $('#chatInput').value = ''; // 쿨타임에 걸리면 쓴 글을 지우지 않는다
 };
 /* 이모티콘: 입력창 위에 종류가 뜨고, 누르면 바로 전송 */
 function setTray(open) {

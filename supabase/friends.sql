@@ -452,7 +452,7 @@ begin
   ch := public.chat_channel(p_channel);
   if ch is null then return jsonb_build_object('ok', false, 'msg', 'no_channel'); end if;
   if p_body is null or char_length(trim(p_body)) < 1 or char_length(p_body) > 200 then return jsonb_build_object('ok', false, 'msg', 'bad_text'); end if;
-  if (select count(*) from public.chat_msgs where user_id = me and created_at > now() - interval '10 seconds') >= 6 then return jsonb_build_object('ok', false, 'msg', 'too_fast'); end if;
+  if exists (select 1 from public.chat_msgs where user_id = me and created_at > now() - interval '2500 milliseconds') then return jsonb_build_object('ok', false, 'msg', 'too_fast'); end if;
   select coalesce(nullif(data->'character'->>'name', ''), split_part((select email from auth.users where id = me), '@', 1)) into nm from public.saves where user_id = me;
   insert into public.chat_msgs(channel, user_id, name, body) values (ch, me, coalesce(nm, '?'), trim(p_body));
   if random() < .02 then delete from public.chat_msgs where created_at < now() - interval '3 days'; end if;
@@ -498,3 +498,19 @@ language sql security definer set search_path = public as $$
 $$;
 revoke all on function public.get_profile(text) from public, anon;
 grant execute on function public.get_profile(text) to authenticated;
+
+-- ===== 길드 이름 변경 (길드장만) =====
+create or replace function public.guild_rename(p_name text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare me uuid := auth.uid(); n text := trim(coalesce(p_name, '')); g public.guilds;
+begin
+  if me is null then raise exception 'no_auth'; end if;
+  select * into g from public.guilds where master_uid = me;
+  if g.id is null then return jsonb_build_object('ok', false, 'msg', 'not_master'); end if;
+  if char_length(n) not between 2 and 12 then return jsonb_build_object('ok', false, 'msg', 'bad_name'); end if;
+  if exists (select 1 from public.guilds where lower(name) = lower(n) and id <> g.id) then return jsonb_build_object('ok', false, 'msg', 'dup'); end if;
+  update public.guilds set name = n where id = g.id;
+  return jsonb_build_object('ok', true);
+end $$;
+revoke all on function public.guild_rename(text) from public, anon;
+grant execute on function public.guild_rename(text) to authenticated;

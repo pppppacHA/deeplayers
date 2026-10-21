@@ -24,7 +24,7 @@ def api(route):
     if '/rpc/search_players' in u and 'guild' not in u: return route.fulfill(headers=h, body=json.dumps([{'uid': '11111111-1111-1111-1111-111111111111', 'name': '미나', 'rank': 'E', 'level': '5', 'online': True}, {'uid': '22222222-2222-2222-2222-222222222222', 'name': '<img src=x onerror=alert(1)>', 'rank': 'F', 'level': '1', 'online': False}] if body.get('p_q') else []))
     if '/rpc/send_friend_req' in u: server['sent'].append(body.get('p_to')); return route.fulfill(headers=h, body=json.dumps({'ok': True, 'msg': 'sent', 'name': '미나'}))
     if '/rpc/friend_inbox' in u: return route.fulfill(headers=h, body=json.dumps({'incoming': server['incoming'], 'results': server['results'], 'sent': server.get('fsent', [])}))
-    if '/rpc/answer_friend_req' in u: server['answers'].append([body.get('p_id'), body.get('p_accept')]); server['incoming'] = []; return route.fulfill(headers=h, body=json.dumps({'ok': True, 'name': '하늘'}))
+    if '/rpc/answer_friend_req' in u: server['answers'].append([body.get('p_id'), body.get('p_accept')]); server['incoming'] = []; server['friends'] = [{'uid': '33333333-3333-3333-3333-333333333333', 'name': '하늘'}]; return route.fulfill(headers=h, body=json.dumps({'ok': True, 'name': '하늘'}))
     if '/rpc/ack_friend_req' in u: server['acks'].append(body.get('p_id')); server['results'] = []; return route.fulfill(headers=h, body='null')
     if '/rpc/list_friends' in u: return route.fulfill(headers=h, body=json.dumps(server['friends']))
     if '/rpc/send_mail' in u: server['mails'].append(body); return route.fulfill(headers=h, body=json.dumps({'ok': True}))
@@ -41,8 +41,11 @@ def api(route):
     if '/rpc/guild_invite' in u: server['gcalls'].append(['invite', body]); return route.fulfill(headers=h, body=json.dumps({'ok': True}))
     if '/rpc/guild_apply' in u: server['gcalls'].append(['apply', body]); return route.fulfill(headers=h, body=json.dumps({'ok': True}))
     if '/rpc/guild_answer' in u: server['gcalls'].append(['answer', body]); server['ginfo']['incoming'] = []; return route.fulfill(headers=h, body=json.dumps({'ok': True, 'joined': True}))
+    if '/rpc/guild_rename' in u: server['gcalls'].append(['rename', body]); (server['ginfo'].get('guild') or {}).update({'name': body.get('p_name')}); return route.fulfill(headers=h, body=json.dumps({'ok': True}))
     if '/rpc/guild_leave' in u: server['gcalls'].append(['leave', body]); server['ginfo']['guild'] = None; return route.fulfill(headers=h, body='null')
     if '/rpc/chat_fetch' in u: return route.fulfill(headers=h, body=json.dumps([m for m in server['chat'] if m['id'] > body.get('p_after', 0)]))
+    if '/rpc/get_profile' in u:
+        return route.fulfill(headers=h, body=json.dumps({'uid': '33333333-3333-3333-3333-333333333333', 'name': body.get('p_name'), 'title': '신입 능력자', 'rank': 'E', 'level': '7', 'age': '24', 'keywords': '과묵,정찰', 'ability': '그림자 이동', 'abilityDesc': '그림자 사이를 건넌다', 'online': True, 'guild': '별무리'}) if body.get('p_name') == '하늘' else 'null')
     if '/rpc/chat_send' in u: server['chatsent'].append(body); return route.fulfill(headers=h, body=json.dumps({'ok': True}))
     if '/rpc/get_avatars' in u: server['avq'].append(body.get('p_names')); return route.fulfill(headers=h, body=json.dumps({n: server['avatars'][n] for n in body.get('p_names', []) if n in server['avatars']}))
     if '/rpc/set_avatar' in u: server['setav'].append(body.get('p_img')); return route.fulfill(headers=h, body='null')
@@ -101,6 +104,7 @@ with sync_playwright() as p:
     check('friend_icon_dot_cleared', pg.locator('[data-system="친구"].has-dot').count() == 0)
     check('accept_makes_friend', pg.evaluate("state.friends.includes('하늘')") and server['answers'] == [[7, True]], server['answers'])
     # 내가 보낸 신청이 수락됨 → 목록에 추가되고 결과 확인(ack)
+    server['friends'] = [{'uid': '33333333-3333-3333-3333-333333333333', 'name': '하늘'}, {'uid': '11111111-1111-1111-1111-111111111111', 'name': '미나'}]  # 수락하면 서버 친구 목록에도 올라간다
     server['results'] = [{'id': 9, 'name': '미나', 'status': 'accepted'}]
     pg.evaluate("friendPoll()"); pg.wait_for_timeout(500)
     check('accepted_result_adds_friend_and_acks', pg.evaluate("state.friends.includes('미나')") and server['acks'] == [9], server['acks'])
@@ -109,6 +113,16 @@ with sync_playwright() as p:
     server['friends'] = [{'uid': UID_H, 'name': '하늘'}]
     pg.evaluate("friendPoll()"); pg.wait_for_timeout(500)
     check('friend_uid_map_loaded', pg.evaluate("view.friendUid['하늘']") == UID_H)
+    server['friends'] = [{'uid': UID_H, 'name': '하늘이'}]
+    pg.evaluate("friendPoll()"); pg.wait_for_timeout(500)
+    check('renamed_friend_replaces_old_name', pg.evaluate("state.friends.includes('하늘이')") and not pg.evaluate("state.friends.includes('하늘')") and pg.evaluate("state.friends.filter(n=>n.startsWith('하늘')).length") == 1, pg.evaluate("state.friends"))
+    server['friends'] = [{'uid': UID_H, 'name': '하늘'}]
+    pg.evaluate("friendPoll()"); pg.wait_for_timeout(500)
+    pg.evaluate("viewUser('하늘')"); pg.wait_for_timeout(500)
+    check('other_profile_loads_ability_title_guild', '그림자 이동' in pg.inner_text('#modalBody') and '신입 능력자' in pg.inner_text('#modalBody') and '별무리' in pg.inner_text('#modalBody') and pg.locator('.user-grid .uc').count() >= 5, pg.inner_text('#modalBody'))
+    pg.evaluate("viewUser('없는사람')"); pg.wait_for_timeout(500)
+    check('other_profile_missing_shows_reason', '찾지 못' in pg.inner_text('#modalBody') or '최신본' in pg.inner_text('#modalBody'), pg.inner_text('#modalBody'))
+    pg.evaluate("closeModal()")
     pg.evaluate("closeModal(); state.mail=[]; view.mailTab='메일 보내기'; openMail()"); pg.fill('#mailSubject', '안부'); pg.fill('#mailBody', '잘 지내?')
     pg.select_option('#mailTo', '하늘'); pg.click('[data-act="mail-send"]'); pg.wait_for_timeout(500)
     check('mail_sent_to_server', len(server['mails']) == 1 and server['mails'][0]['p_to'] == UID_H and server['mails'][0]['p_subject'] == '안부' and server['mails'][0]['p_items'] == [], server['mails'])
@@ -150,6 +164,8 @@ with sync_playwright() as p:
     check('guild_member_shows_profile_image', pg.locator('.member-grid .round-avatar img').count() == 1, pg.inner_html('.member-grid')[:300])
     pg.fill('#guildQ', '새'); pg.click('[data-act="guild-find-player"]'); pg.wait_for_timeout(400); pg.click('[data-act="guild-invite-req"]'); pg.wait_for_timeout(400)
     check('guild_invite_sent', ['invite', {'p_to': '44444444-4444-4444-4444-444444444444'}] in server['gcalls'], [server['gcalls'], pg.inner_text('#modalBody')[:300]])
+    pg.fill('#guildRename', '새달빛'); pg.click('[data-act="guild-rename"]'); pg.wait_for_timeout(600)
+    check('guild_rename_calls_server_and_updates', ['rename', {'p_name': '새달빛'}] in server['gcalls'] and pg.evaluate("state.guild && state.guild.name") == '새달빛' and '새달빛' in pg.inner_text('#modalTitle'), [server['gcalls'][-1], pg.evaluate("state.guild")])
     pg.evaluate("closeModal()")
     # ---------- 채팅 서버 연결 / 프로필 이미지 ----------
     PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
@@ -171,9 +187,11 @@ with sync_playwright() as p:
     check('chat_survives_reload', pg.evaluate("state.chatTab") == '월드' and '안녕하세요' in pg.inner_text('#chatFeed') and '새 메시지' in pg.inner_text('#chatFeed'), pg.inner_text('#chatFeed')[:200])
     server['chat'] = saved_chat; pg.wait_for_timeout(1800)
     check('chat_reload_no_duplicates', pg.locator('#chatFeed .msg').count() == 3, pg.locator('#chatFeed .msg').count())
+    pg.evaluate("view.chatAt=0")
     pg.evaluate("sendChat('반가워요')"); pg.wait_for_timeout(600)
     check('chat_send_goes_to_server', server['chatsent'] and server['chatsent'][-1] == {'p_channel': 'world', 'p_body': '반가워요'}, server['chatsent'])
     pg.evaluate("state.chatTab='길드';renderChat();chatPoll()"); pg.wait_for_timeout(500)
+    pg.evaluate("view.chatAt=0")
     pg.evaluate("sendChat('길드 인사')"); pg.wait_for_timeout(500)
     check('guild_chat_uses_guild_channel', server['chatsent'][-1] == {'p_channel': 'guild', 'p_body': '길드 인사'}, server['chatsent'])
     pg.evaluate("state.chatTab='월드';renderChat()")

@@ -64,6 +64,7 @@ const Cloud = (() => {
     async guildApply(id) { return await call('/rest/v1/rpc/guild_apply', { p_guild: id }, await token()); },
     async guildAnswer(id, accept) { return await call('/rest/v1/rpc/guild_answer', { p_id: id, p_accept: !!accept }, await token()); },
     async guildCancel(id) { await call('/rest/v1/rpc/guild_cancel', { p_id: id }, await token()); },
+    async guildRename(name) { return await call('/rest/v1/rpc/guild_rename', { p_name: name }, await token()); },
     async guildLeave() { await call('/rest/v1/rpc/guild_leave', {}, await token()); },
     async setAvatar(img) { await call('/rest/v1/rpc/set_avatar', { p_img: img || '' }, await token()); },
     async getAvatars(names) { return (await call('/rest/v1/rpc/get_avatars', { p_names: names.slice(0, 40) }, await token())) || {}; },

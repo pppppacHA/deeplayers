@@ -985,3 +985,6 @@ textarea#mailBody{width:100%;min-height:80px;resize:vertical}
 .mail-picker .picker-card{width:min(420px,100%);max-height:80vh;overflow:auto;padding:12px;border-radius:14px;border:1px solid var(--line);background:var(--panel);box-shadow:0 25px 80px #0005}
 .mail-picker .picker-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
 .bubble{white-space:pre-line}
+#friendList .nearby-row{flex-wrap:wrap}
+.row-btns{display:flex;flex-wrap:wrap;gap:4px;justify-content:flex-end}
+.row-btns button{padding:4px 8px}

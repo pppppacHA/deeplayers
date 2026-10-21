@@ -1546,6 +1546,16 @@ function inviteGuild(name) {
   state.chats['길드'].push(['시스템', `${name}님이 길드에 들어왔습니다.`]); save();
   return null;
 }
+/* 길드 이름 변경(길드장만). 성공하면 null, 아니면 사유 */
+function renameGuild(name) {
+  name = cleanText(name, GUILD_NAME_MAX);
+  if (!state.guild) return '길드가 없습니다.';
+  if (!state.guild.master) return '길드장만 이름을 바꿀 수 있어요.';
+  if (name.length < GUILD_NAME_MIN) return `길드 이름은 ${GUILD_NAME_MIN}~${GUILD_NAME_MAX}자로 입력하세요.`;
+  if (name === state.guild.name) return '지금 이름과 같아요.';
+  state.guild.name = name; save();
+  return null;
+}
 function leaveGuild() { // 길드장이 나가면 길드는 해산된다
   if (!state.guild) return;
   state.guild = null;
