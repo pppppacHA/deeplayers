@@ -44,7 +44,7 @@ with sync_playwright() as p:
     ctx = b.new_context(viewport={'width': 1440, 'height': 900})
     pg = ctx.new_page()
     errs = []
-    pg.on('pageerror', lambda e: errs.append('PAGEERROR ' + str(e)))
+    pg.on('pageerror', lambda e: (errs.append('PAGEERROR ' + str(e)), print('PAGEERROR', e)))
     pg.route('**/*fonts.g*', lambda r: r.abort())
     def _data_js(route):  # data.js 뒤에 옛 맵 덮어쓰기를 붙여서 내려 준다 (게임 코드는 그대로)
         body = (ROOT / 'js' / 'data.js').read_text(encoding='utf8') + LEGACY_JS
@@ -914,19 +914,39 @@ with sync_playwright() as p:
     # ---------- 캐릭터 설정: 스위치, 자기소개 삭제 ----------
     check('friend_guild_default_allow', ev(pg, "state.character.allowFriend")== True and ev(pg, "state.character.allowGuild")== True)
     pg.click('#avatarButton'); pg.wait_for_timeout(60)
-    check('char_fields', ev(pg, "['cName','cAbilityDesc','cAge','cKeywords','cFriend','cGuild'].every(i=>!!document.getElementById(i))") and pg.locator('#cFriend').is_checked() and pg.locator('#cIntro').count() == 0 and '자기소개' not in text(pg, '#modalBody'))
+    check('char_fields', ev(pg, "['cName','cAbility','cAbilityDesc','cAge','cKeywords','cFriend','cGuild'].every(i=>!!document.getElementById(i))") and pg.locator('#cFriend').is_checked() and pg.locator('#cIntro').count() == 0 and '자기소개' not in text(pg, '#modalBody'))
     check('friend_guild_are_switches', pg.locator('label.switch:has(#cFriend)').count() == 1 and pg.locator('label.switch:has(#cGuild)').count() == 1 and ev(pg, "document.querySelector('#cFriend').type")== 'checkbox' and ev(pg, "document.querySelector('#cFriend').getAttribute('role')")== 'switch')
     sg_ = rect(pg, 'label.switch:has(#cFriend) i')
     check('switch_track_visible', sg_['w'] >= 30 and sg_['h'] >= 15, sg_)
     pg.fill('#cName', '테스터'); pg.fill('#cAge', '31'); pg.fill('#cKeywords', '과묵, 정찰'); sw('cFriend', False); sw('cGuild', False)
     pg.click('[data-act="char-save"]'); pg.wait_for_timeout(80)
     check('char_saved', ev(pg, "state.character.age")== 31 and ev(pg, "state.character.keywords")== '과묵, 정찰' and ev(pg, "state.character.allowFriend")== False and ev(pg, "state.character.allowGuild")== False and '31세' in text(pg, '#charMeta') and text(pg, '#charTags') == '#과묵 #정찰' and text(pg, '#charName') == '테스터')
-    pg.click('#avatarButton'); check('char_options_reopen', not pg.locator('#cFriend').is_checked() and not pg.locator('#cGuild').is_checked()); pg.click('[data-act="close"]')
+    pg.click('#avatarButton'); check('char_options_reopen', not pg.locator('#cFriend').is_checked() and not pg.locator('#cGuild').is_checked())
+    check('profile_locked_24h_after_edit', pg.locator('#cName').is_disabled() and pg.locator('#cAbility').is_disabled() and pg.locator('#cFriend').is_disabled() and pg.locator('[data-act="char-save"]').is_disabled() and '24시간' in text(pg, '#modalBody') and ev(pg, "profileLockLeft()")> 23 * 3600e3 and pg.locator('.tchip').first.is_enabled())
+    sf, sg2 = rect(pg, 'label.switch:has(#cFriend) i'), rect(pg, 'label.switch:has(#cFriend) > span'); sg3 = rect(pg, 'label.switch:has(#cGuild) i')
+    check('switch_next_to_label', sf['x'] - sg2['r'] < 40 and abs(sf['x'] - sg3['x']) < 2, [sf, sg2, sg3])
+    pg.click('[data-act="close"]')
+    ev(pg, "state.profileEditAt=nowMs()-24*3600e3-1000"); pg.click('#avatarButton'); pg.wait_for_timeout(60)
+    check('profile_unlocks_after_24h', not pg.locator('#cAbility').is_disabled() and not pg.locator('[data-act="char-save"]').is_disabled())
+    pg.fill('#cAbility', '중력 조작'); pg.click('[data-act="char-save"]'); pg.wait_for_timeout(80)
+    check('ability_name_editable_then_locked', ev(pg, "state.character.ability")== '중력 조작' and ev(pg, "profileLockLeft()")> 0)
 
     # ---------- 설정 모달 (컴팩트) ----------
     pg.click('#settingsBtn'); pg.wait_for_timeout(80)
     h = rect(pg, '#modal')['h']
-    check('settings_compact', h < 800 and ev(pg, "[...document.querySelectorAll('#modalBody h3')].map(e=>e.textContent)")== ['소리', '표시', '튜토리얼', '알림', '테마'], h)
+    check('settings_compact', h < 800 and ev(pg, "[...document.querySelectorAll('#modalBody h3')].map(e=>e.textContent)") in (['소리', '표시', '튜토리얼', '알림', '테마'], ['저장', '소리', '표시', '튜토리얼', '알림', '테마'], ['소리', '표시', '튜토리얼', '알림', '테마', '저장'], ['소리', '표시', '저장', '튜토리얼', '알림', '테마'], ['소리', '표시', '튜토리얼', '저장', '알림', '테마'], ['소리', '표시', '튜토리얼', '알림', '저장', '테마']), h)
+    tr_, md_ = rect(pg, '[data-act="tutorial-replay"]'), rect(pg, '#modalBody')
+    check('tutorial_replay_button_right', tr_['r'] > md_['r'] - 40 and tr_['x'] > md_['x'] + md_['w'] / 2, [tr_, md_])
+    check('local_save_load_buttons', pg.locator('[data-act="local-save"]').count() == 1 and pg.locator('[data-act="local-load"]').count() == 1)
+    with pg.expect_download() as dl_:
+        pg.click('[data-act="local-save"]')
+    dlp = dl_.value.path(); import json as _j; sv_ = _j.load(open(dlp, encoding='utf8'))
+    check('local_save_file_format', dl_.value.suggested_filename.startswith('deeplayer-save-') and dl_.value.suggested_filename.endswith('.json') and sv_['game'] == 'deeplayer' and sv_['version'] == ev(pg, "SAVE_VERSION") and sv_['data']['character']['name'] == ev(pg, "state.character.name"))
+    open('/tmp/bad_save.json', 'w').write('{"x":1}')
+    with pg.expect_file_chooser() as fc_:
+        pg.click('[data-act="local-load"]')
+    fc_.value.set_files('/tmp/bad_save.json'); pg.wait_for_timeout(200)
+    check('local_load_rejects_wrong_file', pg.locator('[data-act="local-load-ok"]').count() == 0)
     check('bgm_note_removed', 'audio/bgm.mp3' not in text(pg, '#modalBody') and '화면을 한 번 클릭' not in text(pg, '#modalBody') and '내장 앰비언트' not in text(pg, '#modalBody'))
     check('sound_toggles_split', all(pg.locator(f'label.switch:has(#{i})').count() == 1 for i in ['bgmOn', 'clickOn', 'alertOn']) and pg.locator('#sfxOn').count() == 0 and ev(pg, "document.querySelector('#bgmVolume').value")== '25' and '배경음악' in text(pg, '#modalBody') and '클릭음' in text(pg, '#modalBody') and '알림음' in text(pg, '#modalBody'))
     pg.screenshot(path=str(SHOTS / 'settings.png'))

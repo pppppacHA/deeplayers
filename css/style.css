@@ -503,6 +503,8 @@ textarea{min-height:75px;resize:vertical}
 
 /* 스위치 */
 .switch{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:3px 0;font-size:calc(12px*var(--fs));cursor:pointer}
+.switch.near{justify-content:flex-start;gap:12px}
+.switch.near>span{min-width:8.5em}
 .switch input{position:absolute;opacity:0;width:0;height:0}
 .switch i{position:relative;flex:none;width:34px;height:19px;border-radius:999px;background:var(--bar-track);border:1px solid var(--line);transition:background .15s,border-color .15s}
 .switch i::after{content:'';position:absolute;left:2px;top:2px;width:13px;height:13px;border-radius:50%;background:var(--panel);box-shadow:0 1px 3px #0004;transition:transform .15s}
@@ -642,6 +644,7 @@ textarea{min-height:75px;resize:vertical}
 button.danger{color:#c0392b;border-color:#c0392b}
 .btn-link{display:inline-block;padding:7px 12px;border:1px solid var(--line);border-radius:8px;background:var(--panel-2);color:var(--text);text-decoration:none;font-size:calc(12px*var(--fs));font-weight:700}
 .row-gap{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.row-gap.end{justify-content:flex-end}
 .post-detail p{white-space:pre-line}
 
 /* ---------- 채팅 단말기: 읽기 쉽게 (본문 글꼴, 큰 글자, 테마(라이트/다크)에 따라 화면 색이 바뀜) ---------- */
@@ -805,6 +808,6 @@ textarea#mailBody{width:100%;min-height:80px;resize:vertical}
 .bug-row p{margin:4px 0 0;white-space:pre-wrap;overflow-wrap:anywhere}
 
 .devrow{display:flex;gap:6px;align-items:center;margin-top:6px}.devrow input{flex:1;min-width:0}
-.cloudrow{display:flex;align-items:center;gap:6px}.cloudrow span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cloudrow{display:flex;flex-wrap:wrap;align-items:center;gap:6px}.cloudrow span{flex:1 1 100%;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dev-fold>summary{cursor:pointer;font-size:calc(11px*var(--fs));font-weight:800;color:var(--muted);list-style:none}.dev-fold>summary::-webkit-details-marker{display:none}
 .dev-fold>summary::before{content:'▸ '}.dev-fold[open]>summary::before{content:'▾ '}

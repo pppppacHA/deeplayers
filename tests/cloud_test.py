@@ -20,6 +20,7 @@ def api(route):
     if '/auth/v1/token' in u:
         if body.get('password') == 'good-pass-123': return route.fulfill(headers=h, body=json.dumps({'access_token': 'a', 'refresh_token': 'r', 'expires_in': 3600}))
         return route.fulfill(status=400, headers=h, body=json.dumps({'error_description': 'Invalid login credentials'}))
+    if '/rpc/search_players' in u: return route.fulfill(headers=h, body=json.dumps([{'name': '미나', 'rank': 'E', 'level': '5', 'online': True}, {'name': '<img src=x onerror=alert(1)>', 'rank': 'F', 'level': '1', 'online': False}] if body.get('p_q') else []))
     if '/rpc/is_admin' in u: return route.fulfill(headers=h, body='true')
     if '/rpc/pull_save' in u:
         return route.fulfill(headers=h, body=json.dumps(None if server['data'] is None else {'rev': server['rev'], 'data': server['data'], 'at': '2026-10-21T03:00:00Z'}))
@@ -49,13 +50,19 @@ with sync_playwright() as p:
     check('admin_account_gets_dev_tools', pg.evaluate("window.DEV===true"))
     pg.evaluate("openSettings()"); pg.wait_for_timeout(100)
     cr_ = [rect(pg, '.cloudrow span'), rect(pg, '[data-act="cloud-push"]'), rect(pg, '[data-act="cloud-pull"]')]
-    check('settings_shows_logged_in_with_save_and_load_right', cr_[1]['x'] > cr_[0]['x'] and cr_[2]['x'] > cr_[1]['x'] and abs(cr_[1]['y'] - cr_[0]['y']) < 14 and pg.locator('.cloudrow button').count() == 2, cr_)
+    ls_, ll_ = rect(pg, '[data-act="local-save"]'), rect(pg, '[data-act="local-load"]')
+    check('settings_shows_logged_in_with_save_and_load_right', cr_[2]['x'] > cr_[1]['x'] and ls_['x'] > cr_[2]['r'] - 1 and ll_['x'] > ls_['x'] and abs(ls_['y'] - cr_[1]['y']) < 6 and cr_[1]['y'] > cr_[0]['y'] and pg.locator('.cloudrow button').count() == 4, [cr_, ls_, ll_])
     pg.evaluate("state.money=777;save()"); pg.click('[data-act="cloud-push"]'); pg.wait_for_timeout(300)
     check('manual_push_bumps_rev', server['rev'] == 4 and server['data']['money'] == 777, server['rev'])
     server['rev'] = 9  # 다른 기기가 먼저 저장
     pg.evaluate("openSettings()"); pg.click('[data-act="cloud-push"]'); pg.wait_for_timeout(300)
     check('conflict_blocks_push', server['rev'] == 9 and pg.evaluate("_cloudBlocked") is True)
     server['data']['money'] = 4242
+    pg.evaluate("state.created=true;openFriends()"); pg.fill('#friendSearch', '미'); pg.click('[data-act="friend-search"]'); pg.wait_for_timeout(300)
+    check('friend_search_uses_server', pg.locator('#friendResult .nearby-row').count() == 2 and '미나' in pg.inner_text('#friendResult') and pg.locator('#friendResult img').count() == 0)
+    pg.click('#friendResult [data-act="friend-add"] >> nth=0'); pg.wait_for_timeout(200)
+    check('friend_added_from_server_result', pg.evaluate("state.friends.includes('미나')"), pg.evaluate("state.friends"))
+    pg.evaluate("closeModal()")
     pg.evaluate("openSettings()"); pg.click('[data-act="cloud-pull"]'); pg.wait_for_timeout(1000)
     check('pull_replaces_local_and_reloads', pg.evaluate("state.money") == 4242, pg.evaluate("state.money"))
     pg.evaluate("document.querySelector('#tutorial').classList.add('hidden')")

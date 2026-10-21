@@ -38,6 +38,7 @@ const Cloud = (() => {
     async deleteBug(id) { await call('/rest/v1/rpc/delete_bug', { p_id: id }, await token()); },
     async postNotice(head, body) { await call('/rest/v1/rpc/post_notice', { p_head: head, p_body: body }, await token()); },
     async listNotices() { return (await call('/rest/v1/rpc/list_notices', {}, await token())) || []; },
+    async searchPlayers(q) { return (await call('/rest/v1/rpc/search_players', { p_q: String(q || '').slice(0, 12) }, await token())) || []; },
     async isAdmin() { return (await call('/rest/v1/rpc/is_admin', {}, await token())) === true; },
     /* → { rev, data, at } | null(서버에 세이브 없음) */
     async pull() { const j = await call('/rest/v1/rpc/pull_save', {}, await token()); if (j) { const s = rd(); if (s) { s.rev = j.rev; wr(s); } } return j; },

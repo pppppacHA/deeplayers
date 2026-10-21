@@ -483,8 +483,9 @@ function cloudApply(data) { // 서버 세이브로 교체하고 다시 시작
 }
 function cloudGroupHtml() {
   const u = Cloud.enabled && Cloud.user();
-  if (!u) return '';
-  return `<div class="setting-group"><h3>서버 저장</h3><div class="cloudrow"><span><b>${esc(u)}</b> 로그인됨</span><button data-act="cloud-push">저장</button><button data-act="cloud-pull">서버 불러오기</button></div><p class="tiny">진행은 20초 정도마다 자동으로 서버에 저장돼요.${_cloudBlocked ? ' (⚠ 다른 기기가 먼저 저장해 자동 저장이 멈춰 있어요)' : ''}</p></div>`;
+  const local = '<button data-act="local-save">로컬 저장</button><button data-act="local-load">로컬 불러오기</button>';
+  if (!u) return `<div class="setting-group"><h3>저장</h3><div class="cloudrow"><span class="tiny">세이브 파일로 저장하고 불러올 수 있어요.</span>${local}</div></div>`;
+  return `<div class="setting-group"><h3>서버 저장</h3><div class="cloudrow"><span><b>${esc(u)}</b> 로그인됨</span><button data-act="cloud-push">저장</button><button data-act="cloud-pull">서버 불러오기</button>${local}</div><p class="tiny">진행은 20초 정도마다 자동으로 서버에 저장돼요.${_cloudBlocked ? ' (⚠ 다른 기기가 먼저 저장해 자동 저장이 멈춰 있어요)' : ''} 로컬 저장은 이 기기에 세이브 파일(.json)로 내려받아요.</p></div>`;
 }
 async function cloudAfterLogin() { // 로그인 직후: 서버에 세이브가 있으면 어느 쪽을 쓸지 묻는다
   const s = await Cloud.pull();
@@ -496,7 +497,7 @@ async function cloudAfterLogin() { // 로그인 직후: 서버에 세이브가 �
 
 /* ---------- 설정 (소리는 한 묶음, 컴팩트) ---------- */
 const snd = (id, ic, label, on) => `<label class="switch snd-switch"><span>${icon(ic)} ${label}</span><input id="${id}" type="checkbox" role="switch" ${on ? 'checked' : ''}><i></i></label>`;
-const sw = (id, label, on) => `<label class="switch"><span>${label}</span><input id="${id}" type="checkbox" role="switch" ${on ? 'checked' : ''}><i></i></label>`;
+const sw = (id, label, on, cls = '', dis = '') => `<label class="switch ${cls}"><span>${label}</span><input id="${id}" type="checkbox" role="switch" ${on ? 'checked' : ''} ${dis}><i></i></label>`;
 function openSettings() {
   const st = state.settings;
   const opt = (v, l, cur) => `<option value="${v}" ${cur === v ? 'selected' : ''}>${l}</option>`;
@@ -506,7 +507,7 @@ function openSettings() {
     `<div class="snd-card"><div class="snd-title">${icon('graphic_eq')} 효과음</div><div class="snd-pair">${snd('clickOn', 'ads_click', '클릭음', st.clickOn)}${snd('alertOn', 'notifications_active', '알림음', st.alertOn)}</div>` +
     `<div class="snd-slider">${icon('volume_down')}<input id="sfxVolume" type="range" min="0" max="100" value="${st.sfxVolume}" aria-label="효과음 크기"><b id="sfxValue">${st.sfxVolume}%</b></div></div></div>` +
     `<div class="setting-group"><h3>표시</h3>${sw('cursorOn', '사용자 지정 커서', st.cursor)}<div class="srow fontrow"><span>글자 크기</span><select id="fontSize">${opt('s', '작게', st.fontSize)}${opt('m', '보통', st.fontSize)}${opt('l', '크게', st.fontSize)}${opt('xl', '아주 크게', st.fontSize)}</select></div></div>` +
-    `<div class="setting-group"><h3>튜토리얼</h3><div class="row-gap"><button data-act="tutorial-replay">튜토리얼 다시 보기</button></div></div>` +
+    `<div class="setting-group"><h3>튜토리얼</h3><div class="row-gap end"><button data-act="tutorial-replay">튜토리얼 다시 보기</button></div></div>` +
     cloudGroupHtml() +
     `<div class="setting-group"><h3>알림</h3>${sw('notifyOn', '다른 탭을 보고 있을 때 행동 완료 알림', st.notify)}${sw('guildAlertOn', '길드 채팅 알림 (새 메시지가 오면 알림음과 알림창)', st.guildAlert)}</div>` +
     `<div class="setting-group"><h3>테마</h3><div class="srow theme"><select id="themeSelect">${opt('light', '라이트', st.theme)}${opt('dark', '다크', st.theme)}${opt('custom', '사용자 설정', st.theme)}</select>` +
@@ -581,7 +582,7 @@ function openFriends() {
   const list = state.friends.map(n => `<div class="nearby-row"><div class="round-avatar">${icon(speakerIcon(n))}</div><div class="grow"><strong>${esc(n)}</strong><small>${esc((samplePlayer(n) || ['', '온라인'])[1])}</small></div><button data-act="friend-remove" data-name="${esc(n)}">삭제</button></div>`).join('');
   modal('친구', `<div class="search-row"><input id="friendSearch" placeholder="대원 이름으로 검색" aria-label="대원 검색"><button data-act="friend-search">검색</button></div><div id="friendResult"></div>` +
     `<div class="choice-label">친구 ${state.friends.length}/${FRIEND_MAX}</div><div id="friendList">${list || '<div class="empty">아직 친구가 없습니다. 주위 대원의 정보 창이나 검색으로 추가하세요.</div>'}</div>` +
-    `<p class="tiny">다른 대원은 서버 연결 후에 만날 수 있어요. 메일은 친구에게만 보낼 수 있어요.</p>`, [btnClose]);
+    `<p class="tiny">서버에 로그인하면 이름으로 다른 대원을 찾을 수 있어요. 메일은 친구에게만 보낼 수 있어요. (메일·교환 등은 아직 서버와 연결되지 않았어요)</p>`, [btnClose]);
 }
 const mailItemRow = () => {
   const have = Object.values(state.inventory).flat().filter(s => s.n !== MAIL_SHIP_ITEM);
@@ -856,6 +857,31 @@ const A = {
     try { const r = await Cloud.push(JSON.parse(JSON.stringify(state))); if (r.ok) { _cloudBlocked = false; toast('서버에 저장했어요.'); } else { _cloudBlocked = true; toast('다른 기기에서 먼저 저장했어요. "서버에서 불러오기"를 먼저 해 주세요.'); } } catch (e) { toast('서버에 저장하지 못했어요.'); }
   },
   'cloud-pull': async () => { try { const s = await Cloud.pull(); if (s) cloudApply(s.data); else toast('서버에 저장된 진행이 없어요.'); } catch (e) { toast('서버에서 불러오지 못했어요.'); } },
+  'local-save': () => {
+    try {
+      const d = new Date(), z = n => String(n).padStart(2, '0'), name = `deeplayer-save-${d.getFullYear()}${z(d.getMonth() + 1)}${z(d.getDate())}-${z(d.getHours())}${z(d.getMinutes())}.json`;
+      const blob = new Blob([JSON.stringify({ game: 'deeplayer', version: SAVE_VERSION, savedAt: d.toISOString(), data: state })], { type: 'application/json' });
+      const url = URL.createObjectURL(blob), a = document.createElement('a');
+      a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 4000);
+      toast('세이브 파일을 저장했어요.');
+    } catch (e) { toast('세이브 파일을 만들지 못했어요.'); }
+  },
+  'local-load': () => {
+    const f = document.createElement('input'); f.type = 'file'; f.accept = '.json,application/json';
+    f.onchange = async () => {
+      const file = f.files && f.files[0]; if (!file) return;
+      if (file.size > 2_000_000) { toast('세이브 파일이 너무 커요.'); return; }
+      try {
+        const j = JSON.parse(await file.text());
+        if (!j || j.game !== 'deeplayer' || j.version !== SAVE_VERSION || !j.data || typeof j.data !== 'object' || !j.data.character) { toast('이 게임의 세이브 파일이 아니거나 버전이 달라요.'); return; }
+        view.localSave = j;
+        modal('세이브 파일 불러오기', `<p>${esc(String(j.savedAt || '').slice(0, 16).replace('T', ' '))}에 저장한 진행을 불러올까요?</p><p class="tiny">이 기기의 현재 진행은 사라집니다.</p>`,
+          ['<button data-act="close">취소</button>', '<button class="primary" data-act="local-load-ok">불러오기</button>'], true);
+      } catch (e) { toast('세이브 파일을 읽지 못했어요.'); }
+    };
+    f.click();
+  },
+  'local-load-ok': () => { if (view.localSave) cloudApply(view.localSave.data); },
   'cloud-use-server': () => { if (view.cloudServer) cloudApply(view.cloudServer.data); },
   'cloud-use-local': async () => { try { await Cloud.push(JSON.parse(JSON.stringify(state))); toast('이 기기의 진행을 서버에 저장했어요.'); closeModal(); } catch (e) { toast('서버에 저장하지 못했어요.'); } },
   'job-auto': () => {
@@ -1000,10 +1026,12 @@ const A = {
 
   /* 캐릭터 / 설정 */
   'char-save': () => {
-    const c = state.character;
-    Object.assign(c, { name: cleanText($('#cName').value, 12) || c.name, age: intIn($('#cAge').value, AGE_MIN, AGE_MAX, c.age), keywords: cleanText($('#cKeywords').value, 60),
-      abilityDesc: cleanText($('#cAbilityDesc').value, 300),
-      allowFriend: $('#cFriend').checked, allowGuild: $('#cGuild').checked });
+    const c = state.character, left = profileLockLeft();
+    if (left > 0) { toast(`프로필은 ${fmtLong(left)} 뒤에 다시 수정할 수 있어요.`); return; }
+    const next = { name: cleanText($('#cName').value, 12) || c.name, age: intIn($('#cAge').value, AGE_MIN, AGE_MAX, c.age), keywords: cleanText($('#cKeywords').value, 60),
+      ability: cleanText($('#cAbility').value, 20) || c.ability, abilityDesc: cleanText($('#cAbilityDesc').value, 300),
+      allowFriend: $('#cFriend').checked, allowGuild: $('#cGuild').checked };
+    if (Object.keys(next).some(k => next[k] !== c[k])) { Object.assign(c, next); state.profileEditAt = nowMs(); toast('프로필을 수정했습니다. 24시간 뒤에 다시 수정할 수 있어요.'); }
     renderProfile(); save(); closeModal();
   },
   'settings-save': () => {
@@ -1047,11 +1075,26 @@ const A = {
     if (err) { toast(err); sfx('error'); return; }
     renderBag(); sfx('ok'); toast(`메일을 보냈습니다.${items.length ? ' (운송장치 1개 사용)' : ''} 곧 답장이 올 거예요.`); view.mailTab = '받은 메일함'; openMail();
   },
-  'friend-search': () => {
-    const v = $('#friendSearch').value.trim(), p = samplePlayer(v);
+  'friend-search': async () => {
+    const v = cleanText($('#friendSearch').value, 12);
+    if (Cloud.enabled && Cloud.user()) { // 서버에 있는 대원을 이름으로 찾는다
+      const box = $('#friendResult');
+      if (!v) { box.innerHTML = '<p class="tiny">검색어를 입력하세요.</p>'; return; }
+      box.innerHTML = '<p class="tiny">찾는 중…</p>';
+      try {
+        const found = (await Cloud.searchPlayers(v)).filter(r => r && typeof r.name === 'string' && r.name && r.name !== state.character.name);
+        found.forEach(r => { REMOTE_PLAYERS[cleanText(r.name, 12)] = r.online ? '온라인' : '자리 비움'; });
+        if (!$('#friendResult')) return;
+        $('#friendResult').innerHTML = found.length ? found.map(r => { const n = cleanText(r.name, 12), has = state.friends.includes(n);
+          return `<div class="nearby-row"><div class="round-avatar">${icon(speakerIcon(n))}</div><div class="grow"><strong>${esc(n)}</strong><small>${esc(`${REMOTE_PLAYERS[n]} · Lv.${intIn(r.level, 1, MAX_LEVEL, 1)} ${'FEDCBAS'.includes(r.rank) ? r.rank : 'F'}등급`)}</small></div><button data-act="friend-add" data-name="${esc(n)}" ${has ? 'disabled' : ''}>${has ? '친구' : '친구 추가'}</button></div>`; }).join('')
+          : '<p class="tiny">찾는 대원이 없어요. (이름 일부만 입력해도 돼요. 상대가 친구 추가를 막아 둔 경우에도 나오지 않아요)</p>';
+      } catch (e) { if ($('#friendResult')) $('#friendResult').innerHTML = '<p class="tiny">검색하지 못했어요. 서버에 friends.sql 을 실행했는지 확인해 주세요.</p>'; }
+      return;
+    }
+    const p = samplePlayer(v);
     $('#friendResult').innerHTML = !v ? '<p class="tiny">검색어를 입력하세요.</p>' : p
       ? `<div class="nearby-row"><div class="round-avatar">${icon(speakerIcon(v))}</div><div class="grow"><strong>${esc(v)}</strong><small>${esc(p[1])}</small></div><button data-act="friend-add" data-name="${esc(v)}" ${state.friends.includes(v) ? 'disabled' : ''}>${state.friends.includes(v) ? '친구' : '친구 추가'}</button></div>`
-      : '<p class="tiny">대원을 찾을 수 없습니다. (다른 대원은 서버 연결 후에 만날 수 있어요)</p>';
+      : '<p class="tiny">대원을 찾을 수 없습니다. (서버에 로그인하면 다른 대원을 찾을 수 있어요)</p>';
   },
   'friend-add': el => {
     const err = addFriend(el.dataset.name);
@@ -1112,7 +1155,8 @@ function openProfile(keepScroll) {
   const st0 = keepScroll === true && $('#modalBody') ? $('#modalBody').scrollTop : 0;
   const c = state.character, img = getAvatar(), tags = c.keywords.split(',').map(t => t.trim()).filter(Boolean).map(t => '#' + t).join(' ');
   // 이미 열려 있는 입력칸에 쓴 내용은 창을 다시 그려도 지우지 않는다
-  const dr = $('#cName') ? { name: $('#cName').value, age: $('#cAge').value, kw: $('#cKeywords').value, desc: $('#cAbilityDesc').value, fr: $('#cFriend').checked, gu: $('#cGuild').checked } : null;
+  const dr = $('#cName') ? { ab: $('#cAbility').value, name: $('#cName').value, age: $('#cAge').value, kw: $('#cKeywords').value, desc: $('#cAbilityDesc').value, fr: $('#cFriend').checked, gu: $('#cGuild').checked } : null;
+  const lock = profileLockLeft(), dis = lock > 0 ? 'disabled' : '';
   const row = (label, inner) => `<div class="srow fontrow"><span>${label}</span>${inner}</div>`;
   modal('프로필', `<div class="profile-card"><button class="avatar big ${img ? '' : 'empty'}" data-act="avatar-pick" title="이미지 변경" aria-label="프로필 이미지 변경">${img ? `<img src="${esc(img)}" alt="프로필">` : icon('add_a_photo')}<span class="avatar-edit">${icon('photo_camera')}</span></button>` +
     `<div class="pc-info"><div class="title-chip" id="pcTitle">${esc(c.title)}</div><strong>${esc(c.name || '-')}</strong><div class="char-meta">LV.${c.level}　${esc(c.rank)}등급　${c.age}세</div><div class="char-tags">${esc(tags)}</div>${state.subjob ? `<div class="char-job">${esc(`서브잡 · ${state.subjob.name} Lv.${state.subjob.level}`)}</div>` : ''}</div></div>` +
@@ -1120,13 +1164,15 @@ function openProfile(keepScroll) {
     `<div class="choice-label">칭호 ${state.titles.length}개 보유 · 눌러서 착용</div><div class="title-chips">${TITLE_DEFS.filter(([n]) => state.titles.includes(n)).map(([n, d]) =>
       `<button class="tchip ${c.title === n ? 'on' : ''}" data-act="title-set" data-title="${esc(n)}" title="달성: ${esc(d)}">${esc(n)}</button>`).join('')}</div>` +
     `<div class="setting-group"><h3>캐릭터 정보 수정</h3>` +
-    row('이름', `<input id="cName" maxlength="12" value="${esc(dr ? dr.name : c.name)}">`) +
-    row('나이', `<input id="cAge" type="number" min="${AGE_MIN}" max="${AGE_MAX}" value="${esc(dr ? dr.age : c.age)}">`) +
-    row('키워드', `<input id="cKeywords" maxlength="60" placeholder="쉼표로 구분 (예: 과묵, 정찰)" value="${esc(dr ? dr.kw : c.keywords)}">`) +
-    row('이능력 설명', `<textarea id="cAbilityDesc" maxlength="300" placeholder="어떤 능력인지 자유롭게 적어 주세요">${esc(dr ? dr.desc : c.abilityDesc)}</textarea>`) +
-    `${sw('cFriend', '친구 추가 허용', dr ? dr.fr : c.allowFriend)}${sw('cGuild', '길드 초대 허용', dr ? dr.gu : c.allowGuild)}</div>` +
+    (lock > 0 ? `<p class="tiny">프로필(칭호 제외)은 수정 후 24시간이 지나야 다시 바꿀 수 있어요. 남은 시간 ${fmtLong(lock)}</p>` : state.profileEditAt ? '' : '<p class="tiny">첫 수정은 바로 가능하고, 그 뒤에는 24시간마다 한 번 수정할 수 있어요.</p>') +
+    row('이름', `<input id="cName" maxlength="12" ${dis} value="${esc(dr ? dr.name : c.name)}">`) +
+    row('이능력 이름', `<input id="cAbility" maxlength="20" ${dis} value="${esc(dr ? dr.ab : c.ability)}">`) +
+    row('나이', `<input id="cAge" ${dis} type="number" min="${AGE_MIN}" max="${AGE_MAX}" value="${esc(dr ? dr.age : c.age)}">`) +
+    row('키워드', `<input id="cKeywords" maxlength="60" ${dis} placeholder="쉼표로 구분 (예: 과묵, 정찰)" value="${esc(dr ? dr.kw : c.keywords)}">`) +
+    row('이능력 설명', `<textarea id="cAbilityDesc" maxlength="300" ${dis} placeholder="어떤 능력인지 자유롭게 적어 주세요">${esc(dr ? dr.desc : c.abilityDesc)}</textarea>`) +
+    `${sw('cFriend', '친구 추가 허용', dr ? dr.fr : c.allowFriend, 'near', dis)}${sw('cGuild', '길드 초대 허용', dr ? dr.gu : c.allowGuild, 'near', dis)}</div>` +
     `<p class="tiny">사진 버튼을 눌러 이미지를 고르면 ${AVATAR_PX}px로 자동 압축됩니다. (png·jpg·webp·gif)</p>`,
-    [btnClose, `<button data-act="avatar-clear" ${img ? '' : 'disabled'}>이미지 삭제</button>`, '<button class="primary" data-act="char-save">저장</button>']);
+    [btnClose, `<button data-act="avatar-clear" ${img ? '' : 'disabled'}>이미지 삭제</button>`, `<button class="primary" data-act="char-save" ${dis}>저장</button>`]);
   $('#modalBody').scrollTop = st0;
 }
 $('#avatarButton').onclick = openProfile;

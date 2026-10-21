@@ -79,3 +79,5 @@ STUB_ICONS=1 python3 tests/smoke.py   # 아이콘 폰트를 못 받는 환경(�
 - 승급 보상 가방(정찰 배낭 32 / 원정 배낭 40), 도감 아이템 '획득' 줄(`itemSources`), 길드 기본 이름(`defaultGuildName`), 보석·광물 장비 레시피 12종, 채팅 줄바꿈 CSS 수정.
 - 레이아웃(데스크톱 ≥1201px): 스테이터스·지도 패널 아래 틈(`.vgrip`)을 끌어 세로 높이 조절(`state.layout.statusH/mapH`, 0=자동, 더블클릭 초기화). 로그는 지도 오른쪽(`.map-body` 가로), ≤1200px에서는 지도 아래. 모든 지도(노드/타일)에서 가운데 버튼 끌기 이동 + 확대/축소/동서남북 표시(타일 지도는 `view.dpan/dzoom`, 저장 안 함).
 - 레시피: 건조 식량=민물고기, 구운 고기=짐승 고기만. 버프/디버프는 스테이터스 제목줄 아이콘으로만 표시.
+- 프로필 수정: 이능력 이름 포함, 첫 수정은 바로, 이후 24시간 간격(`state.profileEditAt`, `profileLockLeft()`; 칭호 제외). 전투 승리 확률은 최대 99%(`BATTLE_MAX_WIN_MISS`). 설정에 로컬 저장/불러오기(세이브 .json 파일: `{game,version,savedAt,data}`), 튜토리얼 다시 보기 버튼은 오른쪽.
+- 친구 찾기: 서버 로그인 시 `Cloud.searchPlayers`(RPC `search_players`, `supabase/friends.sql` 을 한 번 실행해야 함)로 `saves`의 캐릭터 이름을 검색. 결과는 `REMOTE_PLAYERS`에 담아 `addFriend` 가능. 메일·교환·길드 초대는 아직 서버 미연결.

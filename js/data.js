@@ -655,6 +655,7 @@ function createDefaultState() {
     active: null,       // 진행 중인 행동 {id, startAt, endAt}
     pending: null,      // 완료됐지만 결과 확인 전인 행동 {id, result}
     settings: { bgmOn: true, bgmVolume: BGM_DEFAULT_VOLUME, sfxVolume: 65, clickOn: true, alertOn: true, notify: true, guildAlert: true, cursor: true, fontSize: 'm', theme: 'light', customBase: 'light', customAccent: '#197da1' },
+    profileEditAt: 0, // 마지막 프로필 수정 시각 (0=아직 수정 안 함). 첫 수정 뒤에는 24시간 간격
     layout: { left: 292, right: 315, statusH: 0, mapH: 0 },
     collapsed: {},      // 좁은 화면에서 접은 패널 { 키: true }
     questDone: {},      // { 임무 id: true }

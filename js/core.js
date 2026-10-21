@@ -53,6 +53,7 @@ function hardenState(s) {
   c.ability = cleanText(c.ability, 20); c.abilityDesc = cleanText(c.abilityDesc, 300);
   c.level = intIn(c.level, 1, MAX_LEVEL, 1); c.rank = 'FEDCBAS'.includes(c.rank) ? c.rank : 'F';
   c.allowFriend = c.allowFriend !== false; c.allowGuild = c.allowGuild !== false;
+  s.profileEditAt = intIn(s.profileEditAt, 0, 4e12, 0);
   s.deaths = intIn(s.deaths, 0, 99999, 0);
   s.money = intIn(s.money, 0, 999999999, 0); s.statPoints = intIn(s.statPoints, 0, 99, 0);
   STAT_DEFS.forEach(d => { s.stats[d.key] = intIn(s.stats[d.key], 0, 99, STAT_BASE); });
@@ -350,8 +351,12 @@ const moveCost = id => (LOCATIONS[id].danger || LOCATIONS[state.location].danger
 function battleOdds(m) {
   let win = 0, hurt = 0; const N = 120, hp0 = Math.max(2, state.vitals.hp);
   for (let i = 0; i < N; i++) { const b = simulateBattle(m, hp0); if (b.win) win++; if (b.lost > 0) hurt++; }
-  return { win: Math.round(win / N * 100), hurt: Math.round(hurt / N * 100) };
+  return { win: Math.min(99, Math.round(win / N * 100)), hurt: Math.round(hurt / N * 100) };
 }
+const BATTLE_MAX_WIN_MISS = .01; // 아무리 쉬운 상대여도 승리 확률은 최대 99%
+const PROFILE_EDIT_COOL_MS = 24 * 3600 * 1000;
+const profileLockLeft = () => Math.max(0, state.profileEditAt + PROFILE_EDIT_COOL_MS - nowMs()); // 남은 잠금 시간(ms), 0이면 수정 가능
+const fmtLong = ms => { const m = Math.ceil(ms / 60000); return m >= 60 ? `${Math.floor(m / 60)}시간 ${m % 60}분` : `${m}분`; };
 const pct = x => `${Math.round(x * 1000) / 10}%`;
 const monsterOf = a => a.monster || a.terrain.monster;
 function actionPreview(id, mi = 0) {
@@ -513,7 +518,7 @@ function simulateBattle(m, hp0) {
     if (mhp <= 0) break;
     if (chance(BATTLE_HIT * (1 - fx.evade))) { const d = Math.max(1, Math.round(m.atk * jitter())); hp -= d; lost += d; }
   }
-  return { win: mhp <= 0, rounds, lost: Math.min(lost, m.hpCap || BATTLE_HP_CAP, hp0 - 1) };
+  return { win: mhp <= 0 && !(Math.random() > 1 - BATTLE_MAX_WIN_MISS), rounds, lost: Math.min(lost, m.hpCap || BATTLE_HP_CAP, hp0 - 1) };
 }
 
 /* 조사(즉시): 지형 정보 + 무작위 아이템 */
@@ -1141,15 +1146,16 @@ function setTitle(name) {
 
 /* ---------- 친구 / 메일 ---------- */
 const samplePlayer = n => NEARBY_PLAYERS.find(p => p[0] === n);
+const REMOTE_PLAYERS = {}; // 서버 검색으로 찾은 대원 { 이름: '온라인' | '자리 비움' } (저장하지 않음)
 /* 친구 추가. 온라인인 대원은 바로 수락하고, 자리 비움이면 응답이 없다. 성공하면 null, 아니면 사유 */
 function addFriend(name) {
   name = cleanText(name, 12);
   if (!state.created) return '먼저 캐릭터를 만드세요.';
-  const p = samplePlayer(name);
-  if (!p) return '대원을 찾을 수 없습니다. (다른 대원은 서버 연결 후에 만날 수 있어요)';
+  const p = samplePlayer(name), remote = Object.prototype.hasOwnProperty.call(REMOTE_PLAYERS, name);
+  if (!p && !remote) return '대원을 찾을 수 없습니다. 검색으로 찾은 대원만 추가할 수 있어요.';
   if (state.friends.includes(name)) return '이미 친구입니다.';
   if (state.friends.length >= FRIEND_MAX) return `친구는 ${FRIEND_MAX}명까지 둘 수 있습니다.`;
-  if (p[1] !== '온라인') return `${name} 대원은 자리 비움 상태라 응답이 없습니다.`;
+  if (p && p[1] !== '온라인') return `${name} 대원은 자리 비움 상태라 응답이 없습니다.`;
   state.friends.push(name); save();
   return null;
 }
