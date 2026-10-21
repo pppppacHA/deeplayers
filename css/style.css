@@ -955,3 +955,12 @@ textarea#mailBody{width:100%;min-height:80px;resize:vertical}
 /* 채팅 간격 줄이기, 구분선 제거 */
 #chatFeed .msg,#chatFeed .msg.mine{margin:0;padding:2px 4px;border-bottom:0}
 .term-screen #chatFeed .msg,.term-screen #chatFeed .msg.mine{border-bottom:0}
+/* 버프 아이콘은 프로필 칸 오른쪽 위, 스테이터스 제목은 포인트가 생겨도 줄바꿈하지 않는다 */
+.profile-panel{position:relative}
+.profile-panel .buff-icons{position:absolute;top:8px;right:10px;margin:0;max-width:55%;flex-wrap:wrap;justify-content:flex-end;z-index:2}
+.panel-title,.panel-title *{white-space:nowrap}
+.panel-title .point-badge{flex:none}
+[data-user]{cursor:pointer}
+.user-card{display:flex;flex-direction:column;align-items:center;gap:6px;margin-bottom:8px}
+.user-card .round-avatar.big{width:72px;height:72px;font-size:36px}
+.user-card .round-avatar.big img{width:100%;height:100%;object-fit:cover;border-radius:inherit}

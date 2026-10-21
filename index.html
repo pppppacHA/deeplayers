@@ -41,6 +41,7 @@
     <!-- 왼쪽 컬럼: 프로필 / 스테이터스 / 장비·인벤토리·제작 -->
     <aside class="column left-column">
       <section class="panel profile-panel">
+        <div class="buff-icons" id="buffIcons"></div>
         <div class="profile">
           <div class="profile-head">
             <button class="avatar empty" id="avatarButton" title="프로필 보기"></button>
@@ -65,7 +66,7 @@
       </section>
 
       <section class="panel status-panel" data-panel="상태">
-        <div class="panel-title"><span class="material-symbols-rounded" aria-hidden="true">bar_chart</span> 스테이터스 <span class="spacer"></span><span class="status-pager" id="statusPager"><button data-act="status-page" data-p="0" class="on" title="능력치">1</button><button data-act="status-page" data-p="1" title="전투 능력">2</button></span><span class="point-badge hidden" id="statPoints"></span><div class="buff-icons" id="buffIcons"></div></div>
+        <div class="panel-title"><span class="material-symbols-rounded" aria-hidden="true">bar_chart</span> 스테이터스 <span class="spacer"></span><span class="status-pager" id="statusPager"><button data-act="status-page" data-p="0" class="on" title="능력치">1</button><button data-act="status-page" data-p="1" title="전투 능력">2</button></span><span class="point-badge hidden" id="statPoints"></span></div>
         <div id="statusBody"></div>
       </section>
 

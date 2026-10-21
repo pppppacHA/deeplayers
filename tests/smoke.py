@@ -537,7 +537,7 @@ with sync_playwright() as p:
     pg.hover('.buff-icon'); pg.wait_for_timeout(150)
     check('buff_tooltip_with_time', '충분한 휴식' in text(pg, '#tooltip') and '남은 시간' in text(pg, '#tooltip'))
     pg.mouse.move(700, 400)
-    bi = rect(pg, '.buff-icon:last-child'); pf = rect(pg, '.panel-title:has(#buffIcons)')
+    bi = rect(pg, '.buff-icon:last-child'); pf = rect(pg, '.profile-panel')
     check('buff_icon_top_right', bi['r'] > pf['r'] - 40 and bi['y'] < pf['y'] + 30)
     check('wil_buff_applied', ev(pg, "totalStats().wil")== 22)
     ff(310)
@@ -1537,10 +1537,10 @@ with sync_playwright() as p:
     check('volcano_title_removed', ev(pg, "TITLE_DEFS.every(([n])=>n!=='화산을 넘은 자')") and ev(pg, "!TITLES.includes('화산을 넘은 자')"))
     pg.click('[data-act="close"]')
     ev(pg, "addBuff('충분한 휴식');renderBuffs(true)"); pg.wait_for_timeout(50)
-    check('buff_icons_in_status_panel_not_profile', pg.locator('.profile #buffIcons').count() == 0 and pg.locator('.panel-title #buffIcons').count() == 1 and pg.locator('#buffIcons .buff-icon').count() >= 1)
+    check('buff_icons_in_profile_panel', pg.locator('.profile-panel #buffIcons').count() == 1 and pg.locator('.panel-title #buffIcons').count() == 0 and pg.locator('#buffIcons .buff-icon').count() >= 1)
     bi = rect(pg, '#buffIcons'); st_t = rect(pg, '#statPoints') if pg.locator('#statPoints:not(.hidden)').count() else None
-    pt = pg.evaluate("(()=>{const t=document.querySelector('.panel-title:has(#buffIcons)').getBoundingClientRect();return {r:t.right}})()")
-    check('buff_icons_top_right_of_status', bi['r'] >= pt['r'] - 30, [bi, pt])
+    pt = pg.evaluate("(()=>{const t=document.querySelector('.profile-panel').getBoundingClientRect();return {r:t.right}})()")
+    check('buff_icons_top_right_of_profile', bi['r'] >= pt['r'] - 30, [bi, pt])
     ev(pg, "(()=>{state.chats['월드'].push(['나','안녕하세요'],['관제 시스템','반갑습니다']);renderChat()})()")
     mb = pg.evaluate("(()=>{const b=document.querySelector('.msg.mine .bubble'),c=getComputedStyle(b);return {d:c.display,pad:parseFloat(c.paddingLeft),br:parseFloat(c.borderTopLeftRadius),bw:parseFloat(c.borderTopWidth),bg:c.backgroundColor,al:getComputedStyle(b.parentElement).textAlign,jc:getComputedStyle(b.parentElement).justifyContent}})()")
     check('chat_compact_no_bubble', mb['d'] == 'inline' and mb['pad'] == 0 and mb['bw'] == 0 and mb['bg'] == 'rgba(0, 0, 0, 0)', mb)
@@ -1605,6 +1605,8 @@ with sync_playwright() as p:
     check('settings_no_sfx_title', ev(pg, "(openSettings(),!document.querySelector('.snd-title'))")); ev(pg, "closeModal()")
     check('new_items_exist', ev(pg, """['고양이귀 헤드기어','사탕','망개떡','중식도','곡괭이','망토'].every(n=>ITEMS[n])&&ITEMS['고양이귀 헤드기어'].slot==='머리'&&ITEMS['망토'].slot==='목'&&ITEMS['중식도'].slot==='무기'&&ITEMS['곡괭이'].slot==='무기'&&ITEMS['사탕'].use&&ITEMS['망개떡'].use&&SHOPS['상점가'].base.some(x=>x[0]==='사탕')&&SHOPS['상점가'].base.some(x=>x[0]==='망개떡')"""))
     check('local_chat_has_time', ev(pg, """(()=>{state.chatTab='월드';state.chats['월드']=[['나','시간 테스트',Date.now()]];renderChat();return !!document.querySelector('#chatFeed .msg-time')&&/(오전|오후)/.test(document.querySelector('#chatFeed .msg-time').textContent)})()"""))
+    check('status_title_no_wrap_with_points', ev(pg, """(()=>{const b=state.statPoints;state.statPoints=12;renderStatus();const t=document.querySelector('.status-panel .panel-title'),h=t.getBoundingClientRect().height;const one=[...t.children].every(c=>c.getBoundingClientRect().height<=h+1);const st=t.firstChild.textContent;const kids=[...t.querySelectorAll('.point-badge')];state.statPoints=b;renderStatus();return h<40&&kids.length===1})()"""))
+    check('click_name_shows_user_info', ev(pg, """(async()=>{const n='테스트친구';if(!state.friends.includes(n))state.friends.push(n);openFriends(true);const el=document.querySelector('#modalBody [data-user="'+n+'"]');if(!el)return false;el.click();await new Promise(r=>setTimeout(r,100));const ok=document.querySelector('#modalTitle').textContent===n&&!!document.querySelector('#modalBody .user-card');closeModal&&closeModal();return ok})()"""))
     check('lit_title_on_full_map', ev(pg, """(()=>{const bak=JSON.stringify(state);const z=DANGER_ZONES[2];const before=zoneFullyLit(z.id);
       z.map.forEach((row,y)=>[...row].forEach((c,x)=>{if(c!=='#'&&c!=='.'){state.explored[z.id]=state.explored[z.id]||{};state.explored[z.id][x+','+y]=1}}));
       const got=checkTitles();const ok=!before&&zoneFullyLit(z.id)&&got.includes('용암계곡을 밝힌 자')&&!state.titles.includes('고요한 숲을 밝힌 자');Object.assign(state,JSON.parse(bak));state.titles=JSON.parse(bak).titles;return ok})()"""))
