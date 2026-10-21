@@ -210,6 +210,12 @@ with sync_playwright() as p:
     check('my_avatar_uploaded_small', server['setav'] and server['setav'][-1].startswith('data:image/') and len(server['setav'][-1]) < 20000, [str(x)[:40] for x in server['setav']])
     pg.evaluate("document.querySelector('[data-act=\"avatar-clear\"]')") ; pg.evaluate("A['avatar-clear']()"); pg.wait_for_timeout(500)
     check('my_avatar_removal_synced', server['setav'][-1] == '')
+    # 다른 기기: 로컬 이미지가 없을 때 서버 이미지를 지우지 않고 받아 온다
+    n0 = len(server['setav']); nm = '테스터'; pg.evaluate("state.character.name='테스터'"); server['avatars'][nm] = PNG
+    pg.evaluate("localStorage.removeItem(AVATAR_KEY)"); pg.evaluate("syncMyAvatar()"); pg.wait_for_timeout(700)
+    check('other_device_keeps_server_avatar', len(server['setav']) == n0, server['setav'][n0:])
+    check("other_device_downloads_own_avatar", pg.evaluate("getAvatar()") == PNG, [nm, pg.evaluate("state.created"), server["avq"][-2:]])
+    pg.evaluate("localStorage.removeItem(AVATAR_KEY)"); server['avatars'].pop(nm, None)
     pg.evaluate("view.avatars={};state.friends=['하늘'];openFriends(true)"); pg.wait_for_timeout(900)
     check('friend_list_shows_profile_image', pg.locator('#friendList .round-avatar img').count() == 1)
     pg.evaluate("state.friends=[];closeModal()")

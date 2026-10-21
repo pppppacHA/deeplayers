@@ -46,7 +46,7 @@
 - **미구현**: 대원 간 상점, 실제 서버 채팅/메일/길드/계정/보안, D 이후 승급.
 - 캐릭터 생성은 튜토리얼 안에서(`createCharacter`): 전원 F/Lv1/100CR/스탯 총합 동일(모든 스탯 0에서 시작, 12포인트 자유 분배). 필수는 이름과 이능력 이름뿐, 나이는 10~60(비우면 20). 처음 임무는 메인 임무(`adapt`)만 있고 서브 임무는 본부에서 수주한다. 튜토리얼 끝에 `chooseWeapon`(무기 6종 중 1) + `START_KIT`(건조 식량×3, 응급 키트×1).
 - **임무 수주**: `QUESTS`에서 `board`가 있는 임무는 그 장소(`'본부'` 또는 지상 구역 이름의 안전 캠프 C 타일)에서 수주해야 임무 패널에 나타난다(`takeQuest`, 동시 `BOARD_MAX_ACTIVE`=5). 장소 판정은 `placeKey()`. need.type: `kill`(수주 후 처치 수, `countKill`), `item`(`consume:true`면 완수 시 납품), `visit`, `flag`. board 없는 임무는 처음부터 진행 중.
-- **상점**: `SHOPS[장소]`={base, special}. `상점가`와 각 구역 캠프. `buyItem`이 장소·CR·가방 칸을 검사. 판매는 미구현.
+- **상점**: 캠프는 `SHOPS[장소]`={base, special}(탭 `SHOP_TABS`). 상점가는 `SHOPS['보급품 상점']`/`SHOPS['종합 상가']`={title, at:'상점가', tabs, sections:{탭:[[이름,가격]]}} — `shopAt/shopTabs/shopSections/shopRows`가 둘을 같게 다룬다. `buyItem`이 장소·CR·가방 칸을 검사, `sellItem`은 두 상점 모두 가능.
 - **채팅/길드**: 채널은 월드·길드·알림(`CHAT_TABS`). 알림은 공지만 받는 읽기 전용(저장값을 믿지 않고 항상 `NOTICE_FEED()`로 다시 만든다). 길드(`state.guild`): `createGuild`(길드장), `joinDemoGuild`, `inviteGuild`(길드장만, 최대 `GUILD_MAX`), `leaveGuild`. 서버 연결 전에는 `NEARBY_PLAYERS` 샘플만 초대할 수 있고 '자리 비움'은 응답이 없다. 파티 기능은 삭제됨.
 - 패널 접기는 ≤1200px에서만 보이며, 폭이 넓어지면(`restorePanels`) 접은 패널을 모두 펼친다. 좁은 화면은 한 줄 쌓기.
 - 설정: 스위치(`sw()`), BGM 기본 25%, 클릭음/알림음 따로 on/off. 테마는 `applyTheme(임시설정)` 미리보기.
@@ -133,3 +133,20 @@ STUB_ICONS=1 python3 tests/smoke.py   # 아이콘 폰트를 못 받는 환경(�
 - 저장 안전장치: 저장 검증(`hardenState`)이 불러오는 순간(core.js 맨 위 `const state = loadState()`) 쓰는 상수는 반드시 data.js(또는 그 이전)에 둔다 — core.js 아래쪽의 `const`는 TDZ로 ReferenceError가 나서 loadState의 catch가 빈 새 캐릭터를 돌려준다(펫 이름 `PET_NAME_MAX` 사고). 읽기에 실패하면 원본을 `deeplayer-ui-backup`에 보관하고 `window.__loadError`에 사유를 남긴다. 서버 로그인 상태에서 `created=false`면 서버 저장 확인(`cloudRecover`)을 먼저 하고, 빈 상태는 서버로 올리지 않는다(`cloudAutoPush`/`cloud-push`).
 - 스토리(튜토리얼 첫 화면) 오른쪽 아래 `#tutCloudLoad` '서버 불러오기': 서버 로그인 + `created=false`일 때만 보이고, 서버 진행이 있으면 `cloudApply`. 저장 검증에서 `crafting.out`은 `RECIPES[index].out`으로 다시 채운다. 테스트 `load_path_has_no_late_consts`(정적)·`reload_keeps_character_*`(동적)가 불러오기 사고를 막는다.
 - 서버 백업(`supabase/backups.sql` 한 번 실행): `saves`가 덮어써지기 직전(BEFORE UPDATE 트리거) 이전 진행을 `save_backups`에 유저별 최대 12개 보관(6시간마다 auto, 캐릭터 있던 저장이 빈 상태로 덮일 때 guard, 수동 manual). RPC `list_backups/get_backup/backup_now`, 클라이언트 `Cloud.listBackups/getBackup/backupNow`, 설정 → 서버 백업(`openBackups`, `backup-now`/`backup-restore(-do)`). 불러오기 전에 현재 서버 상태를 먼저 `backup_now`. 서버 저장이 비었을 때 스토리의 `#tutCloudLoad`가 가장 최근 백업을 찾는다.
+- 프로필 이미지 기기 간 동기화: 이미지(`deeplayer-avatar`)는 세이브와 별개라 다른 기기에는 없다. `syncMyAvatar(clear)`는 이 기기에 이미지가 있으면 64px로 서버에 올리고, 없으면 서버에서 내 것을 받아 저장한다(예전엔 빈 값을 올려 서버 이미지를 지웠음). 서버에서 지우는 건 `avatar-clear`(clear=true)뿐. 받는 이미지는 64px라 원본 화질은 아니다.
+
+## 2026-10-22 추가
+- 스테이터스 포인트는 `view.statDraft`(저장 안 함)에 먼저 나눠 두고 `stat-commit`(저장)→`commitStatDraft`로 확정, `stat-reset`(취소)/`stat-down`(되돌리기). 세이브에는 확정된 값만 들어간다.
+- 로그인 화면(signup.html): 로그인 탭에서는 초대코드 안내 문구를 숨기고 입력란을 위로, 로그인 버튼을 살짝 아래로(`#liForm` CSS).
+- 메일 답장: 열어 본 메일의 `mail-reply` → 보내기 탭에 받는 사람·`RE: 제목` 미리 채움(`view.mailSubj`). 친구가 아닌 발신자는 거절.
+- 아이템 설명 통일: `itemLines(이름)` → ['설명 | 효과(설명에 없는 것만, 없으면 생략)', '[태그] … [판매가] nCR']. 툴팁은 `itemTip(이름)`(줄바꿈 \n, `#tip span{white-space:pre-line}`), 창은 `itemInfoHtml`.
+- 도감 정렬: `codexView.sort`('' 기본순 / 'name' 가나다순, 미발견은 항상 뒤).
+- 임무 수주 리셋: 수주한 뒤 처음 맞는 한국 시간 오전 4시(`BOARD_RESET_HOUR`, `nextBoardReset`).
+- 뽑기: 임무를 완수할 때마다 `state.questCount`++, 5번마다(`TICKET_EVERY`) `state.tickets`++. 상점가 '뽑기' → `openGacha`/`drawGacha`. 경품 묶음 3가지(`GACHA_SETS`), 확률 `GACHA_RATES`(1등 1%), 1등이 나오면 `state.gacha.pat`이 다음 묶음으로(이 기기 기준; 서버 전체 공유는 미구현). 가방이 가득 차 경품을 못 받으면 뽑기권을 쓰지 않는다.
+- 신규 재료: 돌(채굴)/달걀·나뭇가지·라벤더(채집)/슬라임·마석(이능 몬스터 드롭). `data.js`의 2026-10-22 블록. **규칙: 이미 있는 아이템·레시피·작물은 건너뛴다** — `defItems`는 중복 이름을 무시하고, `NEW_RECIPES`는 `RECIPES` 맨 뒤에만 붙인다(제작 중 저장이 번호로 가리킨다), `addCrop`도 중복이면 무시.
+- 상점가 분리: 보급품 상점(기본 보급품/음식/약/레시피/판매), 종합 상가(장비/재료/농사/RP템(공란)/판매), 서브잡, 뽑기, 뒷골목 카드 한 판. '레시피' 탭은 아직 모르는 레시피를 CR(`RECIPE_PRICE`)로 바로 배운다(`buyRecipe`, 등급 필요).
+- 칭호 '시간 가는 줄 모르는': 끝낸 행동 시간의 합 `state.actMs`가 24시간 이상(`finishIfDue`에서 누적).
+- 프로필 이미지가 없으면 모든 유저 `icon('person')`. 프로필 창 '캐릭터 정보'는 항목별 상자(`.pf-row`), 순서 이름·나이·키워드·이능력 이름·이능력 설명. 채팅 단말기 `.term-screen` 좌우 여백 4px.
+- 펫 성격 6종(`PET_PERS`, data.js): 길들일 때 무작위(`pers`), 옛 펫은 불러올 때 무작위로 채워 저장. `petFeedLine/petCareLine`이 성격별 문구. 성격 허브(`활발 허브` 등, `addCrop`)를 간식으로 주면 성격 변경(같은 성격이면 소모 안 함). 허브 씨앗은 채집 중 `PERS_SEED_DROP`=1.2%.
+- 패치노트: `isPatchPost`(제목 '업데이트 · M월 D일')는 알림 채팅(`NOTICE_FEED`)에서 제외. 오늘(KST) 날짜 패치노트가 있으면 알림 탭 위 `#noticeBanner` → `openBoard('공지', 번호)`. 게시글 본문의 줄 머리 `[말머리]`는 `.head-tag`(포인트 색, `postHtml`). 새 업데이트는 POSTS['공지'] 맨 위에 '업데이트 · M월 D일'로 추가.
+- 새 저장 필드(tickets/questCount/gacha/actMs/pets[].pers)는 SAVE_VERSION을 올리지 않고 `hardenState`가 기본값·범위를 채운다(옛 저장 호환 테스트 `old_save_gets_new_defaults`).

@@ -91,7 +91,8 @@ function allBuffs() {
   return list;
 }
 /* 아이템 툴팁 문장: 설명 + 서브잡 태그 + 판매가 */
-const itemTip = it => `${it.desc}${(it.tags || []).length ? ` [태그] ${it.tags.join(' · ')}` : ''}${it.sell ? ` [판매가] ${it.sell} CR` : ''}`;
+const itemTip = name => itemLines(name).filter(Boolean).join('\n'); // 이름으로 부른다
+const itemInfoHtml = name => { const [a, b] = itemLines(name); return `<span class="it-l1">${esc(a)}</span>${b ? `<span class="it-l2">${esc(b)}</span>` : ''}`; };
 function renderBuffs(force) {
   const list = allBuffs(), sig = list.map(b => b.id + b.endAt).join();
   if (!force && sig === renderBuffs.sig) return;
@@ -114,7 +115,8 @@ function combatPageHtml() { // 스테이터스 2페이지: 공격력 / 방어력
 function renderStatus() {
   $$('#statusPager button').forEach(b => b.classList.toggle('on', +b.dataset.p === (view.statusPage || 0)));
   if (view.statusPage === 1) { const h = view.statH; $('#statusBody').innerHTML = combatPageHtml(); if (h) $('#statusBody .stat-grid').style.minHeight = h + 'px'; $('#statPoints').classList.toggle('hidden', !state.statPoints); $('#statPoints').textContent = `남은 포인트 ${state.statPoints}`; return; }
-  const t = totalStats(), fx = effects(t), pts = state.statPoints;
+  const t = totalStats(), fx = effects(t), dr = view.statDraft || {}, drSum = Object.values(dr).reduce((a, b) => a + b, 0), pts = state.statPoints - drSum;
+  $('#statSave').classList.toggle('hidden', !drSum);
   const badge = $('#statPoints');
   badge.textContent = `남은 포인트 ${pts}`;
   badge.classList.toggle('hidden', !pts);
@@ -123,8 +125,8 @@ function renderStatus() {
     // 카드마다 효과가 2개(기본 효과 + 추가 효과): 숫자 아래 화살표로 슬라이드쇼처럼 넘겨 본다 (카드 크기는 그대로)
     const bf = STAT_BUFFS.find(x => x.stat === d.key), [k0, l0, s0, u0] = d.fx[0], idx = (view.statSlide && view.statSlide[d.key]) ? 1 : 0;
     const cur = idx ? { label: bf.label, val: `${bf.sign}${round1(fx[bf.key] * 100)}${bf.unit}`, tip: bf.tip } : { label: l0, val: `${s0}${round1(fx[k0] * 100)}${u0}`, tip: d.tip };
-    return `<div class="stat" data-tip-title="${d.name} · ${cur.label}" data-tip-desc="${esc(cur.tip)}"><div class="stat-head"><b>${d.name}</b><small>${d.en}</small><span class="stat-val">${state.stats[d.key]}${bonus ? `<em class="${bonus < 0 ? 'neg' : ''}">${bonus > 0 ? '+' : ''}${bonus}</em>` : ''}</span>` +
-      `${pts ? `<button class="stat-plus" data-act="stat-up" data-stat="${d.key}" title="포인트 사용">${icon('add')}</button>` : ''}</div>` +
+    return `<div class="stat" data-tip-title="${d.name} · ${cur.label}" data-tip-desc="${esc(cur.tip)}"><div class="stat-head"><b>${d.name}</b><small>${d.en}</small><span class="stat-val">${state.stats[d.key] + (dr[d.key] || 0)}${dr[d.key] ? `<em class="draft">+${dr[d.key]}</em>` : ''}${bonus ? `<em class="${bonus < 0 ? 'neg' : ''}">${bonus > 0 ? '+' : ''}${bonus}</em>` : ''}</span>` +
+      `${dr[d.key] ? `<button class="stat-plus stat-minus" data-act="stat-down" data-stat="${d.key}" title="되돌리기">${icon('remove')}</button>` : ''}${pts ? `<button class="stat-plus" data-act="stat-up" data-stat="${d.key}" title="포인트 사용 (저장해야 확정)">${icon('add')}</button>` : ''}</div>` +
       `<div class="stat-eff stat-slide"><div class="se-main"><span class="eff-l">${cur.label}</span><b class="eff-v">${cur.val}</b></div><button class="se-next" data-act="stat-slide" data-stat="${d.key}" title="${idx ? '이전 효과' : '다음 효과'} (${idx + 1}/2)" aria-label="${idx ? '이전 효과 보기' : '다음 효과 보기'}">${icon(idx ? 'chevron_left' : 'chevron_right')}<i>${idx + 1}/2</i></button></div></div>`;
   }).join('') + '</div>';
   const g = $('#statusBody .stat-grid'); if (g) view.statH = Math.round(g.getBoundingClientRect().height) || view.statH;
@@ -159,7 +161,7 @@ function renderEquipPick() {
   const slot = view.equipSlot, box = $('#equipPick');
   if (!slot) { box.innerHTML = '<p class="tiny pick-hint">장비 칸을 누르면 착용 가능한 아이템이 여기에 표시됩니다.</p>'; return; }
   const cur = state.equipment[slot], list = state.inventory['장비'].filter(s => ITEMS[s.n].slot === slot);
-  const cells = list.map(s => `<button class="slot clickable filled" data-act="pick-equip" data-item="${esc(s.n)}" data-tip-title="${esc(s.n)}" data-tip-desc="${esc(itemTip(ITEMS[s.n]))}" aria-label="${esc(s.n)}">${icon(ITEMS[s.n].icon)}</button>`);
+  const cells = list.map(s => `<button class="slot clickable filled" data-act="pick-equip" data-item="${esc(s.n)}" data-tip-title="${esc(s.n)}" data-tip-desc="${esc(itemTip(s.n))}" aria-label="${esc(s.n)}">${icon(ITEMS[s.n].icon)}</button>`);
   while (cells.length < 6) cells.push('<div class="slot" aria-label="빈 슬롯"></div>');
   box.innerHTML = `<div class="pick-head"><b>${esc(slot)}</b><span class="tiny">${cur ? `착용 중: ${esc(cur)}` : '착용 중인 장비 없음'}</span><span class="spacer"></span>${cur ? `<button data-act="unequip" data-slot="${esc(slot)}">해제</button>` : ''}</div>` +
     `<div class="inv-grid">${cells.join('')}</div>${list.length ? '' : '<div class="empty">착용 가능한 아이템이 없습니다.</div>'}`;
@@ -185,7 +187,7 @@ function renderInventory() {
   $('#inventoryGrid').innerHTML = Array.from({ length: count }, (_, i) => {
     const s = items[start + i], it = s && ITEMS[s.n];
     return it
-      ? `<button class="slot clickable filled" data-act="item" data-item="${esc(s.n)}" data-tip-title="${esc(s.n)}" data-tip-desc="${esc(itemTip(it))}" aria-label="${esc(s.n)}">${icon(it.icon)}${s.q > 1 ? `<span class="qty">${s.q}</span>` : ''}</button>`
+      ? `<button class="slot clickable filled" data-act="item" data-item="${esc(s.n)}" data-tip-title="${esc(s.n)}" data-tip-desc="${esc(itemTip(s.n))}" aria-label="${esc(s.n)}">${icon(it.icon)}${s.q > 1 ? `<span class="qty">${s.q}</span>` : ''}</button>`
       : '<div class="slot" aria-label="빈 슬롯"></div>';
   }).join('');
   $('#invPage').textContent = `${state.page} / ${pages}`;
@@ -444,7 +446,7 @@ function tick() {
   }
   if (pruneBuffs()) { renderBuffs(); save(); }
   renderBuffs(); // 펫의 든든함이 끝나면 버프 아이콘도 사라진다
-  if (resetBoardQuests()) { renderSide(); toast('수주한 임무가 24시간이 지나 리셋되었습니다.'); }
+  if (resetBoardQuests()) { renderSide(); toast('수주한 임무가 오전 4시를 지나 리셋되었습니다.'); }
   farmRefresh(); petSideRefresh();
   awardTitles();
   newUnlocks().forEach(t => { addLog(t); toast(t); sfx('levelup'); notifyDone(t); });
@@ -480,7 +482,7 @@ const rewardText = q => `보상 · EXP +${q.reward.exp} · CR +${q.reward.money}
 /* 오른쪽 '펫' 탭: 보유 펫과 탐험 중인 펫의 상태를 한눈에 */
 const petRoot = el => (el && el.closest && el.closest('#sideView')) || $('#modalBody');
 const petRefresh = el => { if (el && el.closest && el.closest('#sideView')) renderSide(); else { openPets(true); renderSide(); } };
-const petSig = () => state.pets.map(p => `${p.id}|${p.name || ''}|${p.exp ? (expReady(p) ? 'R' : 'E') + p.exp.zone : state.petActive === state.pets.indexOf(p) ? 'A' : 'W'}|${p.bond}`).join(';') + '|' + state.side + '|' + (view.petSub || '상태') + '|' + view.petNaming + '|' + state.petActive;
+const petSig = () => state.pets.map(p => `${p.id}|${p.name || ''}|${p.exp ? (expReady(p) ? 'R' : 'E') + p.exp.zone : state.petActive === state.pets.indexOf(p) ? 'A' : 'W'}|${p.bond}|${p.pers}`).join(';') + '|' + state.side + '|' + (view.petSub || '상태') + '|' + view.petNaming + '|' + state.petActive;
 function petPanelHtml() {
   const sub = ['상태', '도감', '돌보기'].includes(view.petSub) ? view.petSub : '상태', tabs = `<div class="subtabs">${['상태', '도감', '돌보기'].map(t => `<button class="${t === sub ? 'active' : ''}" data-act="pet-sub" data-sub="${t}">${t}</button>`).join('')}</div>`;
   if (sub === '돌보기') return tabs + petCareHtml();
@@ -492,7 +494,7 @@ function petPanelHtml() {
     const st = away ? (ready ? `${p.exp.zone} 탐험에서 돌아왔어요!` : `${p.exp.zone} 탐험 중 · <span class="pet-left" data-i="${i}">${fmtLeft(expLeft(p))}</span> 남음`) : act ? '동행 중' : '대기 중';
     const pct = away && !ready ? Math.round((1 - expLeft(p) / (p.exp.ms || PET_EXP_MS)) * 100) : 0;
     return `<div class="nearby-row pet-side-row ${away ? 'away' : ''}"><div class="round-avatar">${icon(sp.icon || 'pets')}</div><div class="grow"><strong>${esc(petName(p))}${p.name ? ` <small>(${esc(sp.name)})</small>` : ''}</strong>` +
-      `<small>${st}</small><small>친밀도 ${p.bond}/100</small>` + (away && !ready ? `<div class="bar thin"><span class="pet-bar" data-i="${i}" style="width:${pct}%"></span></div>` : '') + `</div>` +
+      `<small>${st}</small><small>친밀도 ${p.bond}/100 · 성격 ${esc(petPersOf(p))}</small>` + (away && !ready ? `<div class="bar thin"><span class="pet-bar" data-i="${i}" style="width:${pct}%"></span></div>` : '') + `</div>` +
       (ready ? `<button class="primary" data-act="pet-claim" data-i="${i}">수확물 받기</button>` : '') + `</div>`;
   }).join('');
   return tabs + rows;
@@ -537,7 +539,7 @@ function renderSide() {
 }
 const SYSTEM_SPEAKERS = { '관제 시스템': 'smart_toy', '시스템': 'smart_toy', '공지': 'campaign', '업데이트': 'system_update_alt' };
 const FACE_ICONS = ['face', 'face_2', 'face_3', 'face_4', 'face_5', 'face_6'];
-const speakerIcon = n => SYSTEM_SPEAKERS[n] || FACE_ICONS[[...n].reduce((a, c) => a + c.charCodeAt(0), 0) % FACE_ICONS.length];
+const speakerIcon = n => SYSTEM_SPEAKERS[n] || 'person'; // 프로필 이미지가 없는 유저는 모두 같은 사람 모양 아이콘(성별 구분 없음)
 /* ---- 대원 아이콘: 각자 설정한 프로필 이미지(서버에 64px로 올려 둔 것)를 보여 주고, 없으면 기본 얼굴 아이콘 ---- */
 view.avatars = {}; view.avWant = new Set(); view.chatSrv = { '월드': [], '길드': [] }; view.chatLast = { '월드': 0, '길드': 0 };
 const CHAT_CH = { '월드': 'world', '길드': 'guild' }, CHAT_CACHE = 'deeplayer-chat', CHAT_KEEP = 60;
@@ -558,7 +560,7 @@ function avatarOf(name) {
   const img = mine ? getAvatar() : view.avatars[n];
   if (img && /^data:image\/(webp|jpeg|png);base64,[A-Za-z0-9+/=]+$/.test(img)) return `<img src="${esc(img)}" alt="">`;
   if (!mine && chatOnline() && !(n in view.avatars) && n) { view.avWant.add(n); clearTimeout(view.avT); view.avT = setTimeout(fetchAvatars, 250); }
-  return icon(mine ? 'person' : speakerIcon(n));
+  return icon('person');
 }
 async function fetchAvatars() { // 아직 모르는 대원의 이미지를 한꺼번에 가져온다 (없는 대원도 '없음'으로 기억해 다시 묻지 않는다)
   const names = [...view.avWant].slice(0, 40); view.avWant.clear(); if (!names.length || !chatOnline()) return;
@@ -577,9 +579,16 @@ async function smallAvatar(dataUrl) { // 서버에는 64px 작은 이미지만 �
   for (const q of [.7, .5, .35]) { let o = cv.toDataURL('image/webp', q); if (!o.startsWith('data:image/webp')) o = cv.toDataURL('image/jpeg', q); if (o.length <= 19000) return o; }
   return '';
 }
-async function syncMyAvatar() { // 내 이미지를 서버에 올린다 (바꾸거나 지울 때, 접속할 때)
+async function syncMyAvatar(clear) { // 내 이미지를 서버와 맞춘다. 이 기기에 이미지가 없으면 서버 것을 받아 온다(지우기는 명시적으로 눌렀을 때만)
   if (!chatOnline()) return;
-  try { const my = getAvatar(); await Cloud.setAvatar(my ? await smallAvatar(my) : ''); } catch (e) { /* 서버 준비 전 */ }
+  try {
+    const my = getAvatar();
+    if (my) { await Cloud.setAvatar(await smallAvatar(my)); return; }
+    if (clear) { await Cloud.setAvatar(''); return; }
+    const nm = state.created && state.character.name; if (!nm) return;
+    const got = await Cloud.getAvatars([nm]), img = got && got[nm];
+    if (typeof img === 'string' && /^data:image\/(webp|jpeg|png);base64,[A-Za-z0-9+/=]+$/.test(img)) { try { localStorage.setItem(AVATAR_KEY, img); } catch (e) { /* 저장 불가 */ } renderProfile(); renderChat(); }
+  } catch (e) { /* 서버 준비 전 */ }
 }
 async function chatPoll() { // 월드·길드 채팅을 서버에서 가져온다
   if (!chatOnline() || !state.created || document.hidden || view.chatBusy) return;
@@ -614,6 +623,7 @@ function renderChat() {
   $('#noticeHead').classList.toggle('hidden', !writer); $('#chatInput').placeholder = writer ? '공지 내용 입력...' : '암호화 메시지 입력...';
   if (tab === '알림') setTray(false);
   $('#noticeNote').classList.toggle('hidden', tab !== '알림' || writer);
+  { const pi = todayPatchIndex(), bn = $('#noticeBanner'); bn.classList.toggle('hidden', tab !== '알림' || pi < 0); bn.dataset.post = pi; }
   $$('[data-chat]').forEach(b => b.classList.toggle('active', b.dataset.chat === state.chatTab));
   $('#chatFeed').innerHTML = (chatOnline() && CHAT_CH[state.chatTab] ? view.chatSrv[state.chatTab] : (state.chats[state.chatTab] || [])).map((row) => {
     const [n, m] = row, srv = chatOnline() && CHAT_CH[state.chatTab], uid = srv ? row[2] : '', at = srv ? row[4] : row[2], tm = fmtChatTime(at);
@@ -624,10 +634,17 @@ function renderChat() {
   }).join('');
   $('#chatFeed').scrollTop = $('#chatFeed').scrollHeight;
 }
-function openBoard(name) {
-  const posts = POSTS[name] || [];
-  modal(name, `<div class="post-layout"><div class="post-list">${posts.map((p, i) => `<button class="post-item ${i ? '' : 'active'}" data-act="post" data-board="${esc(name)}" data-post="${i}">${esc(p[0])}</button>`).join('')}</div>` +
-    `<article class="post-detail" id="postDetail"><h3>${esc(posts[0][0])}</h3><p>${esc(posts[0][1])}</p></article></div>`, [btnClose]);
+/* 게시글 본문: 줄 맨 앞의 [말머리]는 포인트 색으로 */
+const postHtml = text => esc(text).replace(/(^|\n)\[([^\]\n]{1,12})\]/g, (m, br, t) => `${br}<b class="head-tag">[${t}]</b>`);
+function openBoard(name, at = 0) {
+  const posts = POSTS[name] || [], k = clamp(at, 0, posts.length - 1);
+  modal(name, `<div class="post-layout"><div class="post-list">${posts.map((p, i) => `<button class="post-item ${i === k ? 'active' : ''}" data-act="post" data-board="${esc(name)}" data-post="${i}">${esc(p[0])}</button>`).join('')}</div>` +
+    `<article class="post-detail" id="postDetail"><h3>${esc(posts[k][0])}</h3><p>${postHtml(posts[k][1])}</p></article></div>`, [btnClose]);
+}
+/* 오늘(한국 시간) 날짜의 패치노트가 있으면 그 글의 번호 (없으면 -1) */
+function todayPatchIndex() {
+  const d = new Date(Date.now() + 9 * 3600000), tag = `업데이트 · ${d.getUTCMonth() + 1}월 ${d.getUTCDate()}일`;
+  return (POSTS['공지'] || []).findIndex(p => p[0] === tag);
 }
 
 /* ---------- 서버 저장 (js/cloud.js 의 CLOUD 설정이 채워져 있을 때만 나타난다) ---------- */
@@ -728,7 +745,9 @@ function itemSources() {
   }));
   Object.entries(ZONE_SEEDS).forEach(([z, n]) => put(n, `${z} 채집·전투 중 드물게`));
   const sh = {};
-  Object.entries(SHOPS).forEach(([k, d]) => [...d.base, ...d.special].forEach(([n, pr]) => (sh[n] = sh[n] || []).push([k, pr])));
+  Object.keys(SHOPS).forEach(k => shopRows(k).forEach(([n, pr]) => (sh[n] = sh[n] || []).push([k, pr])));
+  PERS_SEEDS.forEach(n => put(n, '채집 중 아주 드물게'));
+  GACHA_SETS.forEach(g => g.prizes.forEach(pr => { if (pr.item) put(pr.item[0], '뽑기 경품'); }));
   Object.entries(sh).forEach(([n, l]) => put(n, `상점 (${l[0][0]} ${l[0][1]}원${l.length > 1 ? ` 외 ${l.length - 1}곳` : ''})`));
   Object.entries(CROPS).forEach(([n, c]) => put(n, `농장 (${c.seed} 심기)`));
   RECIPES.forEach(rc => put(rc.out, `제작 (${Object.entries(rc.mats).map(([n, q]) => `${n} ×${q}`).join(' + ')})`));
@@ -751,11 +770,13 @@ function codexEntries(tab) {
   return RECIPES.map(rc => ({ sub: '', icon: ITEMS[rc.out].icon, name: rc.out, desc: Object.entries(rc.mats).map(([n, q]) => `${n} ×${q}`).join(' + '), known: recipeKnown(rc), badge: recipeKnown(rc) ? (c.recipes[rc.out] ? '제작 완료' : '미제작') : (rankAtLeast(rc.rank) ? '단련으로 습득 가능' : `${rc.rank}등급부터 단련으로 습득`) }));
 }
 function codexHtml() {
-  const { tab, sub } = codexView, all = codexEntries(tab), list = sub ? all.filter(e => e.sub === sub) : all;
+  const { tab, sub } = codexView, all = codexEntries(tab);
+  let list = sub ? all.filter(e => e.sub === sub) : all;
+  if (codexView.sort === 'name') list = [...list].sort((a, b) => (b.known ? 1 : 0) - (a.known ? 1 : 0) || (a.known ? a.name.localeCompare(b.name, 'ko') : 0)); // 가나다순: 발견한 것만 이름순, 미발견은 뒤에(순서로 정체가 드러나지 않게)
   const found = list.filter(e => e.known).length;
   return `<div class="tabs flush">${CODEX_TABS.map(t => `<button class="${t === tab ? 'active' : ''}" data-act="codex-tab" data-codex="${t}">${t}</button>`).join('')}</div>` +
     (CODEX_SUBS[tab].length ? `<div class="chips">${['', ...CODEX_SUBS[tab]].map(x => `<button class="chip ${x === (sub || '') ? 'active' : ''}" data-act="codex-sub" data-sub="${x}">${x || '전체'}</button>`).join('')}</div>` : '') +
-    `<p class="tiny codex-count">${tab === '레시피' ? `${list.length}종` : `발견 ${found} / ${list.length}`}</p><div class="codex-list">` +
+    `<div class="codex-bar"><p class="tiny codex-count">${tab === '레시피' ? `${list.length}종` : `발견 ${found} / ${list.length}`}</p><span class="codex-sort"><button class="${codexView.sort === 'name' ? '' : 'active'}" data-act="codex-sort" data-sort="">기본순</button><button class="${codexView.sort === 'name' ? 'active' : ''}" data-act="codex-sort" data-sort="name">가나다순</button></span></div><div class="codex-list">` +
     list.map(e => e.known
       ? `<div class="nearby-row"><div class="round-avatar">${icon(e.icon)}</div><div class="grow"><strong>${esc(e.name)}</strong><small>${esc(e.desc)}${e.where ? ` · 서식지 ${esc(e.where)}` : ''}</small>${e.src ? `<small class="src">획득: ${esc(e.src)}</small>` : ''}</div>${e.badge ? `<span class="tag ${e.badge === '제작 완료' ? 'ok' : ''}">${e.badge}</span>` : e.sub ? `<span class="tag">${esc(e.sub)}</span>` : ''}</div>`
       : `<div class="nearby-row unknown"><div class="round-avatar">${icon('help')}</div><div class="grow"><strong>???</strong><small>아직 발견하지 못했습니다.</small></div>${e.sub ? `<span class="tag">${esc(e.sub)}</span>` : ''}</div>`).join('') + '</div>';
@@ -871,7 +892,7 @@ function renderMailAttach() {
     const st = stacks[(pg - 1) * PAGE_SIZE + k], it = st && ITEMS[st.n];
     if (!it) return '<div class="slot" aria-label="빈 슬롯"></div>';
     const left = countItem(st.n) - (att[st.n] || 0);
-    return `<button class="slot clickable filled" data-act="mail-att" data-item="${esc(st.n)}" data-tip-title="${esc(st.n)}" data-tip-desc="${esc(itemTip(it))}" aria-label="${esc(st.n)}" ${left < 1 ? 'disabled' : ''}>${icon(it.icon)}${st.q > 1 ? `<span class="qty">${st.q}</span>` : ''}</button>`;
+    return `<button class="slot clickable filled" data-act="mail-att" data-item="${esc(st.n)}" data-tip-title="${esc(st.n)}" data-tip-desc="${esc(itemTip(st.n))}" aria-label="${esc(st.n)}" ${left < 1 ? 'disabled' : ''}>${icon(it.icon)}${st.q > 1 ? `<span class="qty">${st.q}</span>` : ''}</button>`;
   }).join('');
   $('#mailPage').textContent = `${pg} / ${pages}`; $('#mailPrev').disabled = pg === 1; $('#mailNext').disabled = pg === pages;
   const list = mailAttList(), total = list.reduce((a, [, q]) => a + q, 0);
@@ -891,7 +912,7 @@ function openMail(keepScroll) {
   if (tab === '메일 보내기') {
     body = tabs + (state.friends.length ? '' : '<p class="tiny risk">받는 사람은 친구 목록에서 고를 수 있어요. 먼저 친구를 추가하세요. (친구 버튼)</p>') +
       `<div class="srow fontrow"><span>받는 사람</span><select id="mailTo" ${state.friends.length ? '' : 'disabled'}>${state.friends.length ? state.friends.map(n => `<option ${n === view.mailTo ? 'selected' : ''}>${esc(n)}</option>`).join('') : '<option value="">친구 없음</option>'}</select></div>` +
-      `<div class="srow fontrow"><span>제목</span><input id="mailSubject" maxlength="30" placeholder="메일 제목"></div>` +
+      `<div class="srow fontrow"><span>제목</span><input id="mailSubject" maxlength="30" placeholder="메일 제목" value="${esc(view.mailSubj || '')}"></div>` +
       `<div class="srow fontrow"><span>내용</span><textarea id="mailBody" maxlength="300" placeholder="내용을 입력하세요 (300자)"></textarea></div>` +
       `<div class="choice-label">아이템 첨부 (선택)</div><div class="mail-att" id="mailItems"></div><div class="row-gap"><button data-act="mail-pick-open">${icon('inventory_2')} 소지품에서 고르기</button></div><small class="tiny" id="mailAttInfo"></small>` +
       `<div class="mail-picker hidden" id="mailPicker"><div class="picker-card"><div class="picker-head"><strong>소지품 · 첨부할 아이템</strong><button class="primary" data-act="mail-pick-close">완료</button></div>` +
@@ -906,7 +927,7 @@ function openMail(keepScroll) {
   if (open) {
     body = `<div class="result mail-view"><strong>${esc(open.subject)}</strong><small>${esc(open.from)} · ${new Date(open.at).toLocaleDateString('ko-KR')} · ${open.kept ? '보존됨' : `${mailDaysLeft(open)}일 뒤 사라짐`}</small><p>${esc(open.body)}</p>` +
       (open.items.length ? `<div class="reward-list">${chipList(open.items.map(([n, q]) => `${n} ×${q}`))}</div>` : '') + '</div>';
-    modal('메일', body, [`<button data-act="mail-back">목록</button>`, `<button data-act="mail-keep" data-id="${open.id}">${open.kept ? '보존 해제' : `보존 (${keptCount()}/${MAIL_KEEP_MAX})`}</button>`, `<button data-act="mail-delete" data-id="${open.id}">삭제</button>`,
+    modal('메일', body, [`<button data-act="mail-back">목록</button>`, `<button data-act="mail-reply" data-id="${open.id}">${icon('reply')} 답장</button>`, `<button data-act="mail-keep" data-id="${open.id}">${open.kept ? '보존 해제' : `보존 (${keptCount()}/${MAIL_KEEP_MAX})`}</button>`, `<button data-act="mail-delete" data-id="${open.id}">삭제</button>`,
       open.items.length ? `<button class="primary" data-act="mail-claim" data-id="${open.id}" ${open.got ? 'disabled' : ''}>${open.got ? '수령 완료' : '첨부 받기'}</button>` : btnClose], true);
     return;
   }
@@ -1044,14 +1065,14 @@ const A = {
       toast(`프로필 이미지 변경 완료 (${Math.round(data.length * .75 / 1024)}KB로 압축)`);
     } catch (err) { toast('이미지를 처리하지 못했습니다.'); }
   },
-  'avatar-clear': () => { try { localStorage.removeItem(AVATAR_KEY); } catch (e) { /* 저장 불가 */ } renderProfile(); openProfile(); syncMyAvatar(); renderChat(); },
+  'avatar-clear': () => { try { localStorage.removeItem(AVATAR_KEY); } catch (e) { /* 저장 불가 */ } renderProfile(); openProfile(); syncMyAvatar(true); renderChat(); },
 
   /* 지도 / 행동 */
   node: el => { const id = el.dataset.node; if (id !== state.location && !state.active && !state.pending) doTravel(id); else if (id !== state.location) { toast('진행 중이거나 결과 확인이 필요한 행동이 있어 이동할 수 없습니다.'); sfx('error'); } },
   choice: el => {
     const a = ACTIONS[el.dataset.choice], lg = levelGate(el.dataset.choice);
     if (lg) { toast(lg); sfx('error'); return; }
-    if (a.kind === 'board') openQuestBoard(); else if (a.kind === 'shop') { view.shopTab = SHOP_TABS[0]; openShop(); }
+    if (a.kind === 'board') openQuestBoard(); else if (a.kind === 'shop') { view.shopId = a.shop || placeKey(); view.shopTab = shopTabs(view.shopId)[0]; openShop(); } else if (a.kind === 'gacha') openGacha();
     else if (a.kind === 'enhance') openEnhance(); else if (a.kind === 'promo') openPromo(); else if (a.kind === 'farm') openFarm(); else if (a.kind === 'pet') openPets(); else if (a.kind === 'subjob') { view.quitAsk = false; openJob(); }
     else if (a.kind === 'travel') { // 시간이 걸리지 않는 이동은 묻지 않고 바로 간다. 이동장치에서 지상으로 내려가는 1분짜리만 묻는다
       if (LOCATIONS[a.to].danger && state.location === '이동장치') askAction(el.dataset.choice); else doTravel(a.to);
@@ -1079,9 +1100,21 @@ const A = {
     toast(`${name} ×${qty} 구입`);
     openShop(true);
   },
+  'recipe-buy': el => {
+    const out = el.dataset.out, err = buyRecipe(out);
+    if (err) { toast(err); sfx('error'); return; }
+    renderProfile(); renderCraft(); sfx('ok'); toast(`${out} 레시피를 배웠습니다.`); openShop(true);
+  },
+  'gacha-draw': () => {
+    const r = drawGacha();
+    if (typeof r === 'string') { toast(r); sfx('error'); return; }
+    view.gachaLast = r; renderProfile(); renderInventory(); renderLeftTab(); sfx(r.rank <= 2 ? 'levelup' : 'ok');
+    if (r.rank === 1) addLog(`뽑기 1등 당첨! ${prizeText(r.prize)}`);
+    openGacha(true);
+  },
   'shop-tab': el => { view.shopTab = el.dataset.tab; openShop(); },
   'shop-sell': el => {
-    const name = el.dataset.name, qty = +el.dataset.qty || 1, pr = sellPrice(name), err = sellItem(placeKey(), name, qty);
+    const name = el.dataset.name, qty = +el.dataset.qty || 1, pr = sellPrice(name), err = sellItem(view.shopId || placeKey(), name, qty);
     if (err) { toast(err); sfx('error'); return; }
     renderProfile(); renderInventory(); renderLeftTab(); renderEquipPick(); sfx('ok');
     toast(`${name} ×${qty} 판매 (+${pr * qty} CR)`);
@@ -1118,9 +1151,9 @@ const A = {
   },
   'pet-feed': el => {
     const sel = petRoot(el).querySelector('#feedSel'); if (sel && sel.value) view.feed = sel.value;
-    const err = feedPet(+el.dataset.i, view.feed);
+    const pet = state.pets[+el.dataset.i], before = pet && pet.pers, err = feedPet(+el.dataset.i, view.feed);
     if (err) { toast(err); sfx('error'); return; }
-    renderBag(); renderBuffs(true); sfx('ok'); toast('펫이 맛있게 먹었습니다.'); petRefresh(el);
+    renderBag(); renderBuffs(true); sfx('ok'); toast(pet.pers !== before ? `${petName(pet)}의 성격이 '${pet.pers}'(으)로 바뀌었습니다. ${petFeedLine(pet)}` : petFeedLine(pet)); petRefresh(el);
   },
   'pet-name': el => { view.petNaming = +el.dataset.i; petRefresh(el); const e = $('#petNameIn'); if (e) e.focus(); },
   'pet-name-cancel': el => { view.petNaming = -1; petRefresh(el); },
@@ -1354,7 +1387,10 @@ const A = {
   },
 
   /* 스탯 / 제작 / 아이템 */
-  'stat-up': el => { if (spendStatPoint(el.dataset.stat)) { renderStatus(); renderCraft(); save(); } },
+  'stat-up': el => { const k = el.dataset.stat, d = view.statDraft = view.statDraft || {}; if (!(k in state.stats)) return; if (state.statPoints - Object.values(d).reduce((a, b) => a + b, 0) < 1) return; d[k] = (d[k] || 0) + 1; renderStatus(); },
+  'stat-down': el => { const d = view.statDraft || {}, k = el.dataset.stat; if (d[k]) { d[k]--; if (!d[k]) delete d[k]; } renderStatus(); },
+  'stat-reset': () => { view.statDraft = {}; renderStatus(); },
+  'stat-commit': () => { if (commitStatDraft(view.statDraft)) { view.statDraft = {}; sfx('ok'); toast('스테이터스를 저장했습니다.'); renderStatus(); renderCraft(); renderProfile(); save(); } else { view.statDraft = {}; renderStatus(); } },
   craft: el => { // 여러 개 만들 수 있으면 몇 개 만들지 먼저 고른다
     const i = +el.dataset.index, rc = RECIPES[i];
     if (rc && !state.crafting && canCraft(rc) && maxCraft(rc) > 1) { openCraftQty(i); return; }
@@ -1378,7 +1414,7 @@ const A = {
   },
   item: el => {
     const name = el.dataset.item, it = ITEMS[name], have = countItem(name), canEquip = it.slot && state.inventory['장비'].some(s => s.n === name);
-    modal(name, `<div class="nearby-row"><div class="round-avatar">${icon(it.icon)}</div><div class="grow"><strong>${esc(name)}</strong><small>${it.slot ? esc(it.slot) + ' 장비' : esc(it.tab)} · 보유 ${countItem(name)}개</small></div></div><p class="detail-desc">${esc(it.desc)}</p><p class="tiny">효과: ${esc(itemEffect(name))}</p>` +
+    modal(name, `<div class="nearby-row"><div class="round-avatar">${icon(it.icon)}</div><div class="grow"><strong>${esc(name)}</strong><small>${it.slot ? esc(it.slot) + ' 장비' : esc(it.tab)} · 보유 ${countItem(name)}개</small></div></div><p class="detail-desc item-info">${itemInfoHtml(name)}</p>` +
       ((it.mods || state.enchants[name]) ? `<div class="buffs">${[...(it.mods ? modText(it.mods) : []), ...(state.enchants[name] ? [`세공 · ${enchantText(state.enchants[name])}`] : [])].map(b => `<span class="buff">${esc(b)}</span>`).join('')}</div>` : ''),
       [btnClose, ...(it.use ? [(it.use.warp || have < 2 ? '' : `<input id="useQty" type="number" min="1" max="${Math.min(have, MAX_BATCH)}" value="1" aria-label="사용 개수" style="width:56px">`) + `<button class="primary" data-act="use" data-item="${esc(name)}">사용</button>`] : []), ...(canEquip ? [`<button class="primary" data-act="equip" data-item="${esc(name)}">장착</button>`] : [])], true);
   },
@@ -1407,7 +1443,8 @@ const A = {
     renderProfile(); renderBars(); renderStatus(); renderSide(); sfx(r.ups ? 'levelup' : 'ok');
     renderInventory(); renderLeftTab();
     addLog(`임무 완수: ${q.title} (${rewardText(q)})`);
-    toast(`임무 완수! ${q.title}${r.ups ? ` · 레벨 업 Lv.${state.character.level}` : ''}`);
+    toast(`임무 완수! ${q.title}${r.ups ? ` · 레벨 업 Lv.${state.character.level}` : ''}${r.ticket ? ' · 뽑기권 1장 획득!' : ''}`);
+    if (r.ticket) addLog(`뽑기권 1장을 받았습니다. (상점가 뽑기 기계)`);
     if (r.promo) {
       const news = RECIPES.filter(rc => rc.rank === r.promo && !recipeKnown(rc)).map(rc => rc.out);
       renderCraft(); renderLeftTab();
@@ -1418,8 +1455,9 @@ const A = {
   post: el => {
     const p = POSTS[el.dataset.board][+el.dataset.post];
     $$('[data-act="post"]').forEach(x => x.classList.toggle('active', x === el));
-    $('#postDetail').innerHTML = `<h3>${esc(p[0])}</h3><p>${esc(p[1])}</p>`;
+    $('#postDetail').innerHTML = `<h3>${esc(p[0])}</h3><p>${postHtml(p[1])}</p>`;
   },
+  'open-patch': el => { const i = +el.dataset.post; if (i >= 0) openBoard('공지', i); },
 
   /* 캐릭터 / 설정 */
   'profile-edit': () => { if (profileLockLeft() > 0) return; view.profEdit = true; openProfile(true); },
@@ -1466,8 +1504,11 @@ const A = {
     openEnhance(true);
   },
   'title-set': el => { const err = setTitle(el.dataset.title); if (err) { toast(err); sfx('error'); return; } renderProfile(); sfx('ok'); $$('.tchip').forEach(b => b.classList.toggle('on', b.dataset.title === state.character.title)); const pt = $('#pcTitle'); if (pt) pt.textContent = state.character.title; },
-  'mail-tab': el => { view.mailTab = el.dataset.tab; view.mailOpen = null; view.mailAtt = {}; view.mailInvPage = 1; openMail(); },
+  'mail-tab': el => { view.mailSubj = ''; view.mailTab = el.dataset.tab; view.mailOpen = null; view.mailAtt = {}; view.mailInvPage = 1; openMail(); },
   'mail-open': el => { const m = state.mail.find(x => x.id === +el.dataset.id); if (m) { view.mailOpen = m.id; m.read = true; save(); renderMailBadge(); } openMail(true); },
+  'mail-reply': el => { const m = state.mail.find(x => x.id === +el.dataset.id); if (!m) return;
+    if (!state.friends.includes(m.from)) { toast('친구가 아닌 발신자에게는 답장할 수 없습니다.'); sfx('error'); return; }
+    view.mailTab = '메일 보내기'; view.mailOpen = null; view.mailAtt = {}; view.mailInvPage = 1; view.mailTo = m.from; view.mailSubj = cleanText(/^RE:/i.test(m.subject) ? m.subject : 'RE: ' + m.subject, 30); openMail(); },
   'mail-back': () => { view.mailOpen = null; openMail(); },
   'mail-keep': el => { const err = toggleKeep(+el.dataset.id); if (err) { toast(err); sfx('error'); return; } sfx('ok'); openMail(true); },
   'mail-delete': el => { deleteMail(+el.dataset.id); view.mailOpen = null; renderMailBadge(); openMail(); },
@@ -1591,7 +1632,7 @@ const A = {
     if (err) { toast(err); sfx('error'); return; }
     sfx('ok'); toast(`${el.dataset.name} 대원과 친구가 되었습니다.`); if ($('#friendList')) openFriends(); else closeModal();
   },
-  'friend-mail': el => { view.mailTab = '메일 보내기'; view.mailOpen = null; view.mailAtt = {}; view.mailInvPage = 1; view.mailTo = el.dataset.name; openMail(); },
+  'friend-mail': el => { view.mailSubj = ''; view.mailTab = '메일 보내기'; view.mailOpen = null; view.mailAtt = {}; view.mailInvPage = 1; view.mailTo = el.dataset.name; openMail(); },
   'friend-guild-invite': async el => {
     const name = el.dataset.name, uid = (view.friendUid || {})[name];
     if (!uid || !(state.guild && state.guild.master)) { toast('길드장만 초대할 수 있어요.'); sfx('error'); return; }
@@ -1605,6 +1646,7 @@ const A = {
   'friend-remove': el => askConfirm('친구 삭제', `정말로 ${el.dataset.name} 대원을 친구에서 삭제할까요?`, '삭제하기', 'friend-remove-do', { name: el.dataset.name }, () => openFriends(true)),
   'friend-remove-do': el => { const uid = view.friendUid && view.friendUid[el.dataset.name]; removeFriend(el.dataset.name); if (uid && Cloud.enabled && Cloud.user()) Cloud.removeFriend(uid).catch(() => {}); if (view.friendUid) delete view.friendUid[el.dataset.name]; openFriends(true); },
   'codex-tab': el => { codexView.tab = el.dataset.codex; codexView.sub = null; $('#codexRoot').innerHTML = codexHtml(); },
+  'codex-sort': el => { codexView.sort = el.dataset.sort || ''; $('#codexRoot').innerHTML = codexHtml(); },
   'codex-sub': el => { codexView.sub = el.dataset.sub || null; $('#codexRoot').innerHTML = codexHtml(); },
   'logout-ok': () => { closeModal(); if (Cloud.enabled && Cloud.user()) { if (_cloudTimer) { clearTimeout(_cloudTimer); _cloudTimer = 0; cloudAutoPush().finally(() => A['cloud-logout']()); } else A['cloud-logout'](); } else toast('서버 인증 기능은 아직 연결되지 않았습니다.'); },
 };
@@ -1731,12 +1773,12 @@ function openProfile(keepScroll) {
     `<div class="pc-ability"><b>${icon('bolt')} 이능력 · ${esc(c.ability || '미설정')}</b><p>${esc(c.abilityDesc || '이능력 설명이 없습니다.')}</p></div>` +
     `<div class="choice-label">칭호 ${state.titles.length}개 보유 · 눌러서 착용</div><div class="title-chips">${TITLE_DEFS.filter(([n]) => state.titles.includes(n)).map(([n, d]) =>
       `<button class="tchip ${c.title === n ? 'on' : ''}" data-act="title-set" data-title="${esc(n)}" title="달성: ${esc(d)}">${esc(n)}</button>`).join('')}</div>` +
-    `<div class="setting-group"><div class="pf-head"><h3>캐릭터 정보 수정</h3><div class="pf-side">${editing ? `<button class="pf-edit on" data-act="profile-edit-cancel">${icon('close')} 편집 취소</button>` : `<button class="pf-edit" data-act="profile-edit" ${lock > 0 ? 'disabled' : ''}>${icon('edit')} 편집</button>`}</div></div>` +
+    `<div class="setting-group"><div class="pf-head"><h3>캐릭터 정보</h3><div class="pf-side">${editing ? `<button class="pf-edit on" data-act="profile-edit-cancel">${icon('close')} 편집 취소</button>` : `<button class="pf-edit" data-act="profile-edit" ${lock > 0 ? 'disabled' : ''}>${icon('edit')} 편집</button>`}</div></div>` +
     (lock > 0 ? `<p class="tiny">프로필(칭호 제외)은 수정 후 24시간이 지나야 다시 바꿀 수 있어요. 남은 시간 ${fmtLong(lock)}</p>` : state.profileEditAt ? '' : '<p class="tiny">첫 수정은 바로 가능하고, 그 뒤에는 24시간마다 한 번 수정할 수 있어요.</p>') +
     row('이름', `<input id="cName" maxlength="12" ${dis} value="${esc(dr ? dr.name : c.name)}">`) +
-    row('이능력 이름', `<input id="cAbility" maxlength="20" ${dis} value="${esc(dr ? dr.ab : c.ability)}">`) +
     row('나이', `<input id="cAge" ${dis} type="number" min="${AGE_MIN}" max="${AGE_MAX}" value="${esc(dr ? dr.age : c.age)}">`) +
     row('키워드', `<input id="cKeywords" maxlength="60" ${dis} placeholder="쉼표로 구분 (예: 과묵, 정찰)" value="${esc(dr ? dr.kw : c.keywords)}">`) +
+    row('이능력 이름', `<input id="cAbility" maxlength="20" ${dis} value="${esc(dr ? dr.ab : c.ability)}">`) +
     row('이능력 설명', `<textarea id="cAbilityDesc" maxlength="300" ${dis} placeholder="어떤 능력인지 자유롭게 적어 주세요">${esc(dr ? dr.desc : c.abilityDesc)}</textarea>`) +
     `</div>` +
     `<p class="tiny">사진 버튼을 눌러 이미지를 고르면 ${AVATAR_PX}px로 자동 압축됩니다. (png·jpg·webp·gif)</p>`,
@@ -1805,18 +1847,19 @@ function openQuestBoard(keepScroll) {
       `<button class="${taken || done ? '' : 'primary'}" data-act="quest-take" data-id="${q.id}" ${taken || done ? 'disabled' : ''}>${done ? '완수' : taken ? '수주함' : '수주'}</button></div>`;
   }).join('');
   modal(`임무 수주 · ${place === '본부' ? '본부' : place + ' 캠프'}`,
-    `<p class="tiny">${place === '본부' ? '본부에서는 공통 임무를 받을 수 있어요.' : `${esc(place)}에서만 받을 수 있는 특별 임무예요.`} 동시에 ${BOARD_MAX_ACTIVE}개까지 (지금 ${active}개). 수주한 임무는 <b>24시간이 지나면 리셋</b>되어 다시 받을 수 있어요.</p>` + rows, [btnClose]);
+    `<p class="tiny">${place === '본부' ? '본부에서는 공통 임무를 받을 수 있어요.' : `${esc(place)}에서만 받을 수 있는 특별 임무예요.`} 동시에 ${BOARD_MAX_ACTIVE}개까지 (지금 ${active}개). 수주한 임무는 <b>매일 오전 4시에 리셋</b>되어 다시 받을 수 있어요.</p>` + rows, [btnClose]);
   $('#modalBody').scrollTop = st;
 }
 function openShop(keepScroll) {
-  const place = placeKey(), shop = SHOPS[place];
+  const place = SHOPS[view.shopId] && shopAt(view.shopId) === placeKey() ? view.shopId : placeKey(), shop = SHOPS[place];
   if (!shop) { toast('이곳에는 상점이 없습니다.'); return; }
-  if (!SHOP_TABS.includes(view.shopTab)) view.shopTab = SHOP_TABS[0];
+  view.shopId = place;
+  const tabs = shopTabs(place);
+  if (!tabs.includes(view.shopTab)) view.shopTab = tabs[0];
   const st = keepScroll ? $('#modalBody').scrollTop : 0, tab = view.shopTab, sec = shopSections(place);
-  const tagText = n => (ITEMS[n].tags || []).length ? ` · 태그 ${ITEMS[n].tags.join('/')}` : '';
   const row = ([n, price]) => {
     const it = ITEMS[n], stack = it.tab !== '장비';
-    return `<div class="shop-row"><span class="shop-ic">${icon(it.icon)}</span><div class="grow"><strong>${esc(n)}</strong><small>${esc(it.desc)}${esc(tagText(n))}</small>${it.tab === '장비' ? `<small class="effect">${esc(itemEffect(n))}</small>` : ''}</div><span class="price">${price} CR</span>` +
+    return `<div class="shop-row"><span class="shop-ic">${icon(it.icon)}</span><div class="grow"><strong>${esc(n)}</strong><small class="item-info">${itemInfoHtml(n)}</small></div><span class="price">${price} CR</span>` +
       `<button data-act="shop-buy" data-place="${esc(place)}" data-name="${esc(n)}" data-qty="1" ${state.money < price ? 'disabled' : ''}>구입</button>` +
       (stack ? `<button data-act="shop-buy" data-place="${esc(place)}" data-name="${esc(n)}" data-qty="5" ${state.money < price * 5 ? 'disabled' : ''}>×5</button>` : '') + '</div>';
   };
@@ -1827,16 +1870,35 @@ function openShop(keepScroll) {
     const names = Object.keys(m).sort((a, b) => ITEMS[a].tab.localeCompare(ITEMS[b].tab) || a.localeCompare(b));
     body = names.length ? names.map(n => {
       const it = ITEMS[n], q = m[n], pr = sellPrice(n);
-      return `<div class="shop-row"><span class="shop-ic">${icon(it.icon)}</span><div class="grow"><strong>${esc(n)} <span class="tiny">×${q}</span></strong><small>${esc(it.tab)}${esc(tagText(n))}</small></div><span class="price">${pr} CR</span>` +
+      return `<div class="shop-row"><span class="shop-ic">${icon(it.icon)}</span><div class="grow"><strong>${esc(n)} <span class="tiny">×${q}</span></strong><small class="item-info">${itemInfoHtml(n)}</small></div><span class="price">${pr} CR</span>` +
         `<button data-act="shop-sell" data-name="${esc(n)}" data-qty="1">판매</button>` + (q > 1 ? `<button data-act="shop-sell" data-name="${esc(n)}" data-qty="${q}">전부 (${pr * q})</button>` : '') + '</div>';
     }).join('') : '<div class="empty">팔 수 있는 아이템이 없습니다. (착용 중인 장비와 기본 무기는 팔 수 없어요)</div>';
+  } else if (tab === '레시피') {
+    const list = recipesForSale();
+    body = list.length ? '<p class="tiny">레시피를 사면 바로 제작할 수 있어요. 등급이 모자라면 살 수 없습니다. 이미 아는 레시피는 나오지 않아요.</p>' + list.map(rc => {
+      const it = ITEMS[rc.out], pr = recipePrice(rc), lock = !rankAtLeast(rc.rank), mats = Object.entries(rc.mats).map(([n, q]) => `${n} ×${q}`).join(' + ');
+      return `<div class="shop-row"><span class="shop-ic">${icon(it.icon)}</span><div class="grow"><strong>${esc(rc.out)} <em class="tag">${esc(craftCat(rc.out))}</em></strong><small class="item-info">${itemInfoHtml(rc.out)}</small><small>재료 ${esc(mats)}${lock ? ` · ${rc.rank}등급부터` : ''}</small></div><span class="price">${pr} CR</span>` +
+        `<button data-act="recipe-buy" data-out="${esc(rc.out)}" ${lock || state.money < pr ? 'disabled' : ''}>배우기</button></div>`;
+    }).join('') : '<div class="empty">살 수 있는 레시피가 없습니다. 모든 레시피를 알고 있어요.</div>';
   } else {
-    body = sec[tab].length ? sec[tab].map(row).join('') : '<div class="empty">이 분류는 이 상점에서 취급하지 않습니다.</div>';
+    const rows = sec[tab] || [];
+    body = rows.length ? rows.map(row).join('') : `<div class="empty">${tab === 'RP템' ? '준비 중입니다.' : '이 분류는 이 상점에서 취급하지 않습니다.'}</div>`;
   }
   modal(shop.title,
-    `<p class="tiny">보유 CR <b id="shopMoney">${state.money.toLocaleString()}</b> · 가방 ${usedSlots()} / ${bagCapacity()}${place === '상점가' ? '' : ' · 캠프 가격은 조금 비쌉니다.'}</p>` +
-    `<div class="tabs flush shop-tabs">${SHOP_TABS.map(t => `<button class="${t === tab ? 'active' : ''}" data-act="shop-tab" data-tab="${t}">${t}</button>`).join('')}</div>` +
+    `<p class="tiny">보유 CR <b id="shopMoney">${state.money.toLocaleString()}</b> · 가방 ${usedSlots()} / ${bagCapacity()}${place.startsWith('제') ? ' · 캠프 가격은 조금 비쌉니다.' : ''}</p>` +
+    `<div class="tabs flush shop-tabs">${tabs.map(t => `<button class="${t === tab ? 'active' : ''}" data-act="shop-tab" data-tab="${t}">${t}</button>`).join('')}</div>` +
     `<div class="shop-list">${body}</div>`, [btnClose]);
+  $('#modalBody').scrollTop = st;
+}
+/* 뽑기 기계: 뽑기권을 내고 1~5등 경품을 뽑는다 */
+function openGacha(keepScroll) {
+  const set = gachaSet(), g = state.gacha, last = view.gachaLast, st = keepScroll ? $('#modalBody').scrollTop : 0;
+  const rows = set.prizes.map((pr, i) => `<div class="shop-row gacha-row r${i + 1}"><span class="gacha-rank">${i + 1}등</span><div class="grow"><strong>${esc(prizeText(pr))}</strong>${pr.item ? `<small class="item-info">${itemInfoHtml(pr.item[0])}</small>` : ''}</div><span class="price">${round1(GACHA_RATES[i] * 100)}%</span></div>`).join('');
+  const res = last ? `<div class="result gacha-result r${last.rank}"><strong>${last.rank}등 당첨! ${esc(prizeText(last.prize))}</strong>${last.changed ? '<small>1등이 나와 경품 묶음이 바뀌었습니다.</small>' : ''}</div>` : '';
+  modal('뽑기 기계', `<p class="tiny">뽑기권은 임무를 ${TICKET_EVERY}번 완수할 때마다 1장 받습니다. (지금까지 ${state.questCount || 0}번 완수 · 다음 뽑기권까지 ${TICKET_EVERY - ((state.questCount || 0) % TICKET_EVERY)}번)</p>` +
+    `<div class="choice-label">보유 뽑기권 <b id="ticketCount">${state.tickets}</b>장 · 지금 경품: ${esc(set.name)}</div>${res}<div class="shop-list">${rows}</div>` +
+    `<p class="tiny">1등이 나오면 경품 묶음이 다른 것으로 바뀝니다. (이 기기의 기록 기준이며, 다른 대원과 공유되지는 않습니다) 지금까지 ${g.pulls}번 뽑아 1등 ${g.wins}번.</p>`,
+    [btnClose, `<button class="primary" data-act="gacha-draw" ${state.tickets < 1 ? 'disabled' : ''}>${icon('redeem')} 뽑기 (1장)</button>`], true);
   $('#modalBody').scrollTop = st;
 }
 
@@ -1900,15 +1962,16 @@ function petCareHtml() { // 펫 돌보기 화면 (창과 오른쪽 '펫' 탭이 
     const sp = PET_SPECIES[p.id], fed = petFed(p), act = state.petActive === i, away = !!p.exp, ready = expReady(p);
     const state1 = away ? (ready ? `${p.exp.zone} 탐험에서 돌아왔어요!` : `${p.exp.zone} 탐험 중 · ${fmtLeft(expLeft(p))} 남음`) : act ? '동행 중' : '대기 중';
     return `<div class="pet-row ${act ? 'active' : ''}"><div class="round-avatar">${icon('pets')}</div><div class="grow">${view.petNaming === i ? `<div class="search-row"><input id="petNameIn" maxlength="${PET_NAME_MAX}" placeholder="${esc(sp.name)}" value="${esc(p.name || '')}"><button class="primary" data-act="pet-name-save" data-i="${i}">저장</button><button data-act="pet-name-cancel">취소</button></div>` : `<strong>${esc(petName(p))} ${p.name ? `<small>(${esc(sp.name)})</small> ` : ''}<span class="tag">${esc(state1)}</span> <button class="mini" data-act="pet-name" data-i="${i}" title="이름 짓기" aria-label="이름 짓기">${icon('edit')}</button></strong>`}` +
-      `<small>친밀도 ${p.bond}/100 · ${fed ? `든든함 ${fmtLeft(Math.max(0, p.fedAt + PET_FED_MS - nowMs()))} 남음` : '배고픔'} · 동행 시 이동 시간 -${Math.round(petBuff(p) * 100)}%${fed ? '' : ' (먹이를 줘야 적용)'}</small>` +
+      `<small class="pet-line">${esc(petCareLine(p))}</small><small>성격 ${esc(petPersOf(p))} · 친밀도 ${p.bond}/100 · ${fed ? `든든함 ${fmtLeft(Math.max(0, p.fedAt + PET_FED_MS - nowMs()))} 남음` : '배고픔'} · 동행 시 이동 시간 -${Math.round(petBuff(p) * 100)}%${fed ? '' : ' (먹이를 줘야 적용)'}</small>` +
       `<div class="bar thin"><span style="width:${p.bond}%"></span></div></div>` +
       `<div class="col-btns">${away ? (ready ? `<button class="primary" data-act="pet-claim" data-i="${i}">수확물 받기</button>` : '<button disabled>탐험 중</button>')
-        : `<button data-act="pet-feed" data-i="${i}" ${feeds.length ? '' : 'disabled'}>먹이 주기</button><button data-act="pet-active" data-i="${i}">${act ? '동행 해제' : '함께 다니기'}</button><button data-act="pet-send" data-i="${i}" ${act || !feeds.length ? 'disabled' : ''}>탐험 보내기</button>`}</div></div>`;
+        : `<button data-act="pet-feed" data-i="${i}" ${feeds.length ? '' : 'disabled'}>간식 주기</button><button data-act="pet-active" data-i="${i}">${act ? '동행 해제' : '함께 다니기'}</button><button data-act="pet-send" data-i="${i}" ${act || !feeds.length ? 'disabled' : ''}>탐험 보내기</button>`}</div></div>`;
   }).join('');
   return `<p class="tiny">펫은 지상의 짐승 지형에서 <b>길들이기</b>로 얻어요. 펫 보관함은 소지품과 별도이고, 같은 종은 한 마리만 모을 수 있어요. 한 마리는 <b>동행</b>(먹이를 준 뒤 24시간 타일 이동 시간 단축), 나머지는 <b>24시간 자동 탐험</b>을 보낼 수 있어요.</p>` +
     `<div class="choice-label">펫 도감 ${state.pets.length}/${petCap()}</div><div class="pet-dex-grid">${dex}</div>` +
-    `<div class="row-gap"><label class="tiny" for="feedSel">줄 먹이</label><select id="feedSel" ${feeds.length ? '' : 'disabled'}>${feeds.length ? feeds.map(x => `<option value="${esc(x.n)}" ${x.n === view.feed ? 'selected' : ''}>${esc(x.n)} ×${x.q} (친밀도 +${ITEMS[x.n].feed})</option>`).join('') : '<option>먹이 없음 (작물·펫 사료)</option>'}</select>` +
+    `<div class="row-gap"><label class="tiny" for="feedSel">줄 간식</label><select id="feedSel" ${feeds.length ? '' : 'disabled'}>${feeds.length ? feeds.map(x => `<option value="${esc(x.n)}" ${x.n === view.feed ? 'selected' : ''}>${esc(x.n)} ×${x.q} (친밀도 +${ITEMS[x.n].feed})</option>`).join('') : '<option>먹이 없음 (작물·펫 사료)</option>'}</select>` +
     `<label class="tiny" for="expZone">탐험 구역</label><select id="expZone">${DANGER_ZONES.map(z => `<option value="${esc(z.id)}" ${z.id === view.expZone ? 'selected' : ''}>${esc(z.name)}</option>`).join('')}</select></div>` +
+    `<p class="tiny">성격 허브(활발·얌전·장난꾸러기·느긋·호기심·의젓)를 간식으로 주면 펫의 성격이 바뀌고, 성격에 따라 돌보는 문구가 달라져요. 허브는 농장에서 키울 수 있고 씨앗은 채집하다 아주 가끔 나옵니다.</p>` +
     `<p class="tiny">탐험을 보내면 먹이 1개가 들고, 돌아오면 그 구역의 재료·희귀 재료·특산 씨앗을 확률로 가져와요. (친밀도가 높고 고향 구역이면 더 많이)</p>` +
     (rows || '<div class="empty">아직 길들인 펫이 없습니다. 지상에서 작물이나 펫 사료를 들고 짐승을 길들여 보세요.</div>');
 }

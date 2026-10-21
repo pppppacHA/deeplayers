@@ -33,6 +33,7 @@ const goGame = () => { location.href = 'index.html'; };
 function suTab(which) {
   $s('suForm').classList.toggle('hidden', which !== 'signup'); $s('liForm').classList.toggle('hidden', which !== 'login');
   $s('suTitle').textContent = which === 'signup' ? '탐색자 등록' : '로그인';
+  const note = document.querySelector('.signup-card > p.tiny'); if (note) note.classList.toggle('hidden', which !== 'signup');
   document.querySelectorAll('[data-su]').forEach(b => b.classList.toggle('active', b.dataset.su === which));
 }
 if (Cloud.enabled) {

@@ -1020,3 +1020,29 @@ textarea#mailBody{width:100%;min-height:80px;resize:vertical}
 
 .tut-story .tut-cloud{position:absolute;right:18px;bottom:16px;padding:6px 12px;font-size:calc(12px*var(--fs));border:1px solid color-mix(in srgb,var(--story-text) 40%,transparent);border-radius:8px;opacity:.85}
 .tut-story .tut-cloud:hover{opacity:1}
+
+.stat-save{display:inline-flex;gap:4px;margin-left:6px}.stat-save button{padding:1px 8px;font-size:calc(11px*var(--fs))}
+.stat-val em.draft{color:var(--accent-2);font-style:normal;margin-left:2px}
+.stat-minus{margin-right:3px}
+
+#tip span{white-space:pre-line}
+.item-info .it-l1,.item-info .it-l2{display:block}.item-info .it-l2{margin-top:2px;color:var(--muted);font-size:.92em}
+
+.codex-bar{display:flex;align-items:center;justify-content:space-between;gap:8px}.codex-bar .codex-count{margin:0}
+.codex-sort{display:inline-flex;gap:3px}.codex-sort button{padding:1px 8px;font-size:calc(11px*var(--fs))}.codex-sort button.active{background:var(--accent-soft);border-color:var(--accent-line);color:var(--accent-2)}
+
+/* 프로필 '캐릭터 정보': 항목마다 이능력 설명 박스처럼 상자에 담는다 */
+.profile-card ~ .setting-group .pf-row,.setting-group .pf-row{grid-template-columns:84px minmax(0,1fr);gap:8px;align-items:start;margin-top:6px;padding:8px 11px;border:1px solid var(--line);border-radius:8px;background:var(--panel-2)}
+.setting-group .pf-row>span{text-align:left;font-weight:800;color:var(--accent-2);padding-top:7px}
+.pf-row input:disabled,.pf-row textarea:disabled{padding-top:6px;padding-bottom:6px}
+/* 채팅 단말기: 좌우 프레임을 얇게 해서 화면(채팅이 들어가는 곳)을 넓힌다 (패널 전체 폭은 그대로) */
+.term-screen{margin:0 4px}
+.term-screen .chat-feed{padding:6px 7px}
+/* 공지 말머리 / 패치노트 */
+.head-tag{color:var(--accent-2);font-weight:800}
+.notice-banner{display:flex;align-items:center;gap:8px;width:calc(100% - 16px);margin:6px 8px 0;padding:8px 10px;text-align:left;border-radius:8px;border:1px solid var(--term-text);background:color-mix(in srgb,var(--term-text) 12%,transparent);color:var(--term-text);font-size:calc(11px*var(--fs));font-weight:800;flex:none}
+.notice-banner .material-symbols-rounded{font-size:calc(16px*var(--fs))}
+.gacha-row .gacha-rank{flex:none;min-width:34px;font-weight:900;color:var(--accent-2)}
+.gacha-row.r1 .gacha-rank{color:var(--warn,#e0a020)}
+.gacha-result{margin:6px 0;padding:8px 10px;border:1px solid var(--accent-line);border-radius:8px;background:var(--accent-soft)}.gacha-result small{display:block;color:var(--muted)}
+.pet-line{font-style:italic;color:var(--text-2)}
