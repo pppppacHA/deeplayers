@@ -157,6 +157,7 @@ with sync_playwright() as p:
     server['chat'] = [{'id': 1, 'name': '하늘', 'body': '안녕하세요', 'uid': '11111111-1111-1111-1111-111111111111', 'at': '2026-10-21T09:00:00Z'}, {'id': 2, 'name': '<b>해커</b>', 'body': '<img src=x onerror=alert(1)>', 'uid': '22222222-2222-2222-2222-222222222222', 'at': '2026-10-21T09:00:05Z'}]
     pg.evaluate("view.avatars={};view.avq=0;state.chatTab='월드';renderChat();chatPoll()"); pg.wait_for_timeout(900)
     check('world_chat_shows_server_messages', '안녕하세요' in pg.inner_text('#chatFeed') and pg.locator('#chatFeed .msg').count() == 2, pg.inner_text('#chatFeed'))
+    check('chat_shows_time', pg.locator('#chatFeed .msg-time').count() == 2 and ('오전' in pg.inner_text('#chatFeed .msg-time') or '오후' in pg.inner_text('#chatFeed .msg-time')), pg.inner_html('#chatFeed')[:300])
     check('chat_is_escaped', pg.locator('#chatFeed img[src="x"]').count() == 0 and pg.locator('#chatFeed b').count() == 0)
     check('chat_shows_sender_profile_image', pg.locator('#chatFeed .msg-ava img').count() == 1 and any('하늘' in q for q in server['avq']), [server['avq'], pg.evaluate('JSON.stringify(view.avatars)'), pg.inner_html('#chatFeed')[:400]])
     server['chat'].append({'id': 3, 'name': '하늘', 'body': '새 메시지', 'uid': '11111111-1111-1111-1111-111111111111', 'at': '2026-10-21T09:01:00Z'})

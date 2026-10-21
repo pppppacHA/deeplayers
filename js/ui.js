@@ -242,9 +242,9 @@ const renderBag = () => { renderEquip(); renderInventory(); renderCraft(); rende
 /* ---------- 지도 / 구역 ---------- */
 function applyMapTransform() { $('#mapWorld').style.transform = state.dungeon ? (view.dpan.x || view.dpan.y || view.dzoom !== 1 ? `translate(${view.dpan.x}px,${view.dpan.y}px) scale(${view.dzoom})` : 'none') : `translate(${state.pan.x}px,${state.pan.y}px) scale(${state.zoom})`; }
 /* 재료 검색: 이름에 검색어가 들어 있는 재료를 얻을 수 있는 지형/구역을 찾는다 */
-const matTerrains = (z, q) => z.terrains.map((t, i) => [t, i]).filter(([t]) => [...t.gather, t.rare].some(n => n && n.toLowerCase().includes(q))).map(([t, i]) => i);
-const terrainMats = t => `[채집] ${t.gather.join(' · ')}${t.rare ? ` [희귀] ${t.rare}` : ''}`;
-const zoneMats = zid => { const z = DANGER_ZONES.find(x => x.id === zid); return z ? [...new Set(z.terrains.flatMap(t => [...t.gather, t.rare].filter(Boolean)))] : []; };
+const matTerrains = (z, q) => z.terrains.map((t, i) => [t, i]).filter(([t]) => [...t.gather, t.rare, ...t.monsters.map(m => m.name)].some(n => n && n.toLowerCase().includes(q))).map(([t, i]) => i); // 재료나 출몰 몬스터 이름으로 찾는다
+const terrainMats = t => `[채집] ${t.gather.join(' · ')}${t.rare ? ` [희귀] ${t.rare}` : ''} [출몰] ${[...new Set(t.monsters.map(m => m.name))].join(' · ')}`;
+const zoneMats = zid => { const z = DANGER_ZONES.find(x => x.id === zid); return z ? [...new Set(z.terrains.flatMap(t => [...t.gather, t.rare, ...t.monsters.map(m => m.name)].filter(Boolean)))] : []; };
 function renderMapSearch(hits) { // 검색 결과 안내
   const q = (view.mapQ || '').trim().toLowerCase(), box = $('#mapSearchInfo'); if (!box) return;
   if (!q) { box.textContent = ''; return; }
@@ -280,7 +280,8 @@ function renderDungeon() {
     const evDone = ch === 'E' && d.done.includes(eventIndex(z, x, y)), going = dest && dest[0] === x && dest[1] === y;
     const glyph = me ? '<i class="pawn"></i>' : ch === 'S' ? icon('logout') : ch === 'C' ? icon('camping') : ch === 'E' ? icon(evDone ? 'check' : 'priority_high') : ti >= 0 ? icon(z.terrains[ti].icon) : '';
     const hl = ti >= 0 && mq && matTerrains(z, mq).includes(ti); if (hl) hlCount++;
-    const cls = `tile floor ${hl ? 'hl' : ''} ${ti >= 0 ? 't' + ti : ''} ${ch === 'C' ? 'camp' : ''} ${ch === 'E' ? 'ev' : ''} ${evDone ? 'done' : ''} ${ch === 'S' ? 'start' : ''} ${me ? 'me' : ''} ${going ? 'going' : ''}`;
+    const unv = !me && !(state.visited[d.zone] || {})[`${x},${y}`]; // 보이기만 하고 밟아 본 적 없는 칸은 흑백
+    const cls = `tile floor ${unv ? 'unvisited' : ''} ${hl ? 'hl' : ''} ${ti >= 0 ? 't' + ti : ''} ${ch === 'C' ? 'camp' : ''} ${ch === 'E' ? 'ev' : ''} ${evDone ? 'done' : ''} ${ch === 'S' ? 'start' : ''} ${me ? 'me' : ''} ${going ? 'going' : ''}`;
     const tip = `data-tip-title="${esc(info.name)}" data-tip-desc="${esc(info.desc + (info.terrain ? ' ' + terrainMats(info.terrain) : ''))}"`;
     return me ? `<div class="${cls}" ${tip}>${glyph}</div>` : `<button class="${cls} adj" data-act="tile" data-x="${x}" data-y="${y}" ${tip} aria-label="${esc(info.name)}">${glyph}</button>`;
   }).join('')).join('');
@@ -490,7 +491,7 @@ const CHAT_CH = { '월드': 'world', '길드': 'guild' }, CHAT_CACHE = 'deeplaye
   try {
     const c = JSON.parse(localStorage.getItem(CHAT_CACHE)); if (!c || c.u !== Cloud.user()) return;
     for (const tab of ['월드', '길드']) {
-      const rows = ((c[tab] || {}).rows || []).filter(r => Array.isArray(r) && Number.isFinite(r[3])).slice(-CHAT_KEEP).map(r => [cleanText(r[0], 12), cleanText(r[1], 200), /^[0-9a-f-]{36}$/i.test(r[2]) ? r[2] : '', r[3]]);
+      const rows = ((c[tab] || {}).rows || []).filter(r => Array.isArray(r) && Number.isFinite(r[3])).slice(-CHAT_KEEP).map(r => [cleanText(r[0], 12), cleanText(r[1], 200), /^[0-9a-f-]{36}$/i.test(r[2]) ? r[2] : '', r[3], Number.isFinite(r[4]) ? r[4] : 0]);
       view.chatSrv[tab] = rows; view.chatLast[tab] = rows.length ? rows[rows.length - 1][3] : 0;
     }
   } catch (e) { /* 저장된 대화 없음 */ }
@@ -535,7 +536,7 @@ async function chatPoll() { // 월드·길드 채팅을 서버에서 가져온�
       let rows; try { rows = await Cloud.chatFetch(CHAT_CH[tab], view.chatLast[tab]); } catch (e) { continue; }
       for (const r of rows) {
         const id = Number(r.id); if (!Number.isFinite(id) || id <= view.chatLast[tab]) continue;
-        view.chatLast[tab] = id; view.chatSrv[tab].push([cleanText(r.name, 12) || '?', cleanText(r.body, 200), /^[0-9a-f-]{36}$/i.test(r.uid) ? r.uid : '', id]); changed = true;
+        view.chatLast[tab] = id; view.chatSrv[tab].push([cleanText(r.name, 12) || '?', cleanText(r.body, 200), /^[0-9a-f-]{36}$/i.test(r.uid) ? r.uid : '', id, Date.parse(r.at) || 0]); changed = true;
         if (r.uid !== Cloud.userUid && state.chatTab !== tab && view.chatReady) { toast(`[${tab}] ${cleanText(r.name, 12)}: ${cleanText(r.body, 40)}`); }
       }
       view.chatSrv[tab] = view.chatSrv[tab].slice(-100);
@@ -544,6 +545,11 @@ async function chatPoll() { // 월드·길드 채팅을 서버에서 가져온�
   view.chatReady = true;
   if (changed) saveChatCache();
   if (changed && $('#chatFeed') && (state.chatTab === '월드' || state.chatTab === '길드')) renderChat();
+}
+function fmtChatTime(ms) { // 오늘이면 '오후 7:35', 다른 날이면 '10/20 오후 7:35'
+  if (!Number.isFinite(ms) || ms <= 0) return '';
+  const d = new Date(ms), n = new Date(), t = d.toLocaleTimeString('ko-KR', { hour: 'numeric', minute: '2-digit' });
+  return d.toDateString() === n.toDateString() ? t : `${d.getMonth() + 1}/${d.getDate()} ${t}`;
 }
 function renderChat() {
   const tab = state.chatTab, g = state.guild, bar = $('#guildBar');
@@ -555,11 +561,12 @@ function renderChat() {
   if (tab === '알림') setTray(false);
   $('#noticeNote').classList.toggle('hidden', tab !== '알림' || writer);
   $$('[data-chat]').forEach(b => b.classList.toggle('active', b.dataset.chat === state.chatTab));
-  $('#chatFeed').innerHTML = (chatOnline() && CHAT_CH[state.chatTab] ? view.chatSrv[state.chatTab] : (state.chats[state.chatTab] || [])).map(([n, m, uid]) => {
+  $('#chatFeed').innerHTML = (chatOnline() && CHAT_CH[state.chatTab] ? view.chatSrv[state.chatTab] : (state.chats[state.chatTab] || [])).map((row) => {
+    const [n, m] = row, srv = chatOnline() && CHAT_CH[state.chatTab], uid = srv ? row[2] : '', at = srv ? row[4] : row[2], tm = fmtChatTime(at);
     const st = /^\[(.+)\]$/.exec(m), sticker = st && STICKERS.find(x => x[0] === st[1]);
     const body = sticker ? `<div class="bubble sticker-msg" title="${esc(sticker[0])}">${icon(sticker[1])}</div>` : `<div class="bubble">${esc(m)}</div>`;
     const mine = n === '나' || (!!uid && uid === Cloud.userUid), who = mine ? (state.character.name || '나') : n;
-    return `<div class="msg ${mine ? 'mine' : 'other'}"><div class="msg-ava">${avatarOf(mine ? '나' : n)}</div><div class="msg-main"><span class="msg-name">${esc(who)}</span>${body}</div></div>`; // 컴팩트 한 줄 형식: 아이콘 · 이름 · 내용 (내 이름은 색이 다르다)
+    return `<div class="msg ${mine ? 'mine' : 'other'}"><div class="msg-ava">${avatarOf(mine ? '나' : n)}</div><div class="msg-main"><span class="msg-name">${esc(who)}</span>${tm ? `<time class="msg-time">${esc(tm)}</time>` : ''}${body}</div></div>`; // 컴팩트 한 줄 형식: 아이콘 · 이름 · 내용 (내 이름은 색이 다르다)
   }).join('');
   $('#chatFeed').scrollTop = $('#chatFeed').scrollHeight;
 }
@@ -1518,7 +1525,7 @@ function sendChat(val) {
     Cloud.chatSend(CHAT_CH[tab], val).then(r => { if (r && r.ok === false) { toast(r.msg === 'too_fast' ? '너무 빨리 보내고 있어요. 잠시 뒤에 보내 주세요.' : r.msg === 'no_channel' ? '길드가 없어 보낼 수 없어요.' : '보내지 못했어요.'); sfx('error'); } else chatPoll(); }).catch(() => { toast('보내지 못했어요. 서버에 friends.sql 을 실행했는지 확인해 주세요.'); sfx('error'); });
     renderSide(); return;
   }
-  state.chats[state.chatTab] = [...state.chats[state.chatTab], ['나', val]].slice(-200);
+  state.chats[state.chatTab] = [...state.chats[state.chatTab], ['나', val, Date.now()]].slice(-200);
   state.flags.chatted = true;
   renderChat(); renderSide(); // 채팅은 로그에 남기지 않는다
 }

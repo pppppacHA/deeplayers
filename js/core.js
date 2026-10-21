@@ -72,8 +72,12 @@ function hardenState(s) {
   DANGER_ZONES.forEach(z => { const src = s.explored && typeof s.explored === 'object' ? s.explored[z.id] : null; ex[z.id] = {}; if (src && typeof src === 'object') Object.keys(src).filter(k => /^-?\d{1,3},-?\d{1,3}$/.test(k)).slice(0, 4000).forEach(k => { ex[z.id][k] = 1; }); });
   if (s.dungeon) Object.keys(s.dungeon.seen || {}).filter(k => /^-?\d{1,3},-?\d{1,3}$/.test(k)).forEach(k => { ex[s.dungeon.zone][k] = 1; });
   s.explored = ex;
+  const vis = {}; // 실제로 밟아 본 칸만 남긴다 (이전 저장에는 기록이 없어 지금 서 있는 칸부터 쌓인다)
+  DANGER_ZONES.forEach(z => { const src = s.visited && typeof s.visited === 'object' ? s.visited[z.id] : null; vis[z.id] = {}; if (src && typeof src === 'object') Object.keys(src).filter(k => /^-?\d{1,3},-?\d{1,3}$/.test(k)).slice(0, 4000).forEach(k => { vis[z.id][k] = 1; }); });
+  if (s.dungeon && vis[s.dungeon.zone] && Number.isFinite(s.dungeon.x) && Number.isFinite(s.dungeon.y)) vis[s.dungeon.zone][`${s.dungeon.x},${s.dungeon.y}`] = 1;
+  s.visited = vis;
   const chats = {}; // 채널은 월드/길드/알림만. 알림은 항상 공지에서 다시 만든다(읽기 전용)
-  CHAT_TABS.forEach(k => { chats[k] = (Array.isArray(s.chats[k]) ? s.chats[k] : []).filter(m => Array.isArray(m) && m.length === 2).map(m => [cleanText(m[0], 20), cleanText(m[1], 300)]).slice(-200); });
+  CHAT_TABS.forEach(k => { chats[k] = (Array.isArray(s.chats[k]) ? s.chats[k] : []).filter(m => Array.isArray(m) && (m.length === 2 || m.length === 3)).map(m => [cleanText(m[0], 20), cleanText(m[1], 300), Number.isFinite(m[2]) ? m[2] : 0]).slice(-200); });
   chats['알림'] = NOTICE_FEED();
   s.chats = chats; if (!CHAT_TABS.includes(s.chatTab)) s.chatTab = CHAT_TABS[0];
   const known = id => QUESTS.some(q => q.id === id);
@@ -939,6 +943,7 @@ function tileInfo(z, ch) {
 const eventIndex = (z, x, y) => z.map.slice(0, y).join('').split('E').length - 1 + z.map[y].slice(0, x).split('E').length - 1;
 function revealAround(d) {
   const ex = state.explored[d.zone] || (state.explored[d.zone] = {});
+  (state.visited[d.zone] || (state.visited[d.zone] = {}))[`${d.x},${d.y}`] = 1;
   for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) { const k = `${d.x + dx},${d.y + dy}`; d.seen[k] = 1; ex[k] = 1; }
 }
 function enterDungeon(zoneId) {

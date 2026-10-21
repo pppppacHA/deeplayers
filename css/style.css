@@ -940,3 +940,18 @@ textarea#mailBody{width:100%;min-height:80px;resize:vertical}
 .pf-row{margin-top:7px}
 #diceBtn{flex:none}
 .sw-cols .switch.near{justify-content:flex-start;gap:10px}
+/* 보이기만 하고 밟아 본 적 없는 칸: 배경은 흑백(모노톤), 아이콘은 그대로. 막힌 곳(벽)과는 아이콘 유무로 구분된다 */
+.tile.floor.unvisited,.tile.floor.unvisited.t0,.tile.floor.unvisited.t1,.tile.floor.unvisited.t2,.tile.floor.unvisited.t3,.tile.floor.unvisited.t4,.tile.floor.unvisited.camp,.tile.floor.unvisited.start{background:color-mix(in srgb,var(--text) 10%,var(--panel));border-color:var(--line);color:var(--muted)}
+/* 채팅 가독성: 시간 표기 · 글자/줄 간격 · 메시지 사이 구분 */
+#chatFeed .msg,#chatFeed .msg.mine{margin:0 0 2px;padding:5px 4px;border-bottom:1px solid var(--line-soft)}
+#chatFeed .msg:last-child{border-bottom:0}
+#chatFeed .bubble,#chatFeed .msg.mine .bubble,#chatFeed .msg:not(.mine) .bubble{font-size:calc(13px*var(--fs));line-height:1.6}
+#chatFeed .msg-name,#chatFeed .msg.mine .msg-name,#chatFeed .msg.cont .msg-name{font-size:calc(12px*var(--fs))}
+#chatFeed .msg-time{margin:0 8px 0 0;font-size:calc(10.5px*var(--fs));font-weight:400;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+#chatFeed .msg-ava{width:24px;height:24px;margin-top:0}
+#chatFeed .msg-ava .material-symbols-rounded{font-size:calc(16px*var(--fs))}
+.term-screen #chatFeed .msg-time{color:var(--term-dim)}
+.term-screen #chatFeed .msg,.term-screen #chatFeed .msg.mine{border-bottom-color:var(--term-line)}
+/* 채팅 간격 줄이기, 구분선 제거 */
+#chatFeed .msg,#chatFeed .msg.mine{margin:0;padding:2px 4px;border-bottom:0}
+.term-screen #chatFeed .msg,.term-screen #chatFeed .msg.mine{border-bottom:0}
