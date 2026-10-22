@@ -159,3 +159,8 @@ STUB_ICONS=1 python3 tests/smoke.py   # 아이콘 폰트를 못 받는 환경(�
 - 메일: 서버 메일은 `sid`('s'+서버번호)로 중복을 막고, 서버 보관함에서 지우기(ack) 전에 `cloudPushNow()`로 먼저 올린다.
 - 테스트: cloud_test의 result_/save_carries_avatar/auto_sync_/keep_local_/mail_ 항목.
 - 한 번에 한 기기: 서버 세이브에 `__dev`(이 브라우저의 `deeplayer-device` 번호)를 실어 올린다(`cloudPayload`). 이미 이 기기가 올린 적이 있는데(`_claimed`) 서버의 `__dev`가 다른 번호면 `lockDevice()`가 `#devLock` 오버레이로 화면을 막고 저장도 멈춘다. '이 기기에서 계속하기'는 서버 진행을 받아 reload 후 다시 현재 기기가 된다. 확인은 시작·화면 복귀·60초마다(`cloudSync`). 서버 SQL 추가 없음.
+- 승급 시험 처치 현황 리셋 버그: `hardenState`의 `known()`이 조건별 진행도 키(`id#n`)를 걸러내 불러올 때마다 지워졌다 → `#` 앞 id로 판정. 4시 리셋(`resetBoardQuests`)은 완수해 둔 임무만 되돌리고 진행 중 임무·진행도는 유지.
+- 장비 설명: `itemEffectParts`(base/extra)로 기본 효과는 설명에 없을 때만, 강화·세공·세트는 항상 붙인다. 착용 칸 툴팁도 `itemTip` 사용.
+- 위험지대 터치 드래그: 타일 위에서 시작해도 8px 이상 끌면 지도 이동(`drag.pend`), 끈 직후 클릭은 무시(`view.noClickUntil`).
+- 서버 백업 삭제: `supabase/backups.sql`의 `delete_backup` (SQL 다시 실행 필요), 목록의 '삭제' → 확인창.
+- 승급 시험 C(Lv.10)/B(Lv.15) 추가(`promo_c`, `promo_b`, `PROMO_ORDER`=F,E,D,C,B): C=제4구역 급류 수달3·석상 골렘2·동굴 거미2 + 구리 광석6·수정 원석4 → 개척 배낭(44칸) 등. B=제5구역 빙하 곰2·서리 정령2·설원 늑대3 + 서리 결정8·설산 약초6 → 정예 배낭(52칸) 등. `FARM_PLOTS`에 C~S도 6칸으로 추가(등급 키가 없으면 3칸으로 떨어지므로 주의). 칭호 '정예 대원'/'상급 대원'.

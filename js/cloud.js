@@ -79,6 +79,7 @@ const Cloud = (() => {
     /* 서버 백업 (supabase/backups.sql) */
     async listBackups() { return (await call('/rest/v1/rpc/list_backups', {}, await token())) || []; },
     async getBackup(id) { return await call('/rest/v1/rpc/get_backup', { p_id: id }, await token()); },
+    async deleteBackup(id) { return await call('/rest/v1/rpc/delete_backup', { p_id: id }, await token()); },
     async backupNow() { return await call('/rest/v1/rpc/backup_now', {}, await token()); },
     /* → { ok, rev } — ok:false 면 다른 기기가 먼저 저장한 것 */
     async push(data) {

@@ -153,7 +153,7 @@ function renderLeftTab() {
 }
 function equipSlotHtml(slot, big) {
   const n = state.equipment[slot], it = n && ITEMS[n];
-  const title = it ? n : `${slot} · 비어 있음`, desc = it ? it.desc : '눌러서 착용 가능한 아이템을 확인합니다.';
+  const title = it ? n : `${slot} · 비어 있음`, desc = it ? itemTip(n) : '눌러서 착용 가능한 아이템을 확인합니다.';
   return `<button class="slot clickable ${big ? 'big' : ''} ${it ? 'filled' : ''} ${view.equipSlot === slot ? 'selected' : ''}" data-act="equip-slot" data-slot="${esc(slot)}" data-tip-title="${esc(title)}" data-tip-desc="${esc(desc)}" aria-label="${esc(slot)}">${it ? icon(it.icon) : `<span class="slot-label">${esc(slot)}</span>`}</button>`;
 }
 /* 장비 칸 아래: 선택한 칸에 착용 가능한 아이템 (소지품과 같은 칸 UI) */
@@ -445,7 +445,7 @@ function tick() {
   }
   if (pruneBuffs()) { renderBuffs(); save(); }
   renderBuffs(); // 펫의 든든함이 끝나면 버프 아이콘도 사라진다
-  if (resetBoardQuests()) { renderSide(); toast('수주한 임무가 오전 4시를 지나 리셋되었습니다.'); }
+  if (resetBoardQuests()) { renderSide(); toast('완수한 임무가 오전 4시를 지나 다시 받을 수 있게 되었습니다.'); }
   farmRefresh(); petSideRefresh();
   awardTitles();
   newUnlocks().forEach(t => { addLog(t); toast(t); sfx('levelup'); notifyDone(t); });
@@ -745,7 +745,7 @@ async function openBackups() {
   try { list = await Cloud.listBackups(); }
   catch (e) { modal('서버 백업', '<p class="detail-desc">백업 목록을 불러오지 못했어요. 서버에 <b>supabase/backups.sql</b>을 한 번 실행해야 해요.</p>', ['<button data-act="close">닫기</button>'], true); return; }
   const when = at => { const d = new Date(at); return Number.isNaN(+d) ? '' : d.toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }); };
-  const rows = list.map(b => `<div class="nearby-row"><div class="grow"><strong>${esc(when(b.at))} <span class="tag">${esc(BACKUP_KIND[b.kind] || '자동')}</span></strong><small>${esc(cleanText(b.name, 12) || '-')} · Lv.${esc(String(intIn(b.level, 0, 999, 0)))} · ${esc(String(intIn(b.money, 0, 99999999, 0)))} CR</small></div><button data-act="backup-restore" data-id="${esc(String(intIn(b.id, 0, 9e15, 0)))}">불러오기</button></div>`).join('');
+  const rows = list.map(b => `<div class="nearby-row"><div class="grow"><strong>${esc(when(b.at))} <span class="tag">${esc(BACKUP_KIND[b.kind] || '자동')}</span></strong><small>${esc(cleanText(b.name, 12) || '-')} · Lv.${esc(String(intIn(b.level, 0, 999, 0)))} · ${esc(String(intIn(b.money, 0, 99999999, 0)))} CR</small></div><button data-act="backup-restore" data-id="${esc(String(intIn(b.id, 0, 9e15, 0)))}">불러오기</button><button class="danger" data-act="backup-delete" data-id="${esc(String(intIn(b.id, 0, 9e15, 0)))}">삭제</button></div>`).join('');
   modal('서버 백업', `<p class="tiny">서버 저장이 덮어써지기 전의 진행을 유저별로 최대 12개까지 보관해요. (6시간마다 자동, 캐릭터가 사라지는 덮어쓰기 직전에는 항상)</p>` +
     (rows || '<div class="empty">아직 백업이 없어요. 서버에 저장된 진행이 있다면 \'지금 백업\'을 눌러 보세요.</div>'),
     ['<button data-act="close">닫기</button>', '<button class="primary" data-act="backup-now">지금 백업</button>'], true);
@@ -1274,6 +1274,12 @@ const A = {
     catch (e) { toast('서버 백업에 실패했어요. (서버에 backups.sql 을 실행했는지 확인해 주세요)'); sfx('error'); }
   },
   'backup-restore': el => askConfirm('백업 불러오기', '이 백업으로 되돌립니다. 지금 서버에 있는 진행은 먼저 자동으로 백업해 두고, 이 기기의 진행은 백업 내용으로 바뀝니다.', '불러오기', 'backup-restore-do', { id: el.dataset.id }, openBackups),
+  'backup-delete': el => askConfirm('백업 삭제', '이 백업을 서버에서 삭제합니다. 삭제하면 되돌릴 수 없어요.', '삭제', 'backup-delete-do', { id: el.dataset.id }, openBackups),
+  'backup-delete-do': async el => {
+    try { const r = await Cloud.deleteBackup(+el.dataset.id); toast(r && r.ok ? '백업을 삭제했어요.' : '이미 없는 백업이에요.'); sfx('ok'); }
+    catch (e) { toast('삭제하지 못했어요. (서버에 backups.sql 을 다시 실행했는지 확인해 주세요)'); sfx('error'); }
+    openBackups();
+  },
   'backup-restore-do': async el => {
     try { try { await Cloud.backupNow(); } catch (e) { /* 지금 상태 백업은 실패해도 계속 */ }
       const d = await Cloud.getBackup(+el.dataset.id);
@@ -1910,11 +1916,11 @@ function openQuestBoard(keepScroll) {
   const st = keepScroll ? $('#modalBody').scrollTop : 0;
   const rows = list.map(q => {
     const done = !!state.questDone[q.id], taken = !!state.questTaken[q.id], left = boardResetLeft(q.id);
-    return `<div class="board-quest ${done ? 'done' : ''}"><div class="grow"><strong>${esc(q.title)}</strong><small>${esc(q.desc)}</small><small class="rw">${esc(rewardText(q))}</small>${taken ? `<small>${done ? '완수' : '수주함'} · ${fmtLeft(left)} 뒤 리셋</small>` : ''}</div>` +
+    return `<div class="board-quest ${done ? 'done' : ''}"><div class="grow"><strong>${esc(q.title)}</strong><small>${esc(q.desc)}</small><small class="rw">${esc(rewardText(q))}</small>${taken ? `<small>${done ? `완수 · ${fmtLeft(left)} 뒤 다시 받을 수 있어요` : '수주함 · 진행 중 (리셋되지 않아요)'}</small>` : ''}</div>` +
       `<button class="${taken || done ? '' : 'primary'}" data-act="quest-take" data-id="${q.id}" ${taken || done ? 'disabled' : ''}>${done ? '완수' : taken ? '수주함' : '수주'}</button></div>`;
   }).join('');
   modal(`임무 수주 · ${place === '본부' ? '본부' : place + ' 캠프'}`,
-    `<p class="tiny">${place === '본부' ? '본부에서는 공통 임무를 받을 수 있어요.' : `${esc(place)}에서만 받을 수 있는 특별 임무예요.`} 동시에 ${BOARD_MAX_ACTIVE}개까지 (지금 ${active}개). 수주한 임무는 <b>매일 오전 4시에 리셋</b>되어 다시 받을 수 있어요.</p>` + rows, [btnClose]);
+    `<p class="tiny">${place === '본부' ? '본부에서는 공통 임무를 받을 수 있어요.' : `${esc(place)}에서만 받을 수 있는 특별 임무예요.`} 동시에 ${BOARD_MAX_ACTIVE}개까지 (지금 ${active}개). <b>완수한 임무</b>는 매일 오전 4시에 리셋되어 다시 받을 수 있고, 진행 중인 임무는 리셋되지 않아요.</p>` + rows, [btnClose]);
   $('#modalBody').scrollTop = st;
 }
 function openShop(keepScroll) {
@@ -1972,8 +1978,8 @@ function openGacha(keepScroll) {
 /* ---------- 승급 ---------- */
 function openPromo() {
   const c = state.character, q = nextPromo(), taken = q && state.questTaken[q.id];
-  let body = `<p class="tiny">현재 등급 <b>${esc(c.rank)}</b> · 승급 시험은 메인 임무로 진행됩니다. 임무를 마치면 바로 승급해요. (지금은 D등급까지)</p>`;
-  if (!q) body += `<div class="empty">${c.rank === 'D' ? 'D등급까지 승급했습니다. 그다음 등급은 아직 준비 중입니다.' : '승급할 수 있는 등급이 없습니다.'}</div>`;
+  let body = `<p class="tiny">현재 등급 <b>${esc(c.rank)}</b> · 승급 시험은 메인 임무로 진행됩니다. 임무를 마치면 바로 승급해요. (지금은 B등급까지)</p>`;
+  if (!q) body += `<div class="empty">${c.rank === 'B' ? 'B등급까지 승급했습니다. 그다음 등급은 아직 준비 중입니다.' : '승급할 수 있는 등급이 없습니다.'}</div>`;
   else {
     const pr = questProgress(q);
     body += `<div class="board-quest"><div class="grow"><strong>${esc(q.title)}</strong><small>${esc(q.desc)}</small><small class="rw">${esc(rewardText(q))} · 승급 ${esc(c.rank)} → ${esc(q.promo)}</small>` +
@@ -2244,7 +2250,10 @@ const stage = $('#mapStage');
 stage.addEventListener('pointerdown', e => {
   if (e.pointerType === 'mouse' && e.button !== 1) return; // 마우스는 가운데(휠) 버튼으로만 지도를 움직인다 (터치는 그대로 끌기)
   const mid = e.pointerType === 'mouse'; // 가운데 버튼은 노드·타일 위에서도 끌 수 있다
-  if (!mid && (e.target.closest('button') || state.dungeon)) return;
+  if (!mid && e.target.closest('button')) {
+    if (!state.dungeon) return;
+    drag = { x: e.clientX, y: e.clientY, px: view.dpan.x, py: view.dpan.y, d: 1, pend: true, id: e.pointerId }; return; // 위험지대 타일: 톡 누르면 이동, 끌면 지도 이동
+  }
   e.preventDefault();
   drag = state.dungeon ? { x: e.clientX, y: e.clientY, px: view.dpan.x, py: view.dpan.y, d: 1 } : { x: e.clientX, y: e.clientY, px: state.pan.x, py: state.pan.y };
   stage.classList.add('dragging');
@@ -2253,11 +2262,13 @@ stage.addEventListener('pointerdown', e => {
 stage.addEventListener('mousedown', e => { if (e.button === 1) e.preventDefault(); }); // 휠 클릭 자동 스크롤 방지
 stage.addEventListener('pointermove', e => {
   if (!drag) return;
+  if (drag.pend) { if (Math.hypot(e.clientX - drag.x, e.clientY - drag.y) < 8) return; drag.pend = false; drag.moved = true; try { stage.setPointerCapture(drag.id); } catch (er) { /* 무시 */ } stage.classList.add('dragging'); }
   const nx = drag.px + e.clientX - drag.x, ny = drag.py + e.clientY - drag.y;
   if (drag.d) { const lim = (v, n) => clamp(v, -n, n); view.dpan = { x: lim(nx, stage.clientWidth), y: lim(ny, stage.clientHeight) }; } else state.pan = { x: nx, y: ny };
   applyMapTransform();
 });
-const endDrag = () => { if (drag) { const was = drag; drag = null; stage.classList.remove('dragging'); if (!was.d) save(); } };
+const endDrag = () => { if (drag) { const was = drag; drag = null; stage.classList.remove('dragging'); if (was.moved) view.noClickUntil = Date.now() + 350; if (!was.d && !was.pend) save(); } };
+stage.addEventListener('click', e => { if (Date.now() < (view.noClickUntil || 0)) { e.stopPropagation(); e.preventDefault(); } }, true); // 끌고 난 뒤 손가락을 뗄 때 타일이 눌리지 않게
 stage.addEventListener('pointerup', endDrag);
 stage.addEventListener('pointercancel', endDrag);
 const zoomBy = d => { if (state.dungeon) { view.dzoom = clamp(+(view.dzoom + d).toFixed(2), .65, 1.8); applyMapTransform(); return; } state.zoom = clamp(+(state.zoom + d).toFixed(2), .65, 1.8); applyMapTransform(); save(); };

@@ -78,9 +78,22 @@ begin
   return jsonb_build_object('ok', true);
 end $$;
 
+-- 내 백업 하나 삭제 (내 것만)
+create or replace function public.delete_backup(p_id bigint) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare n int;
+begin
+  if auth.uid() is null then raise exception 'no_auth'; end if;
+  delete from public.save_backups where id = p_id and user_id = auth.uid();
+  get diagnostics n = row_count;
+  return jsonb_build_object('ok', n > 0);
+end $$;
+
 revoke all on function public.list_backups() from public, anon;
 revoke all on function public.get_backup(bigint) from public, anon;
 revoke all on function public.backup_now() from public, anon;
 grant execute on function public.list_backups() to authenticated;
 grant execute on function public.get_backup(bigint) to authenticated;
 grant execute on function public.backup_now() to authenticated;
+revoke all on function public.delete_backup(bigint) from public, anon;
+grant execute on function public.delete_backup(bigint) to authenticated;

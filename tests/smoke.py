@@ -596,6 +596,14 @@ with sync_playwright() as p:
     ff(50); check('danger_trip_not_done_before_1min', ev(pg, "!!state.active") and ev(pg, "!state.dungeon"))
     ff(15)
     check('gate_enters_dungeon_directly', ev(pg, "!state.active && !!state.dungeon && state.dungeon.zone==='제1구역' && state.location==='제1구역'") and pg.locator('#choices button').count() >= 1)
+    # 위험지대: 손가락으로 끌면 지도가 움직이고(타일 이동 확인창은 뜨지 않음), 톡 누르면 타일 이동 확인
+    ev(pg, "view.dpan={x:0,y:0};applyMapTransform()")
+    drag_ok = ev(pg, """(()=>{const t=document.querySelector('.tile.adj');if(!t)return 'none';const r=t.getBoundingClientRect(),x=r.x+r.width/2,y=r.y+r.height/2;
+      const ev=(type,dx,dy,tg)=>(tg||t).dispatchEvent(new PointerEvent(type,{bubbles:true,cancelable:true,pointerId:7,pointerType:'touch',clientX:x+dx,clientY:y+dy,isPrimary:true}));
+      ev('pointerdown',0,0);ev('pointermove',30,20);ev('pointermove',60,40);ev('pointerup',60,40);
+      return [view.dpan.x,view.dpan.y,Date.now()<(view.noClickUntil||0)]})()""")
+    check('dungeon_touch_drag_pans_map', isinstance(drag_ok, list) and drag_ok[0] > 20 and drag_ok[1] > 10 and drag_ok[2] is True, drag_ok)
+    ev(pg, "view.dpan={x:0,y:0};view.noClickUntil=0;applyMapTransform()")
     check('gate_labels_no_suffix', '으)로' not in ev(pg, "['제1구역','제2구역','제3구역'].map(z=>ACTIONS['이동 '+z].label).join('')"))
     ev(pg, "(()=>{state.dungeon=null;state.location='제1구역';resetPhase();renderMapHead();renderMap();renderAction();renderSide()})()") # 예전 저장처럼 구역 화면에 서 있는 상태
     check('zone_node_shown_only_there', pg.locator('.map-node.danger.current').count() == 1 and pg.locator('.map-node').count() == 5)
@@ -1213,9 +1221,16 @@ with sync_playwright() as p:
     check('promo_e_rank_up', ev(pg, "state.character.rank")== 'E' and ev(pg, "countItem('약초')")== 0 and ev(pg, "nextPromo().id")== 'promo_d' and ev(pg, "farmPlotCount()")== 4)
     ev(pg, "state.character.level=6"); ev(pg, "takePromo()")
     ev(pg, "state.qprog['promo_d#0']=3;state.qprog['promo_d#1']=1;addItem('합금 파편',8)"); ev(pg, "completeQuest('promo_d')")
-    check('promo_d_rank_up_and_stops', ev(pg, "state.character.rank")== 'D' and ev(pg, "nextPromo()")is None and ev(pg, "takePromo()")!= None and ev(pg, "farmPlotCount()")== 6)
+    check('promo_d_rank_up_continues_to_c', ev(pg, "state.character.rank")== 'D' and ev(pg, "nextPromo().id")== 'promo_c' and ev(pg, "farmPlotCount()")== 6)
+    ev(pg, "state.character.level=Math.max(state.character.level,15);state.questTaken.promo_c=true;state.qprog['promo_c#0']=3;state.qprog['promo_c#1']=2;state.qprog['promo_c#2']=2;addItem('구리 광석',6);addItem('수정 원석',4)")
+    ev(pg, "completeQuest('promo_c')")
+    check('promo_c_rank_up_and_bag', ev(pg, "state.character.rank")== 'C' and ev(pg, "nextPromo().id")== 'promo_b' and ev(pg, "countItem('개척 배낭')")== 1 and ev(pg, "countItem('구리 광석')")== 0 and ev(pg, "farmPlotCount()")== 6)
+    ev(pg, "state.questTaken.promo_b=true;state.qprog['promo_b#0']=2;state.qprog['promo_b#1']=2;state.qprog['promo_b#2']=3;addItem('서리 결정',8);addItem('설산 약초',6)")
+    ev(pg, "completeQuest('promo_b')")
+    check('promo_b_rank_up_and_stops', ev(pg, "state.character.rank")== 'B' and ev(pg, "nextPromo()")is None and ev(pg, "takePromo()")!= None and ev(pg, "countItem('정예 배낭')")== 1 and ev(pg, "farmPlotCount()")== 6)
+    check('promo_c_b_monsters_exist', ev(pg, "['promo_c','promo_b'].every(id=>QUESTS.find(q=>q.id===id).need.parts.filter(p=>p.type==='kill').every(p=>DANGER_ZONES.some(z=>z.terrains.some(t=>t.monsters.some(m=>m.name===p.monster)))))"))
     ev(pg, "closeModal()"); pg.click('#choices button:has-text("승급")'); pg.wait_for_timeout(60)
-    check('promo_modal_says_d_is_last', '준비 중' in text(pg, '#modalBody')); pg.click('#closeModal')
+    check('promo_modal_says_b_is_last', '준비 중' in text(pg, '#modalBody')); pg.click('#closeModal')
     ev(pg, "state.character.rank='F';state.questTaken={};state.questDone={};renderProfile();renderSide()")
     # --- 상점 씨앗 / 농장 ---
     check('seeds_sold_in_shops', ev(pg, "shopSections('종합 상가')['농사'].map(r=>r[0]).join()")== '감자 씨앗,허브 씨앗,사탕무 씨앗' and ev(pg, "shopSections('제3구역')['재료'].some(r=>r[0]==='화산 고추 씨앗')"))
@@ -1935,6 +1950,14 @@ with sync_playwright() as p:
     check('personality_persisted_in_save', ev(pg, "(()=>{save();return JSON.parse(localStorage.getItem('deeplayer-ui')).pets[0].pers})()")== '의젓')
     check('personality_seed_drop_defined', ev(pg, "PERS_SEED_DROP>0&&PERS_SEED_DROP<.05&&PERS_SEEDS.length===6&&PERS_SEEDS.every(n=>ITEMS[n]&&ITEMS[n].seed)"))
     ev(pg, "state.pets=[];state.petActive=-1;state.side='임무';state.location='본부';renderSide()")
+    # 승급 시험의 조건별 처치 현황('id#n')은 불러와도 남는다 / 진행 중인 임무는 4시 리셋에서 제외 / 착용 장비 설명에 강화 효과
+    ev(pg, "(()=>{const q=QUESTS.find(x=>x.promo&&x.need.type==='multi');state.questTaken[q.id]=true;state.qprog[q.id+'#0']=2;state.qprog[q.id+'#1']=1;window.__pq=q.id})()")
+    ev(pg, "(()=>{const s=sanitize(merge(createDefaultState(),JSON.parse(JSON.stringify(state))));window.__pk=[s.qprog[window.__pq+'#0'],s.qprog[window.__pq+'#1']]})()")
+    check('promo_kill_progress_survives_load', ev(pg, "window.__pk.join()") == '2,1', ev(pg, "window.__pk"))
+    check('inprogress_board_quest_not_reset', ev(pg, """(()=>{const q=QUESTS.find(x=>x.board);state.questTaken[q.id]=true;delete state.questDone[q.id];state.qprog[q.id]=1;state.questAt[q.id]=nextBoardReset(Date.now())-86400000-1000;const n=resetBoardQuests();const ok=n===0&&state.questTaken[q.id]&&state.qprog[q.id]===1;delete state.questTaken[q.id];delete state.qprog[q.id];delete state.questAt[q.id];return ok})()"""))
+    ev(pg, "(()=>{const w=Object.keys(ITEMS).find(n=>ITEMS[n].slot==='무기'&&ITEMS[n].atk);window.__w=w;state.equipment['무기']=w;state.reinforce=state.reinforce||{};state.reinforce[w]=1;state.enchants[w]={k:'hp',v:7};renderEquip&&renderEquip()})()")
+    tip_w = ev(pg, "itemTip(window.__w)")
+    check('equipped_tip_has_base_and_enhance', '강화' in tip_w and '세공' in tip_w and ev(pg, "equipSlotHtml('무기').includes('강화')"), tip_w)
     check('no_js_errors', not errs, errs)
     b.close()
 

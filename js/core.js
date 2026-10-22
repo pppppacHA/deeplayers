@@ -87,7 +87,7 @@ function hardenState(s) {
   CHAT_TABS.forEach(k => { chats[k] = (Array.isArray(s.chats[k]) ? s.chats[k] : []).filter(m => Array.isArray(m) && (m.length === 2 || m.length === 3)).map(m => [cleanText(m[0], 20), cleanText(m[1], 300), Number.isFinite(m[2]) ? m[2] : 0]).slice(-200); });
   chats['알림'] = NOTICE_FEED();
   s.chats = chats; if (!CHAT_TABS.includes(s.chatTab)) s.chatTab = CHAT_TABS[0];
-  const known = id => QUESTS.some(q => q.id === id);
+  const known = id => QUESTS.some(q => q.id === String(id).split('#')[0]); // 'id#0' 같은 조건별 진행도 키도 인정한다(승급 시험 처치 현황이 불러올 때마다 지워지던 원인)
   s.questTaken = Object.fromEntries(Object.keys(s.questTaken || {}).filter(known).map(k => [k, true]));
   s.qprog = Object.fromEntries(Object.keys(s.qprog || {}).filter(known).map(k => [k, intIn(s.qprog[k], 0, 999, 0)]));
   s.questAt = Object.fromEntries(Object.entries(s.questAt && typeof s.questAt === 'object' ? s.questAt : {}).filter(([k, v]) => known(k) && Number.isFinite(v)));
@@ -954,22 +954,26 @@ function claimResult() {
 /* ---------- 제작 ---------- */
 const canCraft = rc => Object.entries(rc.mats).every(([n, q]) => countItem(n) >= q);
 /* 제작 아이템의 효과 문장 */
+function itemEffectParts(name) { // { base: 기본 효과, extra: 강화·세공·세트 } 문장 목록
+  const it = ITEMS[name], base = [], extra = [];
+  if (it.use) { if (it.use.hp) base.push(`HP +${it.use.hp} 회복`); if (it.use.sp) base.push(`기력 +${it.use.sp} 회복`); }
+  if (it.atk) base.push(`공격력 +${it.atk}`);
+  if (it.mods) base.push(...modText(it.mods));
+  if (reinforceLv(name)) extra.push(`강화 ${REINFORCE_RANKS[reinforceLv(name)]}랭 (공격력 +${reinforceBonus(name)})`);
+  if (state.enchants[name]) extra.push(`세공: ${enchantText(state.enchants[name])}`);
+  { const st = ITEM_SETS.find(x => x.need.includes(name)); if (st) extra.push(`세트 ${st.name}(${st.need.join('+')}): ${modText(st.mods).join(' ')}`); }
+  if (it.capacity) base.push(`소지 칸 ${it.capacity}칸`);
+  return { base, extra };
+}
 function itemEffectRaw(name) { // 설명에 없는 착용·사용 효과. 없으면 ''
-  const it = ITEMS[name], p = [];
-  if (it.use) { if (it.use.hp) p.push(`HP +${it.use.hp} 회복`); if (it.use.sp) p.push(`기력 +${it.use.sp} 회복`); }
-  if (it.atk) p.push(`공격력 +${it.atk}`);
-  if (it.mods) p.push(...modText(it.mods));
-  if (reinforceLv(name)) p.push(`강화 ${REINFORCE_RANKS[reinforceLv(name)]}랭 (공격력 +${reinforceBonus(name)})`);
-  if (state.enchants[name]) p.push(`세공: ${enchantText(state.enchants[name])}`);
-  { const st = ITEM_SETS.find(x => x.need.includes(name)); if (st) p.push(`세트 ${st.name}(${st.need.join('+')}): ${modText(st.mods).join(' ')}`); }
-  if (it.capacity) p.push(`소지 칸 ${it.capacity}칸`);
-  return p.join(' · ');
+  const { base, extra } = itemEffectParts(name); return [...base, ...extra].join(' · ');
 }
 function itemEffect(name) { return itemEffectRaw(name) || '제작 재료'; }
 /* 아이템 설명 통일: 1줄 '설명 | 효과'(효과가 없으면 생략), 2줄 '[태그] … [판매가] nCR' */
 function itemLines(name) {
   const it = ITEMS[name]; if (!it) return ['', ''];
-  let eff = itemEffectRaw(name); if (eff && it.desc.includes(eff)) eff = '';
+  const { base, extra } = itemEffectParts(name), b = base.join(' · ');
+  const eff = [b && !it.desc.includes(b) ? b : '', ...extra].filter(Boolean).join(' · '); // 기본 효과가 설명에 이미 있으면 빼고, 강화·세공은 항상 붙인다
   const l2 = [(it.tags || []).length ? `[태그] ${it.tags.join(' · ')}` : '', it.sell ? `[판매가] ${it.sell}CR` : ''].filter(Boolean).join(' ');
   return [it.desc + (eff ? ` | ${eff}` : ''), l2];
 }
@@ -1205,10 +1209,10 @@ function takeQuest(id) {
   state.questTaken[id] = true; state.qprog[id] = 0; state.questAt[id] = nowMs(); save();
   return null;
 }
-/* 수주 임무 24시간 리셋: 수주한 지 24시간이 지난 임무는 (완수했든 못 했든) 처음 상태로 돌아가 다시 수주할 수 있다. 리셋된 임무 수 */
+/* 임무 리셋(오전 4시): 완수해 둔 임무만 처음 상태로 돌아가 다시 수주할 수 있다. 진행 중인 임무와 진행도는 유지된다. 리셋된 임무 수 */
 function resetBoardQuests() {
   let n = 0;
-  QUESTS.filter(q => q.board && state.questTaken[q.id]).forEach(q => {
+  QUESTS.filter(q => q.board && state.questTaken[q.id] && state.questDone[q.id]).forEach(q => { // 완수해 둔 임무만 다시 받을 수 있게 되돌린다. 지금 진행 중인 임무와 진행도는 건드리지 않는다
     if (!state.questAt[q.id]) state.questAt[q.id] = nowMs(); // 옛 저장: 지금부터 센다
     if (nowMs() < nextBoardReset(state.questAt[q.id])) return;
     needParts(q).forEach((_, i) => delete state.qprog[progKey(q, i)]);
@@ -1219,13 +1223,13 @@ function resetBoardQuests() {
 }
 const nextBoardReset = t => Math.floor((t + (9 - BOARD_RESET_HOUR) * 3600000) / 86400000 + 1) * 86400000 - (9 - BOARD_RESET_HOUR) * 3600000; // 수주 뒤 처음 맞는 한국 시간 오전 4시
 const boardResetLeft = id => state.questAt[id] ? Math.max(0, nextBoardReset(state.questAt[id]) - nowMs()) : 0;
-/* 승급: 지금 등급의 다음 등급 시험(메인 임무). 없으면 null (D등급 이후는 아직 없음) */
+/* 승급: 지금 등급의 다음 등급 시험(메인 임무). 없으면 null (B등급 이후는 아직 없음) */
 const nextPromo = () => { const i = PROMO_ORDER.indexOf(state.character.rank); return i >= 0 && i < PROMO_ORDER.length - 1 ? QUESTS.find(q => q.promo === PROMO_ORDER[i + 1]) : null; };
 function takePromo() {
   const q = nextPromo();
   if (!state.created) return '먼저 캐릭터를 만드세요.';
   if (state.location !== '본부') return '승급 시험은 본부에서 받을 수 있습니다.';
-  if (!q) return '지금은 D등급까지만 승급할 수 있습니다.';
+  if (!q) return '지금은 B등급까지만 승급할 수 있습니다.';
   if (state.questTaken[q.id]) return '이미 승급 시험을 받았습니다.';
   if (state.character.level < q.lv) return `Lv.${q.lv} 이상이어야 받을 수 있습니다.`;
   state.questTaken[q.id] = true; needParts(q).forEach((_, i) => { state.qprog[progKey(q, i)] = 0; }); save();
