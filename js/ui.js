@@ -703,6 +703,7 @@ function cloudApply(data, rev) { // 서버 세이브로 교체하고 다시 시�
     if (mine.length) { let seq = Math.max(intIn(data.mailSeq, 1, 999999999, 1), ...data.mail.map(m => (m && +m.id) || 0).map(n => n + 1)); data.mail = [...data.mail, ...mine.map(m => ({ ...m, id: seq++ }))]; data.mailSeq = seq; }
   }
   if (Number.isFinite(rev)) Cloud.setRev(rev);
+  if (state.created && cloudDirty()) { try { localStorage.setItem('deeplayer-replaced', JSON.stringify(state)); } catch (e) { /* 보관 불가 */ } } // 덮어쓰기 직전의 이 기기 진행을 한 번 보관
   lsSet(LS_SYNC, Date.now()); lsSet(LS_ACT, 0); _lastAct = 0;
   window.__noSave = true;
   try { localStorage.setItem(SAVE_KEY, JSON.stringify(data)); } catch (e) { /* 저장 불가 */ }
@@ -719,10 +720,7 @@ async function cloudSync(force) {
     if (!s || !s.data || !s.data.created) return;
     if (_claimed && s.data.__dev && s.data.__dev !== DEV) { lockDevice(); return; } // 다른 기기가 새로 접속함
     if (!(s.rev > Cloud.rev())) { if (!_claimed) { if (s.data.__dev === DEV) _claimed = true; else await cloudPushNow(); } return; } // 서버와 같은 버전이면 이 기기가 현재 기기가 된다
-    if (!cloudDirty()) { cloudApply(s.data, s.rev); return; }
-    view.cloudServer = s;
-    modal('다른 기기의 진행', `<p>다른 기기에서 더 나중에 저장한 진행이 서버에 있어요. (${esc(String(s.at || '').slice(0, 16).replace('T', ' '))})<br>어느 쪽을 쓸까요?</p><p class="tiny">서버 것을 쓰면 이 기기에서 방금 한 진행은 사라지고, 이 기기 것을 쓰면 서버의 진행이 덮어써져요. (덮어쓰기 전 서버 백업이 남습니다)</p>`,
-      ['<button data-act="cloud-use-server" class="primary">서버 진행 불러오기</button>', '<button data-act="cloud-keep-local">이 기기 진행으로 덮어쓰기</button>']);
+    cloudApply(s.data, s.rev); // 서버가 더 새로우면 항상 서버 진행으로 (이 기기에서 바뀐 것이 있었다면 apply 가 만약을 위해 따로 보관)
   } catch (e) { /* 오프라인 */ } finally { _syncBusy = false; }
 }
 function cloudGroupHtml() {
