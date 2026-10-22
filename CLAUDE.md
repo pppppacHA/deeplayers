@@ -187,3 +187,7 @@ STUB_ICONS=1 python3 tests/smoke.py   # 아이콘 폰트를 못 받는 환경(�
 ## 2026-10-24 버그 수정
 - 긴 전투(여러 회차)에서 한 번 지면 남은 회차를 모두 버리고 후퇴하던 규칙 제거(`battleRuns`/`resolveAction`). 진 회차는 보상 없이 부상만 입고 이어가며, HP가 `HP_RETREAT`(20) 이하가 되면 그때 중단. 재로그인·저장 불러오기와는 무관(`state.active`는 그대로 보존됨). 테스트 `battle_loss_does_not_end_long_run`/`battle_long_run_survives_reload`.
 - 스테이터스 본문(`#statusBody`)은 스크롤바를 숨긴다(높이를 줄여도 막대가 안 보임).
+
+## 2026-10-24 분해 · 펫 교감
+- 본부 '분해'(kind `dismantle`, `openDismantle`): 소지품(착용 제외)의 장비·가방을 `dismantleItem`으로 분해. 재료=레시피 재료의 절반(내림, 최소 1종), 레시피 없는 장비(승급 가방 등)는 크기별 기본 재료, CR=판매가의 1/4(최소 2). 가방이 모자라면 아무것도 바뀌지 않고 거절, 같은 이름의 마지막 1개를 분해하면 그 이름의 강화·세공·이름도 삭제. `hidden` 아이템은 불가.
+- 펫 탭: 도감은 눌러야 펼쳐짐(`view.petDexOpen`), 함께 다니는 펫이 맨 위(`petOrder`), 동행 펫은 탐험 보내기 버튼 없음, 돌보기(간식·쓰다듬기·기분 묻기)는 개인실 또는 동행 펫이면 어디서든(`petCareErr`). 쓰다듬기=친밀도 +1, 펫마다 10분(`PET_STROKE_MS`, 저장 `petAt`). 기분 묻기/쓰다듬기는 울음소리+(기분) 한 줄(`petCry`, `petMood`).

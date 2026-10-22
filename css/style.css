@@ -1069,3 +1069,7 @@ textarea#mailBody{width:100%;min-height:80px;resize:vertical}
 /* 스테이터스 2페이지: 긴 글(긴 무기 이름 등)이 칸을 늘려 1페이지와 높이가 달라지지 않게 한 줄로 줄인다 */
 .stat-eff span.eff-l{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .stat-grid{grid-auto-rows:1fr}
+
+.pet-talk{display:block;color:var(--accent-2);font-weight:600}
+.dex-toggle{display:flex;align-items:center;gap:2px;width:100%;background:none;border:0;padding:2px 0;cursor:pointer;text-align:left}
+.dex-toggle .material-symbols-rounded{font-size:16px}

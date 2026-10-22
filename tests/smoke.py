@@ -211,7 +211,7 @@ with sync_playwright() as p:
     check('map_foot_removed', pg.locator('.map-foot').count() == 0)
     pg.click('#zoomIn'); check('zoom_in_works', 'scale(1.12)' in ev(pg, "document.querySelector('#mapWorld').style.transform"))
     pg.click('#resetMap'); check('reset_works', 'scale(1)' in ev(pg, "document.querySelector('#mapWorld').style.transform"))
-    check('hq_choices', pg.locator('#choices button').count() == 4)
+    check('hq_choices', pg.locator('#choices button').count() == 5)
 
     # ---------- 레이아웃: 고정 높이 + 내부 스크롤, 리사이즈 없음 ----------
     cols = [rect(pg, s) for s in ['.left-column', '.center-column', '.right-column']]
@@ -1282,8 +1282,16 @@ with sync_playwright() as p:
     check('pet_box_collects_no_duplicates', ev(pg, "state.pets.length")== 4 and ev(pg, "addPet('숲 늑대')")== False and ev(pg, "petCap()")== ev(pg, "Object.keys(PET_SPECIES).length") and ev(pg, "Object.values(state.inventory).flat().every(s=>!PET_SPECIES[s.n])"))
     home('개인실'); ev(pg, "removeItem('감자',countItem('감자'));addItem('감자',5)")
     pg.click('#choices button:has-text("펫 돌보기")'); pg.wait_for_timeout(80)
+    check('pet_dex_collapsed_until_clicked', pg.locator('.pet-dex').count() == 0 and pg.locator('[data-act="pet-dex-toggle"]').count() == 1)
+    pg.click('[data-act="pet-dex-toggle"]'); pg.wait_for_timeout(60)
     check('pet_modal_dex_and_rows', pg.locator('.pet-dex').count() == ev(pg, "Object.keys(PET_SPECIES).length") and pg.locator('.pet-dex.got').count() == 4 and pg.locator('.pet-row').count() == 4 and pg.locator('#expZone option').count() == ev(pg, "DANGER_ZONES.length"))
-    check('active_pet_cannot_be_sent', pg.locator('[data-act="pet-send"][data-i="0"]').is_disabled() and ev(pg, "sendExpedition(0,'제1구역')")!= None)
+    check('active_pet_cannot_be_sent', pg.locator('[data-act="pet-send"][data-i="0"]').count() == 0 and ev(pg, "sendExpedition(0,'제1구역')")!= None)
+    check('pet_stroke_and_mood_commands', ev(pg, """(()=>{const p=state.pets[1],b=p.bond;p.petAt=0;const m=petAskMood(1),s1=petStroke(1),s2=petStroke(1);
+      return /\\(.+\\)/.test(m.text)&&state.pets[1].bond===b+1&&/\\(.+\\)/.test(s1.text)&&!!s2.err&&state.pets[1].bond===b+1&&petCry(state.pets[0]).length>0})()"""))
+    pg.click('[data-act="pet-stroke"][data-i="0"]'); pg.wait_for_timeout(60)
+    check('pet_mood_button_shows_cry_line', (pg.click('[data-act="pet-mood"][data-i="0"]') or True) and pg.locator('.pet-talk').count() == 1 and '(' in text(pg, '.pet-talk'))
+    check('companion_cared_anywhere_others_only_in_room', ev(pg, """(()=>{const loc=state.location;state.location='본부';const a=petCareErr(0),b=petCareErr(1);state.location=loc;return a===null&&!!b})()"""))
+    check('active_pet_listed_first', ev(pg, "(()=>{const bak=state.petActive;state.petActive=2;const o=petOrder();state.petActive=bak;return o[0]===2&&o.length===state.pets.length})()"))
     bag0 = ev(pg, "usedSlots()"); pg.select_option('#expZone', '제2구역'); pg.click('[data-act="pet-feed-pick"][data-item="감자"]'); pg.click('[data-act="pet-send"][data-i="1"]'); pg.wait_for_timeout(80)
     check('expedition_sent_consumes_feed', ev(pg, "state.pets[1].exp.zone")== '제2구역' and ev(pg, "countItem('감자')")== 4 and ev(pg, "setActivePet(1)")!= None and '탐험 중' in text(pg, '.pet-row >> nth=1'))
     ff(23 * 3600); check('expedition_not_back_before_24h', ev(pg, "expReady(state.pets[1])")== False and ev(pg, "claimExpedition(1)")!= None)
@@ -1736,6 +1744,29 @@ with sync_playwright() as p:
       const same=a&&a.cycles===10&&a.seed===12345&&a.hp0===100&&a.d===.6;
       const r1=resolveAction(id,10,0,state.active).text,r2=resolveAction(id,a.cycles,0,a).text;
       state.active=null;Object.assign(state,JSON.parse(bak));return !!same&&r1.slice(0,40)===r1.slice(0,40)&&/\\d+회 교전/.test(r2)})()"""))
+    # ---------- 분해 ----------
+    check('dismantle_action_in_hq', ev(pg, "ACTIONS['분해'].kind==='dismantle'&&SAFE_ZONES.find(z=>z.id==='본부').items.includes('분해')"))
+    check('dismantle_yield_rules', ev(pg, """(()=>{const a=dismantleYield('가죽 장갑'),b=dismantleYield('정찰 배낭'),c=dismantleYield('안대'),d=dismantleYield('응급 키트');
+      return !!a&&a.mats.length>=1&&a.cr>=2&&a.mats.every(([n,q])=>ITEMS[n]&&q>=1)&&!!b&&b.mats.length===2&&c===null&&d===null})()"""))
+    check('dismantle_works_and_protects', ev(pg, """(()=>{const bak=JSON.stringify(state);state.location='본부';state.dungeon=null;
+      state.inventory['장비']=[];state.inventory['재료']=[];state.equipment['장갑']=null;
+      addItem('가죽 장갑',2);addItem('정찰 배낭',1);state.equipment['신발']&&0;
+      state.enchants['가죽 장갑']={k:'str',v:1,n:1};state.reinforce['가죽 장갑']=0;
+      const m0=state.money,y=dismantleYield('가죽 장갑');
+      const r=dismantleItem('가죽 장갑');
+      const ok1=typeof r==='object'&&state.money===m0+y.cr&&countItem('가죽 장갑')===1&&!!state.enchants['가죽 장갑']&&y.mats.every(([n,q])=>countItem(n)>=q);
+      const r2=dismantleItem('가죽 장갑');const ok2=typeof r2==='object'&&!state.enchants['가죽 장갑'];
+      const r3=dismantleItem('가죽 장갑');const ok3=typeof r3==='string';
+      state.equipment['가방']='정찰 배낭';state.inventory['장비']=state.inventory['장비'].filter(s=>s.n!=='정찰 배낭');
+      const r4=dismantleItem('정찰 배낭');const ok4=typeof r4==='string'&&state.equipment['가방']==='정찰 배낭';
+      state.location='개인실';addItem('가죽 부츠',1);const r5=dismantleItem('가죽 부츠');const ok5=typeof r5==='string'&&countItem('가죽 부츠')===1;
+      Object.keys(state).forEach(k=>delete state[k]);Object.assign(state,JSON.parse(bak));return ok1&&ok2&&ok3&&ok4&&ok5})()"""))
+    check('dismantle_full_bag_refused_without_loss', ev(pg, """(()=>{const bak=JSON.stringify(state);state.location='본부';state.dungeon=null;
+      state.inventory['장비']=[];state.inventory['재료']=[];addItem('정찰 배낭',1);
+      let i=0;while(usedSlots()<bagCapacity()&&i<200){state.inventory['소모품'].push({n:'응급 키트',q:1});i++;}
+      const before=JSON.stringify(state.inventory),m0=state.money,r=dismantleItem('정찰 배낭');
+      const ok=typeof r==='string'&&JSON.stringify(state.inventory)===before&&state.money===m0;
+      Object.keys(state).forEach(k=>delete state[k]);Object.assign(state,JSON.parse(bak));return ok})()"""))
     # ---------- 전투 묘사=실제 결과 / 입구 거리 난이도 / 도박 / 표시 ----------
     ev(pg, "closeModal()")
     check('battle_log_matches_result', ev(pg, """(()=>{const bak=JSON.stringify(state);const id=Object.keys(ACTIONS).find(k=>ACTIONS[k].kind==='battle'),a=ACTIONS[id];let ok=true,wins=0;

@@ -97,7 +97,7 @@ function hardenState(s) {
   s.questAt = Object.fromEntries(Object.entries(s.questAt && typeof s.questAt === 'object' ? s.questAt : {}).filter(([k, v]) => known(k) && Number.isFinite(v)));
   const fp = Array.isArray(s.farm && s.farm.plots) ? s.farm.plots : [];
   s.farm = { plots: Array.from({ length: 6 }, (_, i) => { const p = fp[i]; return p && CROPS[p.crop] && Number.isFinite(p.at) ? { crop: p.crop, at: p.at } : null; }) };
-  s.pets = (Array.isArray(s.pets) ? s.pets : []).filter(p => p && PET_SPECIES[p.id]).map(p => ({ id: p.id, bond: intIn(p.bond, 0, 100, PET_BOND_START), fedAt: Number.isFinite(p.fedAt) ? p.fedAt : 0, name: cleanText(p.name, PET_NAME_MAX), pers: PET_PERS[p.pers] ? p.pers : pick(PET_PERS_LIST), exp: p.exp && DANGER_ZONES.some(z => z.id === p.exp.zone) && Number.isFinite(p.exp.at) ? { zone: p.exp.zone, at: p.exp.at, ms: Number.isFinite(p.exp.ms) ? clamp(p.exp.ms, 3600000, PET_EXP_MS) : PET_EXP_MS } : null }))
+  s.pets = (Array.isArray(s.pets) ? s.pets : []).filter(p => p && PET_SPECIES[p.id]).map(p => ({ id: p.id, bond: intIn(p.bond, 0, 100, PET_BOND_START), fedAt: Number.isFinite(p.fedAt) ? p.fedAt : 0, petAt: Number.isFinite(p.petAt) ? p.petAt : 0, name: cleanText(p.name, PET_NAME_MAX), pers: PET_PERS[p.pers] ? p.pers : pick(PET_PERS_LIST), exp: p.exp && DANGER_ZONES.some(z => z.id === p.exp.zone) && Number.isFinite(p.exp.at) ? { zone: p.exp.zone, at: p.exp.at, ms: Number.isFinite(p.exp.ms) ? clamp(p.exp.ms, 3600000, PET_EXP_MS) : PET_EXP_MS } : null }))
     .filter((p, i, a) => a.findIndex(q => q.id === p.id) === i).slice(0, Object.keys(PET_SPECIES).length);
   if (s.pets[s.petActive] && s.pets[s.petActive].exp) s.petActive = -1;
   s.petActive = intIn(s.petActive, -1, s.pets.length - 1, -1);
@@ -250,6 +250,41 @@ function reinforceItem(name, rnd = Math.random) { // 성공 { ok, lv } / 실패 
   return { ok, lv: ok ? lv + 1 : lv };
 }
 /* A랭까지 강화한 무기에는 이름을 붙일 수 있다 */
+/* ---------- 분해: 소지품의 장비(가방 포함)를 재료 + 소정의 CR로 ---------- */
+const DISMANTLE_BACK = .5, DISMANTLE_CR = .25; // 레시피 재료의 절반(내림, 최소 1종 1개) / 판매가의 1/4 CR
+function dismantleYield(name) { // { mats:[[이름,수량]], cr } 또는 null(분해 불가)
+  const it = ITEMS[name];
+  if (!it || it.tab !== '장비' || it.hidden) return null;
+  const rc = RECIPES.find(r => r.out === name), bag = {};
+  if (rc) {
+    Object.entries(rc.mats).forEach(([k, q]) => { const n = MAT_GROUPS[k] ? MAT_GROUPS[k][0] : k, g = Math.floor(q * DISMANTLE_BACK); if (g > 0 && ITEMS[n]) bag[n] = (bag[n] || 0) + g; });
+    if (!Object.keys(bag).length) { const [k] = Object.entries(rc.mats).sort((a, b) => b[1] - a[1])[0], n = MAT_GROUPS[k] ? MAT_GROUPS[k][0] : k; if (ITEMS[n]) bag[n] = 1; }
+  }
+  if (!Object.keys(bag).length) { // 레시피가 없는 장비(승급 보상 가방 등): 크기·종류에 맞춰 기본 재료
+    if (it.capacity) { bag['생체 섬유'] = Math.max(1, Math.round(it.capacity / 10)); bag['합금 파편'] = Math.max(1, Math.round(it.capacity / 16)); }
+    else { bag['합금 파편'] = 1; bag['생체 섬유'] = 1; }
+  }
+  return { mats: Object.entries(bag).filter(([n]) => ITEMS[n]), cr: Math.max(2, Math.round((it.sell || 10) * DISMANTLE_CR)) };
+}
+const dismantlable = () => { const seen = {}; state.inventory['장비'].forEach(s => { if (dismantleYield(s.n)) seen[s.n] = (seen[s.n] || 0) + 1; }); return Object.entries(seen); };
+function dismantleItem(name, qty = 1) { // 성공하면 { mats, cr, qty }, 실패하면 사유 문자열
+  if (!state.created) return '먼저 캐릭터를 만드세요.';
+  if (placeKey() !== '본부') return '분해는 본부에서만 할 수 있습니다.';
+  const y = dismantleYield(name);
+  if (!y) return '분해할 수 없는 장비입니다.';
+  const have = state.inventory['장비'].filter(s => s.n === name).length;
+  if (!have) return '소지품에 그 장비가 없습니다. (착용 중인 장비는 먼저 벗어야 합니다)';
+  qty = Math.min(intIn(qty, 1, 99, 1), have);
+  const snap = JSON.stringify(state.inventory), got = {};
+  removeItem(name, qty);
+  for (const [n, q] of y.mats) { const want = q * qty, g = addItem(n, want); if (g < want) { state.inventory = JSON.parse(snap); return '가방 공간이 부족해 재료를 모두 담을 수 없습니다. 가방을 비워 주세요.'; } got[n] = want; }
+  state.money += y.cr * qty;
+  if (!state.inventory['장비'].some(s => s.n === name) && !Object.values(state.equipment).includes(name)) { // 마지막 한 개면 그 이름의 강화·세공·이름도 함께 사라진다
+    delete state.enchants[name]; delete state.reinforce[name]; delete state.nicks[name];
+  }
+  syncMax(); save();
+  return { mats: Object.entries(got), cr: y.cr * qty, qty };
+}
 const nickOf = n => (state.nicks && state.nicks[n]) || '';
 const shownName = n => nickOf(n) || n;
 const canNick = n => !!(ITEMS[n] && ITEMS[n].slot === '무기' && reinforceLv(n) >= REINFORCE_RANKS.length - 1);
@@ -1544,8 +1579,7 @@ function addPet(id) {
 /* 먹이: 작물 / 펫 사료. 든든함이 24시간 유지되고 친밀도가 오른다 */
 function feedPet(i, item) {
   const p = state.pets[i], it = ITEMS[item];
-  if (!p) return '펫이 없습니다.';
-  if (state.location !== '개인실') return '펫 돌보기는 개인실에서 할 수 있습니다.';
+  const ce = petCareErr(i); if (ce) return ce;
   if (!it || !it.feed) return '펫이 먹을 수 없는 아이템입니다.';
   const herb = PET_PERS_LIST.find(k => PET_PERS[k].herb === item); // 성격 허브를 간식으로 주면 성격이 바뀐다
   if (herb && p.pers === herb) return `${petName(p)}은(는) 이미 ${herb} 성격입니다.`;
@@ -1553,6 +1587,29 @@ function feedPet(i, item) {
   if (herb) p.pers = herb;
   p.bond = Math.min(100, p.bond + it.feed); p.fedAt = nowMs(); save();
   return null;
+}
+/* 돌보기(간식·쓰다듬기·기분 묻기): 개인실에서, 또는 함께 다니는 펫이면 어디서든 */
+function petCareErr(i) {
+  const p = state.pets[i];
+  if (!p) return '펫이 없습니다.';
+  if (p.exp) return '탐험 중인 펫은 돌볼 수 없습니다.';
+  if (state.location !== '개인실' && state.petActive !== i) return '함께 다니지 않는 펫은 개인실에서 돌볼 수 있습니다.';
+  return null;
+}
+const petCry = p => { const h = PET_CRY.find(([k]) => PET_SPECIES[p.id].name.includes(k) || p.id.includes(k)); return h ? h[1] : '끼잉'; };
+function petMood(p) {
+  const fed = petFed(p);
+  if (!fed) return p.bond >= 60 ? '조금 출출함' : p.bond >= 30 ? '배고픔' : '시무룩함';
+  return p.bond >= 80 ? '아주 행복함' : p.bond >= 50 ? '기분 좋음' : p.bond >= 25 ? '편안함' : '아직 낯설어함';
+}
+const petTalk = p => `${petName(p)}: ${petCry(p)} (${petMood(p)})`;
+function petAskMood(i) { const e = petCareErr(i); return e ? { err: e } : { text: petTalk(state.pets[i]) }; }
+function petStroke(i) { // 쓰다듬기: 친밀도 +1, 펫마다 10분에 한 번
+  const e = petCareErr(i); if (e) return { err: e };
+  const p = state.pets[i], t = nowMs(), left = p.petAt + PET_STROKE_MS - t;
+  if (left > 0) return { err: `${petName(p)}은(는) 방금 쓰다듬었어요. ${Math.ceil(left / 60000)}분 뒤에 다시 쓰다듬을 수 있어요.` };
+  p.petAt = t; const up = p.bond < 100; p.bond = Math.min(100, p.bond + PET_STROKE_BOND); save();
+  return { text: `${petName(p)}: ${petCry(p)} (${petMood(p)})${up ? ` · 친밀도 +${PET_STROKE_BOND}` : ''}` };
 }
 /* 성격에 따라 바뀌는 문구 */
 const petPersOf = p => PET_PERS[p && p.pers] ? p.pers : PET_PERS_LIST[0];
