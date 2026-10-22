@@ -104,7 +104,9 @@ function hardenState(s) {
   s.mailSeq = intIn(s.mailSeq, 1, 999999999, 1);
   const okItems = it => (Array.isArray(it) ? it : []).filter(r => Array.isArray(r) && ITEMS[r[0]]).map(r => [r[0], intIn(r[1], 1, 99, 1)]).slice(0, MAIL_ITEM_KINDS);
   s.mail = (Array.isArray(s.mail) ? s.mail : []).filter(m => m && Number.isFinite(m.at)).map(m => ({ id: intIn(m.id, 1, 999999999, 1), from: cleanText(m.from, 12), subject: cleanText(m.subject, 30), body: cleanText(m.body, 300),
-    items: okItems(m.items), at: m.at, kept: m.kept === true, read: m.read === true, got: m.got === true })).slice(0, MAIL_BOX_MAX);
+    items: okItems(m.items), at: m.at, kept: m.kept === true, read: m.read === true, got: m.got === true, sid: typeof m.sid === 'string' ? m.sid.replace(/[^\w-]/g, '').slice(0, 24) : '' })).slice(0, MAIL_BOX_MAX);
+  s.results = (Array.isArray(s.results) ? s.results : []).filter(r => r && typeof r.text === 'string').slice(0, RESULT_KEEP).map(r => ({ t: cleanText(r.t, 30), text: cleanText(r.text, 300), at: Number.isFinite(r.at) ? r.at : 0,
+    gain: (Array.isArray(r.gain) ? r.gain : []).slice(0, 12).map(c => cleanText(c, 40)).filter(Boolean), loss: (Array.isArray(r.loss) ? r.loss : []).slice(0, 8).map(c => cleanText(c, 40)).filter(Boolean) }));
   const g = s.guild;
   if (g && typeof g === 'object' && cleanText(g.name, GUILD_NAME_MAX).length >= GUILD_NAME_MIN) {
     s.guild = { name: cleanText(g.name, GUILD_NAME_MAX), master: g.master === true, members: [...new Set((Array.isArray(g.members) ? g.members : []).map(n => cleanText(n, 12)).filter(Boolean))].slice(0, GUILD_MAX - 1) };
@@ -1561,7 +1563,8 @@ function cleanItemList(arr, max = 5) {
   return out;
 }
 /* 서버에서 받은 메일/교환 결과를 메일함에 넣는다 */
-function receiveServerMail(from, subject, body, items) { pushMail(from, subject, body, cleanItemList(items)); save(); }
+/* 서버 메일: sid(서버 번호)로 중복을 막는다 — 이미 받은 메일이면 false */
+function receiveServerMail(from, subject, body, items, sid = '') { if (sid && state.mail.some(m => m.sid === sid)) return false; pushMail(from, subject, body, cleanItemList(items), nowMs(), sid); save(); return true; }
 /* 서버에서 상대가 수락한 친구를 목록에 넣는다. 성공하면 null, 아니면 사유 */
 function addFriendAccepted(name) {
   name = cleanText(name, 12);
@@ -1586,8 +1589,8 @@ function addFriend(name) {
 function removeFriend(name) { state.friends = state.friends.filter(n => n !== name); save(); }
 const mailDelivered = m => m.at <= nowMs();
 const unreadMail = () => state.mail.filter(m => mailDelivered(m) && (!m.read || (m.items.length && !m.got))).length;
-function pushMail(from, subject, body, items = [], at = nowMs()) {
-  state.mail.unshift({ id: state.mailSeq++, from: cleanText(from, 12), subject: cleanText(subject, 30), body: cleanText(body, 300), items, at, kept: false, read: false, got: false });
+function pushMail(from, subject, body, items = [], at = nowMs(), sid = '') {
+  state.mail.unshift({ id: state.mailSeq++, from: cleanText(from, 12), subject: cleanText(subject, 30), body: cleanText(body, 300), items, at, kept: false, read: false, got: false, sid });
   // 가득 차면 보존하지 않은 가장 오래된 메일부터 지운다
   while (state.mail.length > MAIL_BOX_MAX) { const i = [...state.mail].reverse().findIndex(m => !m.kept); if (i < 0) break; state.mail.splice(state.mail.length - 1 - i, 1); }
 }

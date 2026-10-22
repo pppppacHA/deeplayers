@@ -72,7 +72,10 @@ const Cloud = (() => {
     async chatFetch(channel, after) { return (await call('/rest/v1/rpc/chat_fetch', { p_channel: channel, p_after: after || 0 }, await token())) || []; },
     async isAdmin() { return (await call('/rest/v1/rpc/is_admin', {}, await token())) === true; },
     /* → { rev, data, at } | null(서버에 세이브 없음) */
-    async pull() { const j = await call('/rest/v1/rpc/pull_save', {}, await token()); if (j) { const s = rd(); if (s) { s.rev = j.rev; wr(s); } } return j; },
+    async pull(keepRev) { const j = await call('/rest/v1/rpc/pull_save', {}, await token()); if (j && !keepRev) { const s = rd(); if (s) { s.rev = j.rev; wr(s); } } return j; },
+    /* 이 기기가 마지막으로 서버와 맞춘 버전 */
+    rev() { const s = rd(); return s && Number.isFinite(s.rev) ? s.rev : 0; },
+    setRev(r) { const s = rd(); if (s && Number.isFinite(r)) { s.rev = r; wr(s); } },
     /* 서버 백업 (supabase/backups.sql) */
     async listBackups() { return (await call('/rest/v1/rpc/list_backups', {}, await token())) || []; },
     async getBackup(id) { return await call('/rest/v1/rpc/get_backup', { p_id: id }, await token()); },

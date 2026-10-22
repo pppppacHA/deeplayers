@@ -222,6 +222,60 @@ with sync_playwright() as p:
     server['data']['money'] = 4242  # 그동안 자동 저장이 서버 데이터를 덮었을 수 있어 다시 정한다
     pg.evaluate("openSettings()"); pg.click('[data-act="cloud-pull"]'); pg.wait_for_timeout(1000)
     check('pull_replaces_local_and_reloads', pg.evaluate("state.money") == 4242, pg.evaluate("state.money"))
+    # ── 결과 카드 보존: 다른 활동을 해도, 새로고침해도 남는다
+    pg.evaluate("document.querySelector('#tutorial') && document.querySelector('#tutorial').classList.add('hidden')")
+    pg.evaluate("state.results=[{t:'화염정령 사냥',text:'화염정령을 쓰러뜨렸다',at:1,gain:['화염의 정수 ×1'],loss:[]},{t:'모래게 사냥',text:'모래게를 잡았다',at:2,gain:[],loss:['기력 -1']}];save();renderAction()")
+    pg.evaluate("hardenState(state)") if False else None
+    check('result_card_only_latest_kept', pg.evaluate("state.results.length") == 2 and True)  # 직접 넣은 값은 불러올 때 1개로 줄어든다
+    pg.evaluate("flushSave()"); pg.reload(); pg.wait_for_timeout(700)
+    pg.evaluate("document.querySelector('#tutorial') && document.querySelector('#tutorial').classList.add('hidden')")
+    check('result_card_survives_reload_latest_only', pg.evaluate("state.results.length") == 1 and pg.locator('.last-result').count() == 1 and '화염정령 사냥' in pg.inner_text('#actionPanel'), pg.evaluate("state.results.length"))
+    pg.evaluate("A['result-close']({dataset:{i:'0'}})")
+    check('result_card_close', pg.evaluate("state.results.length") == 0 and pg.locator('.last-result').count() == 0)
+    pg.evaluate("state.results=[];save()")
+    # ── 프로필 이미지는 서버 세이브에 실려 다른 기기로 간다
+    pg.evaluate("p=>localStorage.setItem(AVATAR_KEY,p)", PNG); pg.evaluate("flushSave()")
+    pg.evaluate("window.__r=null;cloudPushNow().then(r=>window.__r=r)"); pg.wait_for_timeout(900)
+    check('save_carries_avatar', isinstance(server['data'].get('__avatar'), str) and server['data']['__avatar'].startswith('data:image/') and len(server['data']['__avatar']) < 20000, str(server['data'].get('__avatar'))[:40])
+    pg.evaluate("localStorage.removeItem(AVATAR_KEY)")
+    pg.evaluate("cloudApply(%s, %d)" % (json.dumps(server['data']), server['rev'])); pg.wait_for_timeout(1500)
+    check('avatar_arrives_with_server_load', pg.evaluate("getAvatar()") is not None and pg.evaluate("state.__avatar") is None, pg.evaluate("getAvatar()"))
+    # ── 폰/PC 자동 동기화: 서버가 더 새롭고 이 기기에서 한 조작이 없으면 조용히 서버 진행으로 바뀐다
+    pg.evaluate("document.querySelector('#tutorial') && document.querySelector('#tutorial').classList.add('hidden')")
+    d2 = json.loads(json.dumps(server['data'])); d2['money'] = 7777; server['data'] = d2; server['rev'] += 3
+    pg.evaluate("lsSet(LS_SYNC, Date.now() - 1000); _lastAct = 0"); pg.evaluate("cloudSync(true)"); pg.wait_for_timeout(1500)
+    check('auto_sync_applies_newer_server', pg.evaluate("state.money") == 7777 and pg.evaluate("Cloud.rev()") == server['rev'], [pg.evaluate("state.money"), pg.evaluate("Cloud.rev()"), server['rev']])
+    pg.evaluate("document.querySelector('#tutorial') && document.querySelector('#tutorial').classList.add('hidden')")
+    # 이 기기에서 조작했다면 묻는다 (서버 진행을 조용히 덮어쓰지 않음)
+    server['rev'] += 2; pg.evaluate("lsSet(LS_SYNC, Date.now() - 5000); _lastAct = Date.now()"); pg.evaluate("state.money=1234;flushSave()")
+    pg.evaluate("cloudSync(true)"); pg.wait_for_timeout(900)
+    check('auto_sync_asks_when_local_changed', pg.evaluate("state.money") == 1234 and pg.locator('[data-act="cloud-keep-local"]').count() == 1, pg.evaluate("state.money"))
+    n_p = len(server['pushes']); pg.click('[data-act="cloud-keep-local"]'); pg.wait_for_timeout(900)
+    check('keep_local_pushes_over_server', len(server['pushes']) == n_p + 1 and server['data']['money'] == 1234, [server['data']['money'], server['pushes'][-2:]])
+    # ── 메일: 서버 보관함에서 지우기 전에 서버 저장에 먼저 올리고, 중복 없이 한 번만 받는다
+    server['inmail'] = [{'id': 77, 'name': '미나', 'subject': '폰으로 온 메일', 'body': '안녕', 'items': []}]; server['mack'].clear(); np0 = len(server['pushes'])
+    pg.evaluate("friendPoll()"); pg.wait_for_timeout(1500)
+    check('mail_received_with_server_id', pg.evaluate("state.mail.filter(m=>m.sid==='s77').length") == 1, pg.evaluate("state.mail.map(m=>m.sid)"))
+    check('mail_saved_to_server_before_ack', 77 in server['mack'] and len(server['pushes']) > np0 and any(m.get('sid') == 's77' for m in server['data']['mail']), [server['mack'], len(server['pushes']) - np0])
+    server['inmail'] = [{'id': 77, 'name': '미나', 'subject': '폰으로 온 메일', 'body': '안녕', 'items': []}]; pg.evaluate("friendPoll()"); pg.wait_for_timeout(900)
+    check('mail_not_duplicated', pg.evaluate("state.mail.filter(m=>m.sid==='s77').length") == 1)
+    # 다른 기기의 오래된 서버 세이브를 불러와도 이 기기에서 받은 메일은 남는다
+    d3 = json.loads(json.dumps(server['data'])); d3['mail'] = [m for m in d3['mail'] if m.get('sid') != 's77']; d3['money'] = 8888
+    pg.evaluate("flushSave()"); pg.evaluate("cloudApply(%s, %d)" % (json.dumps(d3), server['rev'])); pg.wait_for_timeout(1500)
+    check('mail_survives_server_load', pg.evaluate("state.money") == 8888 and pg.evaluate("state.mail.filter(m=>m.sid==='s77').length") == 1, [pg.evaluate("state.money"), pg.evaluate("state.mail.map(m=>m.sid)")])
+    # ── 한 번에 한 기기: 다른 기기가 접속하면 이 화면은 잠기고, '이 기기에서 계속하기'로 되찾는다
+    pg.evaluate("document.querySelector('#tutorial') && document.querySelector('#tutorial').classList.add('hidden')")
+    pg.evaluate("window.__r=null;cloudPushNow().then(r=>window.__r=r)"); pg.wait_for_timeout(500)
+    me = pg.evaluate("DEV")
+    check('save_carries_device_id', server['data'].get('__dev') == me and pg.evaluate("_claimed") is True, [server['data'].get('__dev'), me])
+    d4 = json.loads(json.dumps(server['data'])); d4['__dev'] = 'otherdevice1'; d4['money'] = 6060; server['data'] = d4; server['rev'] += 1
+    n_p = len(server['pushes']); pg.evaluate("cloudSync(true)"); pg.wait_for_timeout(900)
+    check('new_device_locks_old_page', pg.locator('#devLock').count() == 1 and pg.locator('#devTake').is_visible(), pg.locator('#devLock').count())
+    pg.evaluate("state.money=1;flushSave();cloudAutoPush()"); pg.wait_for_timeout(500)
+    check('locked_page_does_not_push', len(server['pushes']) == n_p and server['data']['money'] == 6060, [len(server['pushes']), n_p])
+    pg.click('#devTake'); pg.wait_for_timeout(1800)
+    check('take_over_loads_server_and_claims', pg.evaluate("state.money") == 6060 and pg.locator('#devLock').count() == 0 and server['data'].get('__dev') == me, [pg.evaluate("state.money"), server['data'].get('__dev')])
+    pg.evaluate("document.querySelector('#tutorial') && document.querySelector('#tutorial').classList.add('hidden')")
     # 저장이 날아가 처음(스토리) 화면이 떴을 때: 오른쪽 아래 '서버 불러오기'로 서버 진행을 바로 불러온다
     server['data']['created'] = True; server['data']['money'] = 5151
     pg.evaluate("(()=>{const s=JSON.parse(localStorage.getItem(SAVE_KEY));s.created=false;s.tutorialDone=false;localStorage.setItem(SAVE_KEY,JSON.stringify(s))})()")

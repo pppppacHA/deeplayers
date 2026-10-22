@@ -150,3 +150,12 @@ STUB_ICONS=1 python3 tests/smoke.py   # 아이콘 폰트를 못 받는 환경(�
 - 펫 성격 6종(`PET_PERS`, data.js): 길들일 때 무작위(`pers`), 옛 펫은 불러올 때 무작위로 채워 저장. `petFeedLine/petCareLine`이 성격별 문구. 성격 허브(`활발 허브` 등, `addCrop`)를 간식으로 주면 성격 변경(같은 성격이면 소모 안 함). 허브 씨앗은 채집 중 `PERS_SEED_DROP`=1.2%.
 - 패치노트: `isPatchPost`(제목 '업데이트 · M월 D일')는 알림 채팅(`NOTICE_FEED`)에서 제외. 오늘(KST) 날짜 패치노트가 있으면 알림 탭 위 `#noticeBanner` → `openBoard('공지', 번호)`. 게시글 본문의 줄 머리 `[말머리]`는 `.head-tag`(포인트 색, `postHtml`). 새 업데이트는 POSTS['공지'] 맨 위에 '업데이트 · M월 D일'로 추가.
 - 새 저장 필드(tickets/questCount/gacha/actMs/pets[].pers)는 SAVE_VERSION을 올리지 않고 `hardenState`가 기본값·범위를 채운다(옛 저장 호환 테스트 `old_save_gets_new_defaults`).
+
+## 2026-10-22 동기화·결과·메일 (폰↔PC)
+- 결과 카드: `state.results`(가장 최근 1개(`RESULT_KEEP`=1), `{t,text,at,gain[],loss[]}`)에 저장되어 다른 활동·새로고침 후에도 남는다. 닫기는 `A['result-close']`(data-i). 예전 `view.lastResult`는 없다.
+- 자동 동기화 `cloudSync()`(ui.js): 시작 0.6초 뒤·화면 복귀(visibilitychange/focus)에 서버 rev와 비교(`Cloud.pull(true)`는 rev를 건드리지 않음). 서버가 더 새롭고 이 기기에서 사람이 한 조작이 없으면(`cloudDirty()`: `deeplayer-lastact`(pointerdown/keydown) > `deeplayer-syncedat`) 조용히 서버 진행으로 교체, 있으면 선택창('cloud-use-server'/'cloud-keep-local'). 자동 저장 충돌도 같은 창을 띄운다. 화면을 떠날 때(hidden)는 20초 대기 없이 즉시 저장.
+- 모든 서버 저장은 `cloudPushNow()` 한 곳(저장 성공 시 syncedat 갱신). `cloudApply(data, rev)`는 `__avatar`를 풀고 이 기기에만 있는 서버 메일(sid)을 합친 뒤 reload.
+- 프로필 이미지: 서버 세이브에 64px `__avatar`로 함께 실린다(`cloudPayload`). 이미지 RPC가 없어도 서버 불러오기만으로 따라온다. 변환 실패(빈 값)는 서버 이미지를 지우지 않는다.
+- 메일: 서버 메일은 `sid`('s'+서버번호)로 중복을 막고, 서버 보관함에서 지우기(ack) 전에 `cloudPushNow()`로 먼저 올린다.
+- 테스트: cloud_test의 result_/save_carries_avatar/auto_sync_/keep_local_/mail_ 항목.
+- 한 번에 한 기기: 서버 세이브에 `__dev`(이 브라우저의 `deeplayer-device` 번호)를 실어 올린다(`cloudPayload`). 이미 이 기기가 올린 적이 있는데(`_claimed`) 서버의 `__dev`가 다른 번호면 `lockDevice()`가 `#devLock` 오버레이로 화면을 막고 저장도 멈춘다. '이 기기에서 계속하기'는 서버 진행을 받아 reload 후 다시 현재 기기가 된다. 확인은 시작·화면 복귀·60초마다(`cloudSync`). 서버 SQL 추가 없음.

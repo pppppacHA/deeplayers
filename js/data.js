@@ -676,6 +676,7 @@ const BOARD_RESET_HOUR = 4; // 수주 임무는 수주한 다음 한국 시간 �
 const BOARD_MAX_ACTIVE = 5;
 /* 친구 / 메일. 다른 대원은 서버 연결 후에 나타난다 (그 전에는 친구를 만들 수 없다) */
 const FRIEND_MAX = 30;
+const RESULT_KEEP = 1;  // 남겨 두는 결과 카드 수 (가장 최근 1개)
 const MAIL_KEEP_DAYS = 15, MAIL_KEEP_MAX = 30, MAIL_BOX_MAX = 60;  // 보존하지 않은 메일은 15일 뒤 사라지고, 보존은 30통까지
 const MAIL_ITEM_KINDS = 3, MAIL_ITEM_TOTAL = 20;                  // 첨부: 종류 3개 · 합계 20개까지 (운송장치 1개 소모)
 const MAIL_SHIP_ITEM = '운송장치';
@@ -896,6 +897,7 @@ function createDefaultState() {
     friends: [],        // 친구 [이름...] (최대 FRIEND_MAX)
     mail: [],           // 메일 [{ id, from, subject, body, items, at, kept, read, got }] — 15일 뒤 사라짐(보존 제외)
     mailSeq: 1,
+    results: [],        // 최근 행동 결과 카드 [{ t, text, gain[], loss[], at }] — 다른 활동을 해도 남는다(직접 닫기)
     petActive: -1,      // 함께 다니는 펫의 인덱스 (-1 = 없음)
     subjob: null,       // 서브잡 { name, tags, level, prog, lastAt }
     qprog: {},          // 처치 임무 진행도 { id: 수 }

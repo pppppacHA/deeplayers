@@ -6,7 +6,7 @@ const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 
 let view = { farmBack: {}, dpan: { x: 0, y: 0 }, dzoom: 1, petBack: {}, phase: 'idle', mult: 0, equipSlot: null, quest: null, target: null }; // 저장하지 않는 임시 화면 상태 (phase: idle | confirm(id))
-const resetPhase = () => { view.phase = 'idle'; view.id = null; view.lastResult = null; };
+const resetPhase = () => { view.phase = 'idle'; view.id = null; };
 
 /* ---------- 공통 UI ---------- */
 function toast(t) {
@@ -393,9 +393,8 @@ function renderAction() {
     return;
   }
   const d = state.dungeon;
-  const lastCard = view.lastResult ? (() => { const { id, result: r } = view.lastResult, gain = rewardChips(r), loss = costChips(r);
-    return `<div class="last-result"><div class="lr-head"><strong>${icon('assignment_turned_in')} 결과 · ${esc(ACTIONS[id].title)}</strong><button data-act="claim" aria-label="닫기">${icon('close')}</button></div><p>${esc(r.text)}</p>` +
-      `<div class="reward-list">${chipList(gain)}${loss.map(c => `<span class="reward-chip bad">${esc(c)}</span>`).join('')}</div></div>`; })() : '';
+  const lastCard = (state.results || []).map((r, i) => `<div class="last-result"><div class="lr-head"><strong>${icon('assignment_turned_in')} 결과 · ${esc(r.t)}</strong><button data-act="result-close" data-i="${i}" aria-label="닫기">${icon('close')}</button></div><p>${esc(r.text)}</p>` +
+    `<div class="reward-list">${chipList(r.gain)}${r.loss.map(c => `<span class="reward-chip bad">${esc(c)}</span>`).join('')}</div></div>`).join('');
   const tinfo = d && tileInfo(zoneOf(d.zone), tileOf(zoneOf(d.zone), d.x, d.y));
   let html = d ? `<h3>${icon('explore')} ${esc(loc.name)} · ${esc(tinfo.name)}</h3><p>${esc(tinfo.desc)}</p><p class="tiny">가고 싶은 타일을 누르면 이동 확인창이 뜹니다. 한 칸에 ${DUNGEON_STEP_SEC / 60}분 · 기력 ${DUNGEON_STEP_SP}이 듭니다.</p>`
     : `<h3>${esc(loc.name)}</h3><p>${loc.danger ? '입장하면 타일 미궁을 탐색할 수 있습니다.' : '행동을 선택하면 예상 시간과 보상을 먼저 확인할 수 있습니다.'}</p>`;
@@ -583,7 +582,7 @@ async function syncMyAvatar(clear) { // 내 이미지를 서버와 맞춘다. �
   if (!chatOnline()) return;
   try {
     const my = getAvatar();
-    if (my) { await Cloud.setAvatar(await smallAvatar(my)); return; }
+    if (my) { const sm = await smallAvatar(my); if (sm) await Cloud.setAvatar(sm); return; } // 변환에 실패해 빈 값이 되면 서버 이미지를 지우지 않는다
     if (clear) { await Cloud.setAvatar(''); return; }
     const nm = state.created && state.character.name; if (!nm) return;
     const got = await Cloud.getAvatars([nm]), img = got && got[nm];
@@ -653,18 +652,78 @@ function cloudSchedule() {
   if (!Cloud.enabled || !Cloud.user() || _cloudBlocked || _cloudTimer) return;
   _cloudTimer = setTimeout(cloudAutoPush, 20000);
 }
+/* 이 기기에서 사람이 직접 한 조작 시각(자동 저장·틱은 포함하지 않는다)과 서버와 마지막으로 맞춘 시각: 다른 기기의 진행을 덮어써도 되는지 가른다 */
+const LS_ACT = 'deeplayer-lastact', LS_SYNC = 'deeplayer-syncedat';
+const lsNum = k => { try { return +localStorage.getItem(k) || 0; } catch (e) { return 0; } };
+const lsSet = (k, v) => { try { localStorage.setItem(k, String(v)); } catch (e) { /* 저장 불가 */ } };
+let _lastAct = lsNum(LS_ACT), _actW = 0;
+const markAct = () => { _lastAct = Date.now(); if (_lastAct - _actW > 4000) { _actW = _lastAct; lsSet(LS_ACT, _lastAct); } };
+['pointerdown', 'keydown'].forEach(ev => document.addEventListener(ev, markAct, true));
+const cloudDirty = () => !lsNum(LS_SYNC) || _lastAct > lsNum(LS_SYNC); // 서버와 맞춘 기록이 없으면 안전하게 '바뀐 것'으로 본다
+/* 한 번에 한 기기: 이 브라우저의 기기 번호. 서버 세이브의 __dev 가 다른 기기 번호면 새 기기가 접속한 것이다 */
+const DEV_KEY = 'deeplayer-device';
+const DEV = (() => { try { let v = localStorage.getItem(DEV_KEY); if (!/^[0-9a-z]{10,24}$/.test(v || '')) { v = Array.from(crypto.getRandomValues(new Uint8Array(10)), b => (b % 36).toString(36)).join(''); localStorage.setItem(DEV_KEY, v); } return v; } catch (e) { return 'nodev' + Math.random().toString(36).slice(2, 10); } })();
+let _claimed = false, _locked = false;
+function lockDevice() {
+  if (_locked) return; _locked = true; window.__locked = true;
+  if (_cloudTimer) { clearTimeout(_cloudTimer); _cloudTimer = 0; }
+  const el = document.createElement('div'); el.id = 'devLock';
+  el.innerHTML = `<div class="dev-card"><h3>${icon('devices')} 다른 기기에서 접속 중이에요</h3><p>한 번에 한 기기에서만 플레이할 수 있어요.<br>이 화면은 잠시 멈췄습니다.</p><button class="primary" id="devTake">이 기기에서 계속하기</button><p class="tiny">누르면 서버의 최신 진행을 불러오고, 다른 기기는 멈춥니다.</p></div>`;
+  document.body.appendChild(el);
+  $('#devTake').onclick = async () => { $('#devTake').disabled = true; try { const s = await Cloud.pull(); if (s && s.data) { window.__locked = false; cloudApply(s.data, s.rev); } else { $('#devTake').disabled = false; } } catch (e) { $('#devTake').disabled = false; toast('서버에 연결하지 못했어요.'); } };
+}
+let _avCache = { src: '', out: '' };
+async function cloudPayload() { // 서버 세이브에 64px 프로필 이미지를 함께 싣는다: 다른 기기에서 서버 불러오기만 해도 이미지가 따라온다
+  const d = JSON.parse(JSON.stringify(state)), my = getAvatar(); d.__dev = DEV;
+  if (my) { try { if (_avCache.src !== my) _avCache = { src: my, out: await smallAvatar(my) }; if (_avCache.out) d.__avatar = _avCache.out; } catch (e) { /* 이미지 없이 저장 */ } }
+  return d;
+}
+async function cloudPushNow() { // 지금 서버에 저장. → { ok } | { ok:false, skip:true }
+  if (!Cloud.enabled || !Cloud.user() || !state.created || window.__noSave || _locked) return { ok: false, skip: true };
+  const t = Date.now(), d = await cloudPayload();
+  const r = await Cloud.push(d);
+  if (r && r.ok) { lsSet(LS_SYNC, t); _claimed = true; }
+  return r || { ok: false };
+}
 async function cloudAutoPush() {
   _cloudTimer = 0;
   if (!state.created) return; // 캐릭터를 아직 만들지 않은 빈 상태로 서버 진행을 덮어쓰지 않는다
   try {
-    const r = await Cloud.push(JSON.parse(JSON.stringify(state)));
-    if (!r.ok) { _cloudBlocked = true; toast('다른 기기에서 먼저 저장했어요. 설정 → 서버 저장에서 선택해 주세요.'); }
+    const r = await cloudPushNow();
+    if (!r.ok && !r.skip) { _cloudBlocked = true; cloudSync(true); }
   } catch (e) { /* 오프라인: 다음 저장 때 다시 시도 */ }
 }
-function cloudApply(data) { // 서버 세이브로 교체하고 다시 시작
+const AV_RE = /^data:image\/(webp|jpeg|png);base64,[A-Za-z0-9+/=]+$/;
+function cloudApply(data, rev) { // 서버 세이브로 교체하고 다시 시작
+  data = JSON.parse(JSON.stringify(data));
+  const av = data.__avatar; delete data.__avatar; delete data.__dev;
+  if (typeof av === 'string' && av.length < 40000 && AV_RE.test(av) && !getAvatar()) { try { localStorage.setItem(AVATAR_KEY, av); } catch (e) { /* 저장 불가 */ } }
+  if (state.created && Array.isArray(data.mail)) { // 이 기기에만 있는 서버 메일(서버 보관함에서는 이미 지워짐)은 잃지 않게 합친다
+    const have = new Set(data.mail.map(m => m && m.sid).filter(Boolean)), mine = state.mail.filter(m => m.sid && !have.has(m.sid));
+    if (mine.length) { let seq = Math.max(intIn(data.mailSeq, 1, 999999999, 1), ...data.mail.map(m => (m && +m.id) || 0).map(n => n + 1)); data.mail = [...data.mail, ...mine.map(m => ({ ...m, id: seq++ }))]; data.mailSeq = seq; }
+  }
+  if (Number.isFinite(rev)) Cloud.setRev(rev);
+  lsSet(LS_SYNC, Date.now()); lsSet(LS_ACT, 0); _lastAct = 0;
   window.__noSave = true;
   try { localStorage.setItem(SAVE_KEY, JSON.stringify(data)); } catch (e) { /* 저장 불가 */ }
   location.reload();
+}
+/* 다른 기기(PC↔폰)에서 더 새로 저장했는지 확인한다. 이 기기에서 한 조작이 없으면 조용히 서버 진행으로 바꾸고, 있으면 어느 쪽을 쓸지 묻는다 */
+let _syncAt = 0, _syncBusy = false;
+async function cloudSync(force) {
+  if (!Cloud.enabled || !Cloud.user() || !state.created || _syncBusy || window.__noSave || _locked) return;
+  if (!force && Date.now() - _syncAt < 20000) return;
+  _syncAt = Date.now(); _syncBusy = true;
+  try {
+    const s = await Cloud.pull(true);
+    if (!s || !s.data || !s.data.created) return;
+    if (_claimed && s.data.__dev && s.data.__dev !== DEV) { lockDevice(); return; } // 다른 기기가 새로 접속함
+    if (!(s.rev > Cloud.rev())) { if (!_claimed) { if (s.data.__dev === DEV) _claimed = true; else await cloudPushNow(); } return; } // 서버와 같은 버전이면 이 기기가 현재 기기가 된다
+    if (!cloudDirty()) { cloudApply(s.data, s.rev); return; }
+    view.cloudServer = s;
+    modal('다른 기기의 진행', `<p>다른 기기에서 더 나중에 저장한 진행이 서버에 있어요. (${esc(String(s.at || '').slice(0, 16).replace('T', ' '))})<br>어느 쪽을 쓸까요?</p><p class="tiny">서버 것을 쓰면 이 기기에서 방금 한 진행은 사라지고, 이 기기 것을 쓰면 서버의 진행이 덮어써져요. (덮어쓰기 전 서버 백업이 남습니다)</p>`,
+      ['<button data-act="cloud-use-server" class="primary">서버 진행 불러오기</button>', '<button data-act="cloud-keep-local">이 기기 진행으로 덮어쓰기</button>']);
+  } catch (e) { /* 오프라인 */ } finally { _syncBusy = false; }
 }
 function cloudGroupHtml() {
   const u = Cloud.enabled && Cloud.user();
@@ -674,7 +733,7 @@ function cloudGroupHtml() {
 }
 async function cloudAfterLogin() { // 로그인 직후: 서버에 세이브가 있으면 어느 쪽을 쓸지 묻는다
   const s = await Cloud.pull();
-  if (!s) { if (!state.created) { toast('서버에 저장된 진행이 없어요.'); return; } await Cloud.push(JSON.parse(JSON.stringify(state))); toast('이 기기의 진행을 서버에 저장했어요.'); openSettings(); return; }
+  if (!s) { if (!state.created) { toast('서버에 저장된 진행이 없어요.'); return; } await cloudPushNow(); toast('이 기기의 진행을 서버에 저장했어요.'); openSettings(); return; }
   modal('서버 저장 발견', `<p>서버에 저장된 진행이 있어요. (${esc(String(s.at || '').slice(0, 16).replace('T', ' '))})<br>어느 쪽을 쓸까요?</p><p class="tiny">서버 것을 쓰면 이 기기의 현재 진행은 사라집니다.</p>`,
     ['<button data-act="cloud-use-server" class="primary">서버 진행 불러오기</button>', '<button data-act="cloud-use-local">이 기기 진행으로 덮어쓰기</button>']);
   view.cloudServer = s;
@@ -832,12 +891,19 @@ async function friendPoll() { // 서버에서 친구 신청·메일·교환 소�
       if (names.join('\n') !== state.friends.join('\n')) { state.friends = names.slice(0, FRIEND_MAX); save(); changed = true; }
     } catch (e) { /* 서버 준비 전 */ }
     try { // 메일
-      const ml = await Cloud.fetchMail(), ids = [];
+      const ml = await Cloud.fetchMail(), ids = []; let got = 0;
       for (const m of ml) {
         const id = sid9(m.id); if (!id) continue;
-        receiveServerMail(cleanText(m.name, 12) || '?', cleanText(m.subject, 30) || '(제목 없음)', cleanText(m.body, 300), m.items); ids.push(id); newMail++;
+        if (receiveServerMail(cleanText(m.name, 12) || '?', cleanText(m.subject, 30) || '(제목 없음)', cleanText(m.body, 300), m.items, 's' + id)) { got++; newMail++; }
+        ids.push(id);
       }
-      if (ids.length) { await Cloud.ackMail(ids); renderMailBadge(); toast(`새 메일 ${ids.length}통이 도착했어요.`); }
+      if (ids.length) {
+        // 서버 보관함에서 지우기 전에, 받은 메일이 담긴 이 기기의 진행을 먼저 서버 저장에 올린다(저장에 실패하면 지우지 않고 다음에 다시 받는다 — sid로 중복은 막는다)
+        flushSave(); let kept = false;
+        try { const r = await cloudPushNow(); kept = !!(r && r.ok); } catch (e) { kept = false; }
+        if (kept) await Cloud.ackMail(ids);
+        renderMailBadge(); if (got) toast(`새 메일 ${got}통이 도착했어요.`);
+      }
     } catch (e) { /* 서버 준비 전 */ }
     try { // 교환
       const tb = await Cloud.tradeInbox(), fix = r => ({ id: sid9(r.id), name: cleanText(r.name, 12), give: cleanItemList(r.give, 3), want: cleanItemList(r.want, 3) });
@@ -1202,7 +1268,7 @@ const A = {
   'cloud-logout': () => { Cloud.logout(); _cloudBlocked = false; location.href = 'signup.html'; },
   'cloud-push': async () => {
     if (!state.created) { toast('캐릭터를 만든 뒤에 서버에 저장할 수 있어요.'); return; }
-    try { const r = await Cloud.push(JSON.parse(JSON.stringify(state))); if (r.ok) { _cloudBlocked = false; toast('서버에 저장했어요.'); } else { _cloudBlocked = true; toast('다른 기기에서 먼저 저장했어요. "서버에서 불러오기"를 먼저 해 주세요.'); } } catch (e) { toast('서버에 저장하지 못했어요.'); }
+    try { const r = await cloudPushNow(); if (r.ok) { _cloudBlocked = false; toast('서버에 저장했어요.'); } else { _cloudBlocked = true; toast('다른 기기에서 먼저 저장했어요. "서버에서 불러오기"를 먼저 해 주세요.'); } } catch (e) { toast('서버에 저장하지 못했어요.'); }
   },
   'cloud-backups': () => openBackups(),
   'backup-now': async () => {
@@ -1218,7 +1284,7 @@ const A = {
     } catch (e) { toast('백업을 불러오지 못했어요.'); sfx('error'); }
   },
   'cloud-fresh': () => { closeModal(); startTutorial(); },
-  'cloud-pull': async () => { try { const s = await Cloud.pull(); if (s) cloudApply(s.data); else toast('서버에 저장된 진행이 없어요.'); } catch (e) { toast('서버에서 불러오지 못했어요.'); } },
+  'cloud-pull': async () => { try { const s = await Cloud.pull(); if (s) cloudApply(s.data, s.rev); else toast('서버에 저장된 진행이 없어요.'); } catch (e) { toast('서버에서 불러오지 못했어요.'); } },
   'local-save': () => {
     try {
       const d = new Date(), z = n => String(n).padStart(2, '0'), name = `deeplayer-save-${d.getFullYear()}${z(d.getMonth() + 1)}${z(d.getDate())}-${z(d.getHours())}${z(d.getMinutes())}.json`;
@@ -1244,8 +1310,9 @@ const A = {
     f.click();
   },
   'local-load-ok': () => { if (view.localSave) cloudApply(view.localSave.data); },
-  'cloud-use-server': () => { if (view.cloudServer) cloudApply(view.cloudServer.data); },
-  'cloud-use-local': async () => { try { await Cloud.push(JSON.parse(JSON.stringify(state))); toast('이 기기의 진행을 서버에 저장했어요.'); closeModal(); } catch (e) { toast('서버에 저장하지 못했어요.'); } },
+  'cloud-use-server': () => { if (view.cloudServer) cloudApply(view.cloudServer.data, view.cloudServer.rev); },
+  'cloud-keep-local': async () => { const s = view.cloudServer; if (s) Cloud.setRev(s.rev); try { const r = await cloudPushNow(); if (r.ok) { _cloudBlocked = false; toast('이 기기의 진행을 서버에 저장했어요.'); closeModal(); } else toast('서버에 저장하지 못했어요.'); } catch (e) { toast('서버에 저장하지 못했어요.'); } },
+  'cloud-use-local': async () => { try { await cloudPushNow(); toast('이 기기의 진행을 서버에 저장했어요.'); closeModal(); } catch (e) { toast('서버에 저장하지 못했어요.'); } },
   'job-auto': el => {
     let left = jobNeed(state.subjob.level);
     const root = jobRoot(el), want = {}; jobStock().forEach(r => { const q = Math.min(left, r.q); want[r.n] = q; left -= q; });
@@ -1364,10 +1431,12 @@ const A = {
     resetPhase(); renderAction();
   },
   'action-abort': () => { const mv = state.active.id === '타일 이동'; abortAction(); if (travelFinds.length) toast(`길가에서 ${[...new Set(travelFinds)].join(', ')}을(를) 주웠습니다!`), travelFinds.length = 0; renderBars(); renderMapHead(); renderMap(); renderAction(); },
+  'result-close': el => { state.results.splice(+el.dataset.i, 1); save(); renderAction(); },
   claim: () => {
-    if (!state.pending) { view.lastResult = null; renderAction(); return; } // 이미 받은 결과 카드를 닫는다
+    if (!state.pending) { renderAction(); return; }
     const pend = state.pending, r = claimResult();
-    view.lastResult = { id: pend.id, result: pend.result };
+    state.results.unshift({ t: (ACTIONS[pend.id] || {}).title || String(pend.id), text: pend.result.text, at: nowMs(), gain: rewardChips(pend.result), loss: costChips(pend.result) });
+    state.results.length = Math.min(state.results.length, RESULT_KEEP); save();
     renderProfile(); renderBars(); renderBuffs(true); renderBag(); renderAction(); renderMapHead(); renderMap(); renderSide();
     const loss = costChips(r.result);
     const act = ACTIONS[r.id], rare = act.terrain && r.result.items.some(([n]) => n === act.terrain.rare);
@@ -2478,7 +2547,13 @@ function init() {
   setInterval(() => { tick(); clock(); }, 1000);
   checkUpdate(); setInterval(checkUpdate, 5 * 60 * 1000);
   syncNotices(); setInterval(syncNotices, 5 * 60 * 1000);
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) checkUpdate(); });
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) { checkUpdate(); cloudSync(); }
+    else if (Cloud.enabled && Cloud.user() && !_cloudBlocked && (_saveQueued || _cloudTimer)) { if (_saveQueued) flushSave(); if (_cloudTimer) { clearTimeout(_cloudTimer); _cloudTimer = 0; } cloudAutoPush(); } // 폰은 백그라운드에서 타이머가 멈추므로 화면을 떠날 때 바로 저장
+  });
+  addEventListener('focus', () => cloudSync());
+  setInterval(() => { if (!document.hidden) cloudSync(); }, 60000);
+  if (state.created && !(Cloud.enabled && !Cloud.user())) setTimeout(() => cloudSync(true), 600);
 }
 if (!(Cloud.enabled && !Cloud.user())) init(); // 서버 연결 중 로그인 전이면 게임을 시작하지 않는다 (가입 페이지로 이동 중)
 
