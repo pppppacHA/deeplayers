@@ -104,11 +104,13 @@ function renderBuffs(force) {
   $('#buffIcons').innerHTML = one('buff') + one('debuff');
   renderStatus();
 }
-function combatPageHtml() { // 스테이터스 2페이지: 공격력 / 방어력 / 모의전투 (1페이지와 같은 칸 크기)
-  const t = totalStats(), fx = effects(t), wa = weaponAtk(), eff = (3 + wa) * (1 + fx.atk + weatherFx().atk), hit = BATTLE_HIT * (1 - fx.evade);
+function combatPageHtml() { // 스테이터스 2페이지: 1단 공격력/방어력 · 2단 이동속도 · 3단 모의전투 (1페이지와 같은 칸 크기)
+  const t = totalStats(), fx = effects(t), wa = weaponAtk(), eff = (3 + wa) * (1 + fx.atk + weatherFx().atk), hit = BATTLE_HIT * (1 - fx.evade), ps = petSpeed(), sec = stepSec();
+  const w = state.equipment['무기'];
   return '<div class="stat-grid">' +
-    `<div class="stat" data-tip-title="공격력" data-tip-desc="기본 3 + 무기 ${wa}에 근력 보정 +${round1(fx.atk * 100)}%가 곱해집니다."><div class="stat-head"><b>공격력</b></div><div class="stat-eff"><span class="eff-l">무기 ${esc(state.equipment['무기'] || '맨손')}</span><b class="eff-v">${round1(eff)}</b></div></div>` +
+    `<div class="stat" data-tip-title="공격력" data-tip-desc="기본 3 + 무기 ${wa}에 근력 보정 +${round1(fx.atk * 100)}%가 곱해집니다."><div class="stat-head"><b>공격력</b></div><div class="stat-eff"><span class="eff-l">무기 ${esc(w ? shownName(w) : '맨손')}</span><b class="eff-v">${round1(eff)}</b></div></div>` +
     `<div class="stat" data-tip-title="방어력" data-tip-desc="몬스터의 한 번 공격이 맞을 확률입니다. 기본 ${round1(BATTLE_HIT * 100)}%에서 민첩 보정 -${round1(fx.evade * 100)}%."><div class="stat-head"><b>방어력</b></div><div class="stat-eff"><span class="eff-l">피격 확률</span><b class="eff-v">${round1(hit * 100)}%</b></div></div>` +
+    `<div class="stat span2" data-tip-title="이동속도" data-tip-desc="지상에서 한 칸을 가는 데 걸리는 시간입니다. 기본 ${DUNGEON_STEP_SEC}초에서 동행 펫 효과 -${round1(ps * 100)}%가 적용됩니다. 험난한 지형은 시간이 더 걸립니다."><div class="stat-head"><b>이동속도</b></div><div class="stat-eff"><span class="eff-l">한 칸당${ps ? ` · 펫 -${round1(ps * 100)}%` : ''}</span><b class="eff-v">${round1(sec)}초</b></div></div>` +
     `<button class="stat span2 mock-card" data-act="extras-open" data-tip-title="모의전투" data-tip-desc="상대를 골라 전투를 구경해 보세요. 실제 진행에는 영향이 없어요."><div class="stat-head"><b>모의전투</b><span class="stat-plus">${icon('sports_martial_arts')}</span></div><div class="stat-eff"><span>연습 상대와 겨뤄 보기</span></div></button>` +
     '</div>';
 }
@@ -153,7 +155,7 @@ function renderLeftTab() {
 }
 function equipSlotHtml(slot, big) {
   const n = state.equipment[slot], it = n && ITEMS[n];
-  const title = it ? n : `${slot} · 비어 있음`, desc = it ? itemTip(n) : '눌러서 착용 가능한 아이템을 확인합니다.';
+  const title = it ? shownName(n) : `${slot} · 비어 있음`, desc = it ? itemTip(n) : '눌러서 착용 가능한 아이템을 확인합니다.';
   return `<button class="slot clickable ${big ? 'big' : ''} ${it ? 'filled' : ''} ${view.equipSlot === slot ? 'selected' : ''}" data-act="equip-slot" data-slot="${esc(slot)}" data-tip-title="${esc(title)}" data-tip-desc="${esc(desc)}" aria-label="${esc(slot)}">${it ? icon(it.icon) : `<span class="slot-label">${esc(slot)}</span>`}</button>`;
 }
 /* 장비 칸 아래: 선택한 칸에 착용 가능한 아이템 (소지품과 같은 칸 UI) */
@@ -161,7 +163,7 @@ function renderEquipPick() {
   const slot = view.equipSlot, box = $('#equipPick');
   if (!slot) { box.innerHTML = '<p class="tiny pick-hint">장비 칸을 누르면 착용 가능한 아이템이 여기에 표시됩니다.</p>'; return; }
   const cur = state.equipment[slot], list = state.inventory['장비'].filter(s => ITEMS[s.n].slot === slot);
-  const cells = list.map(s => `<button class="slot clickable filled" data-act="pick-equip" data-item="${esc(s.n)}" data-tip-title="${esc(s.n)}" data-tip-desc="${esc(itemTip(s.n))}" aria-label="${esc(s.n)}">${icon(ITEMS[s.n].icon)}</button>`);
+  const cells = list.map(s => `<button class="slot clickable filled" data-act="pick-equip" data-item="${esc(s.n)}" data-tip-title="${esc(shownName(s.n))}" data-tip-desc="${esc(itemTip(s.n))}" aria-label="${esc(s.n)}">${icon(ITEMS[s.n].icon)}</button>`);
   while (cells.length < 6) cells.push('<div class="slot" aria-label="빈 슬롯"></div>');
   box.innerHTML = `<div class="pick-head"><b>${esc(slot)}</b><span class="tiny">${cur ? `착용 중: ${esc(cur)}` : '착용 중인 장비 없음'}</span><span class="spacer"></span>${cur ? `<button data-act="unequip" data-slot="${esc(slot)}">해제</button>` : ''}</div>` +
     `<div class="inv-grid">${cells.join('')}</div>${list.length ? '' : '<div class="empty">착용 가능한 아이템이 없습니다.</div>'}`;
@@ -169,9 +171,8 @@ function renderEquipPick() {
 function renderEquip() {
   $('#equipGrid').innerHTML = EQUIP_SMALL.map(s => equipSlotHtml(s, false)).join('');
   $('#equipBig').innerHTML = EQUIP_BIG.map(s => equipSlotHtml(s, true)).join('');
-  const sum = {};
-  Object.values(state.equipment).forEach(n => n && ITEMS[n].mods && Object.entries(ITEMS[n].mods).forEach(([k, v]) => { sum[k] = (sum[k] || 0) + v; }));
-  const en = {}; Object.values(state.equipment).forEach(n => { const e = n && state.enchants[n]; if (!e) return; if (e.k === 'hp' || e.k === 'sp') en[e.k] = (en[e.k] || 0) + e.v; else sum[e.k] = (sum[e.k] || 0) + e.v; });
+  const sum = gearMods(); // 착용 장비 + 소지만 해도 적용되는 아이템 + 세트 + 세공을 합산
+  const en = {}; Object.values(state.equipment).forEach(n => { const e = n && state.enchants[n]; if (e && (e.k === 'hp' || e.k === 'sp')) en[e.k] = (en[e.k] || 0) + e.v; });
   const chips = [...modText(sum), ...(weaponAtk() ? [`공격력 +${weaponAtk()}`] : []), ...(en.hp ? [`최대 HP +${en.hp}`] : []), ...(en.sp ? [`최대 기력 +${en.sp}`] : [])];
   $('#equipFx').innerHTML = chips.map(c => `<span class="buff">${esc(c)}</span>`).join('') || '<span class="tiny">장착 효과 없음</span>';
   renderEquipPick();
@@ -187,7 +188,7 @@ function renderInventory() {
   $('#inventoryGrid').innerHTML = Array.from({ length: count }, (_, i) => {
     const s = items[start + i], it = s && ITEMS[s.n];
     return it
-      ? `<button class="slot clickable filled" data-act="item" data-item="${esc(s.n)}" data-tip-title="${esc(s.n)}" data-tip-desc="${esc(itemTip(s.n))}" aria-label="${esc(s.n)}">${icon(it.icon)}${s.q > 1 ? `<span class="qty">${s.q}</span>` : ''}</button>`
+      ? `<button class="slot clickable filled" data-act="item" data-item="${esc(s.n)}" data-tip-title="${esc(shownName(s.n))}" data-tip-desc="${esc(itemTip(s.n))}" aria-label="${esc(s.n)}">${icon(it.icon)}${s.q > 1 ? `<span class="qty">${s.q}</span>` : ''}</button>`
       : '<div class="slot" aria-label="빈 슬롯"></div>';
   }).join('');
   $('#invPage').textContent = `${state.page} / ${pages}`;
@@ -195,6 +196,8 @@ function renderInventory() {
   $('#itemCount').textContent = `${usedSlots()} / ${cap}`;
   $('#prevPage').disabled = state.page === 1;
   $('#nextPage').disabled = state.page === pages;
+  const hs = JSON.stringify(gearMods()); // 소지만으로 적용되는 아이템이 늘거나 줄면 장비 효과 줄과 스테이터스도 같이 갱신
+  if (renderInventory.hs !== hs) { const first = renderInventory.hs === undefined; renderInventory.hs = hs; if (!first) { renderEquip(); renderStatus(); } }
 }
 
 /* 개발자 도구 자리: 배포 코드에는 개발자 기능이 없다. 미리보기 빌드(tools/build_preview.py)만 tools/dev-preview.js 로 이 버튼을 채워 넣는다. */
@@ -206,18 +209,29 @@ async function loadDevScript() {
 }
 /* 관리자 계정(서버 admins 표에 등록된 아이디)으로 로그인하면 개발자 코드 없이 개발자 도구가 켜진다 */
 if (Cloud.enabled && Cloud.user()) Cloud.isAdmin().then(ok => { view.isAdmin = !!ok; if (ok && $('#chatFeed')) renderChat(); return ok && loadDevScript(); }).then(on => { if (on) { renderAction(); renderCraft(); } }).catch(() => { /* 오프라인이면 일반 계정 */ });
+/* 레시피에 재료 분류('물고기'·'알'·'과일')가 있으면 어떤 아이템을 쓸지 고를 수 있다. 고르지 않으면 값싼 것부터 자동 */
+const groupsOf = rc => Object.keys(rc.mats).filter(n => MAT_GROUPS[n]);
+const needsPick = rc => groupsOf(rc).some(g => MAT_GROUPS[g].filter(m => countItem(m) > 0).length > 1);
+const curPicks = () => { const o = {}; $$('#modalBody .mat-pick').forEach(s => { if (s.value) o[s.dataset.g] = s.value; }); return o; };
+const matPickHtml = (rc, i) => groupsOf(rc).map(g => { const own = MAT_GROUPS[g].filter(m => countItem(m) > 0), sel = (view.matPick || {})[g];
+  return `<div class="srow fontrow"><span>${esc(g)} 고르기</span><select class="mat-pick" data-g="${esc(g)}" ${own.length ? '' : 'disabled'}><option value="">자동 (값싼 것부터)</option>${own.map(m => `<option value="${esc(m)}" ${m === sel ? 'selected' : ''}>${esc(m)} ×${countItem(m)}</option>`).join('')}</select></div>`; }).join('');
 function openCraftQty(i) {
-  const rc = RECIPES[i], it = ITEMS[rc.out], max = maxCraft(rc);
+  view.matPick = Object.fromEntries(Object.entries(view.matPick || {}).filter(([g, m]) => MAT_GROUPS[g] && countItem(m) > 0));
+  const rc = RECIPES[i], it = ITEMS[rc.out], max = Math.max(1, maxCraft(rc, view.matPick));
   modal(`${rc.out} 제작`, `<div class="nearby-row"><div class="round-avatar">${icon(it.icon)}</div><div class="grow"><strong>${esc(rc.out)}</strong><small class="effect">${esc(itemEffect(rc.out))}</small></div></div>` +
-    `<div class="choice-label">몇 개 만들까요? (최대 ${max}개)</div><div class="qty-row"><button data-act="cq-step" data-d="-1" aria-label="하나 줄이기">−</button><input id="cqQty" type="number" min="1" max="${max}" value="1" inputmode="numeric" data-index="${i}" aria-label="제작 개수"><button data-act="cq-step" data-d="1" aria-label="하나 늘리기">＋</button><button data-act="cq-max">최대</button></div><p class="tiny" id="cqInfo"></p>`,
-    [btnClose, `<button class="primary" data-act="craft-go" data-index="${i}">제작 시작</button>`], true);
+    `<div class="choice-label">몇 개 만들까요? (최대 ${max}개)</div><div class="qty-row"><button data-act="cq-step" data-d="-1" aria-label="하나 줄이기">−</button><input id="cqQty" type="number" min="1" max="${max}" value="1" inputmode="numeric" data-index="${i}" aria-label="제작 개수"><button data-act="cq-step" data-d="1" aria-label="하나 늘리기">＋</button><button data-act="cq-max">최대</button></div><p class="tiny" id="cqInfo"></p>` + matPickHtml(rc, i),
+    [btnClose, `<button class="primary" id="cqGo" data-act="craft-go" data-index="${i}">제작 시작</button>`], true);
   cqUpdate();
 }
 function cqUpdate() {
   const q = $('#cqQty'); if (!q) return;
-  const rc = RECIPES[+q.dataset.index], n = clamp(Math.floor(+q.value) || 1, 1, +q.max);
-  $('#cqInfo').textContent = `소요 시간 ${fmtTime(craftTotalSec(rc, n) * 1000)} · 재료 ${Object.entries(rc.mats).map(([m, c]) => `${m} ${c * n}`).join(', ')}`;
+  const rc = RECIPES[+q.dataset.index], picks = curPicks(); view.matPick = { ...(view.matPick || {}), ...Object.fromEntries(groupsOf(rc).map(g => [g, picks[g] || ''])) };
+  const max = maxCraft(rc, picks); q.max = Math.max(1, max); if (+q.value > q.max) q.value = q.max;
+  const n = clamp(Math.floor(+q.value) || 1, 1, +q.max), lab = $('#modalBody .choice-label'); if (lab) lab.textContent = `몇 개 만들까요? (최대 ${max}개)`;
+  const go = $('#cqGo'); if (go) go.disabled = max < 1;
+  $('#cqInfo').textContent = max < 1 ? '고른 재료가 부족합니다.' : `소요 시간 ${fmtTime(craftTotalSec(rc, n) * 1000)} · 재료 ${Object.entries(rc.mats).map(([m, c]) => `${picks[m] || m} ${c * n}`).join(', ')}`;
 }
+document.addEventListener('change', e => { if (e.target.classList && e.target.classList.contains('mat-pick')) cqUpdate(); if (e.target.id === 'expZone') view.expZone = e.target.value; });
 document.addEventListener('input', e => { if (e.target.id === 'cqQty') cqUpdate(); });
 function craftJobHtml() {
   const c = state.crafting;
@@ -241,7 +255,7 @@ function renderCraft() {
   $('#craftCount').textContent = `레시피 ${shown.length}종`;
   $('#craftList').innerHTML = craftJobHtml() + shown.map(({ rc, i }) => {
     const it = ITEMS[rc.out], ok = canCraft(rc) && !state.crafting;
-    const mats = Object.entries(rc.mats).map(([n, q]) => `<span class="${countItem(n) >= q ? '' : 'lack'}">${esc(n)} ${countItem(n)}/${q}</span>`).join(' · ');
+    const mats = Object.entries(rc.mats).map(([n, q]) => `<span class="${matCount(n) >= q ? '' : 'lack'}">${esc(n)} ${matCount(n)}/${q}</span>`).join(' · ');
     return `<div class="recipe"><div class="round-avatar">${icon(it.icon)}</div><div class="grow"><strong>${esc(rc.out)} <em class="tag">${esc(craftCat(rc.out))}</em></strong><small class="effect">${esc(itemEffect(rc.out))}</small><small>제작 시간 ${fmtTime(craftSec(rc) * 1000)} · ${mats}</small></div><button class="primary" data-act="craft" data-index="${i}" ${ok ? '' : 'disabled'}>제작</button></div>`;
   }).join('') + (() => { const n = RECIPES.filter(rc => !recipeKnown(rc)).length; return n ? `<div class="empty">개인실의 '단련'(25분)으로 새 레시피를 배울 수 있어요. (남은 ${n}종 · 승급하면 후보가 늘어납니다)</div>` : ''; })() || '<div class="empty">레시피가 없습니다.</div>';
 }
@@ -370,6 +384,23 @@ function previewOf(id, mi) {
   const z = zoneOf(state.dungeon.zone), info = tileInfo(z, tileOf(z, ...view.target));
   return { time: `${fmtDur(m.sec)} (${m.steps}칸${m.rough ? ` · 험난한 지형 ${m.rough}칸 포함` : ''})`, gain: `${info.name} 도착`, cost: `기력 -${m.sp}`, desc: `${info.name} — ${info.desc}` };
 }
+/* 본부 전광판: 들어올 때마다 리코가 읽어 주는 문구가 바뀐다 (이벤트 문구가 있으면 그것만) */
+const bbPool = () => { const src = BILLBOARD_EVENT.length ? BILLBOARD_EVENT : BILLBOARD; return src.map(x => typeof x === 'string' ? { t: '속보', text: x } : x).filter(x => x && typeof x.text === 'string' && x.text); };
+function bbPick() {
+  const pool = bbPool(); if (!pool.length) return null;
+  let i = Math.floor(Math.random() * pool.length); if (pool.length > 1 && i === view.bbIdx) i = (i + 1) % pool.length;
+  view.bbIdx = i; return pool[i];
+}
+function billboardHtml() {
+  if (!view.bbOn || !view.bbLine) { view.bbOn = true; view.bbLine = bbPick(); }
+  const b = view.bbLine; if (!b) return '';
+  return `<div class="billboard" aria-live="off"><div class="bb-head"><span class="bb-live">● ON AIR</span><span class="bb-ch">${icon('smart_toy')} ${esc(TUTORIAL_NPC.name)} ${esc(b.t || '방송')}</span></div><div class="bb-text" id="bbText">${esc(b.text)}</div></div>`;
+}
+setInterval(() => { // 본부에 머무는 동안 문구가 가끔 바뀐다 (화면 전체를 다시 그리지 않고 글자만 바꾼다)
+  const el = $('#bbText'); if (!el || state.location !== '본부' || state.dungeon || document.hidden) return;
+  const b = bbPick(); if (!b) return; view.bbLine = b;
+  el.classList.add('bb-out'); setTimeout(() => { const e2 = $('#bbText'); if (!e2) return; e2.textContent = b.text; e2.classList.remove('bb-out'); const ch = $('.bb-ch'); if (ch) ch.innerHTML = `${icon('smart_toy')} ${esc(TUTORIAL_NPC.name)} ${esc(b.t || '방송')}`; }, 300);
+}, 14000);
 function renderAction() {
   const loc = LOCATIONS[state.location], main = $('#actionMain'), panel = $('#actionPanel');
   panel.classList.toggle('showing-reward', !!state.pending);
@@ -398,6 +429,7 @@ function renderAction() {
   const tinfo = d && tileInfo(zoneOf(d.zone), tileOf(zoneOf(d.zone), d.x, d.y));
   let html = d ? `<h3>${icon('explore')} ${esc(loc.name)} · ${esc(tinfo.name)}</h3><p>${esc(tinfo.desc)}</p><p class="tiny">가고 싶은 타일을 누르면 이동 확인창이 뜹니다. 한 칸에 ${DUNGEON_STEP_SEC / 60}분 · 기력 ${DUNGEON_STEP_SP}이 듭니다.</p>`
     : `<h3>${esc(loc.name)}</h3><p>${loc.danger ? '입장하면 타일 미궁을 탐색할 수 있습니다.' : '행동을 선택하면 예상 시간과 보상을 먼저 확인할 수 있습니다.'}</p>`;
+  if (!d && state.location === '본부' && view.phase !== 'confirm') html += billboardHtml(); else if (state.location !== '본부') view.bbOn = false;
   if (view.phase === 'confirm') {
     const a = ACTIONS[view.id], todo = a.kind === 'todo', multi = a.kind === 'gather' || a.kind === 'battle', pv = previewOf(view.id, view.mult);
     if (pv.err) { resetPhase(); renderAction(); return; }
@@ -786,7 +818,8 @@ function openSettings() {
 
 /* ---------- 도감: 구역 / 아이템 / 몬스터 / 레시피 (서브 분류 칩) ---------- */
 const CODEX_TABS = ['구역', '아이템', '몬스터', '펫', '레시피'];
-const CODEX_SUBS = { '구역': ['공중', '지상', '지형'], '아이템': ITEM_CATEGORIES, '몬스터': MONSTER_KINDS, '펫': [], '레시피': [] };
+const CODEX_ITEM_SUBS = ['장비', '요리', '낚시', '소모품', '재료']; // 도감 아이템 분류 (소모품은 요리를 뺀 나머지)
+const CODEX_SUBS = { '구역': ['공중', '지상', '지형'], '아이템': CODEX_ITEM_SUBS, '몬스터': MONSTER_KINDS, '펫': [], '레시피': [] };
 const codexView = { tab: '구역', sub: null };
 const defaultGuildName = () => `${state.character.name}의 길드`.slice(0, GUILD_NAME_MAX);
 /* 아이템 획득처: 데이터에서 한 번만 계산해 둔다 */
@@ -812,6 +845,13 @@ function itemSources() {
   _src = m; return m;
 }
 const sourceText = n => { const l = itemSources()[n]; return l ? (l.length > 4 ? l.slice(0, 4).join(' / ') + ` 외 ${l.length - 4}곳` : l.join(' / ')) : '특별한 이벤트·거래 등'; };
+function codexItemSub(n) {
+  const it = ITEMS[n];
+  if (it.tab === '장비') return '장비';
+  if (it.how === '낚시') return '낚시';
+  if (it.tab === '소모품') return it.use && it.use.sp && (!MEDICINES.has(n) || n === '계란말이') ? '요리' : '소모품';
+  return '재료';
+}
 function codexEntries(tab) {
   const c = state.codex;
   if (tab === '구역') return [
@@ -819,7 +859,7 @@ function codexEntries(tab) {
     ...DANGER_ZONES.map(z => ({ sub: '지상', icon: z.icon, name: z.name, desc: z.desc, known: c.zones[z.id] })),
     ...DANGER_ZONES.flatMap(z => z.terrains.map(t => ({ sub: '지형', icon: t.icon, name: `${t.name} · ${z.id}`, desc: t.desc, known: c.zones[`${z.id}:${t.name}`] })))
   ];
-  if (tab === '아이템') return Object.entries(ITEMS).map(([n, it]) => ({ sub: it.tab, icon: it.icon, name: n, desc: it.desc, src: sourceText(n), known: c.items[n] }));
+  if (tab === '아이템') return Object.entries(ITEMS).filter(([n, it]) => !it.hidden || c.items[n]).map(([n, it]) => ({ sub: codexItemSub(n), icon: it.icon, name: n, desc: it.desc + (FISH_SIZE[n] ? ` (크기 ${FISH_SIZE[n][0]}~${FISH_SIZE[n][1]}cm)` : ''), src: sourceText(n), best: FISH_SIZE[n] ? (state.fishBest[n] ? `최고 기록 ${state.fishBest[n]}cm` : '아직 기록이 없어요') : '', known: c.items[n] }));
   if (tab === '펫') return Object.entries(PET_SPECIES).map(([id, sp]) => { const p = state.pets.find(x => x.id === id); // 지금 데리고 있는 펫만 '발견'으로 보인다
     return { sub: '', icon: sp.icon || 'pets', name: p ? `${petName(p)}${p.name ? ` (${sp.name})` : ''}` : sp.name, desc: p ? `고향 ${sp.zone} · 친밀도 ${p.bond}/100 · 동행 시 이동 시간 -${Math.round(petBuff(p) * 100)}%` : '', where: p ? '' : sp.zone, known: !!p }; });
   if (tab === '몬스터') return DANGER_ZONES.flatMap(z => z.terrains.flatMap(t => t.monsters.map(m => ({ sub: m.kind, icon: m.kind === '짐승' ? 'pets' : 'bug_report', name: m.name,
@@ -835,7 +875,7 @@ function codexHtml() {
     (CODEX_SUBS[tab].length ? `<div class="chips">${['', ...CODEX_SUBS[tab]].map(x => `<button class="chip ${x === (sub || '') ? 'active' : ''}" data-act="codex-sub" data-sub="${x}">${x || '전체'}</button>`).join('')}</div>` : '') +
     `<div class="codex-bar"><p class="tiny codex-count">${tab === '레시피' ? `${list.length}종` : `발견 ${found} / ${list.length}`}</p><span class="codex-sort"><button class="${codexView.sort === 'name' ? '' : 'active'}" data-act="codex-sort" data-sort="">기본순</button><button class="${codexView.sort === 'name' ? 'active' : ''}" data-act="codex-sort" data-sort="name">가나다순</button></span></div><div class="codex-list">` +
     list.map(e => e.known
-      ? `<div class="nearby-row"><div class="round-avatar">${icon(e.icon)}</div><div class="grow"><strong>${esc(e.name)}</strong><small>${esc(e.desc)}${e.where ? ` · 서식지 ${esc(e.where)}` : ''}</small>${e.src ? `<small class="src">획득: ${esc(e.src)}</small>` : ''}</div>${e.badge ? `<span class="tag ${e.badge === '제작 완료' ? 'ok' : ''}">${e.badge}</span>` : e.sub ? `<span class="tag">${esc(e.sub)}</span>` : ''}</div>`
+      ? `<div class="nearby-row"><div class="round-avatar">${icon(e.icon)}</div><div class="grow"><strong>${esc(e.name)}</strong><small>${esc(e.desc)}${e.where ? ` · 서식지 ${esc(e.where)}` : ''}</small>${e.src ? `<small class="src">획득: ${esc(e.src)}</small>` : ''}${e.best ? `<small class="src best">${icon('emoji_events')} ${esc(e.best)}</small>` : ''}</div>${e.badge ? `<span class="tag ${e.badge === '제작 완료' ? 'ok' : ''}">${e.badge}</span>` : e.sub ? `<span class="tag">${esc(e.sub)}</span>` : ''}</div>`
       : `<div class="nearby-row unknown"><div class="round-avatar">${icon('help')}</div><div class="grow"><strong>???</strong><small>아직 발견하지 못했습니다.</small></div>${e.sub ? `<span class="tag">${esc(e.sub)}</span>` : ''}</div>`).join('') + '</div>';
 }
 
@@ -1137,6 +1177,12 @@ const A = {
     const a = ACTIONS[el.dataset.choice], lg = levelGate(el.dataset.choice);
     if (lg) { toast(lg); sfx('error'); return; }
     if (a.kind === 'board') openQuestBoard(); else if (a.kind === 'shop') { view.shopId = a.shop || placeKey(); view.shopTab = shopTabs(view.shopId)[0]; openShop(); } else if (a.kind === 'gacha') openGacha();
+    else if (a.kind === 'lostfound') {
+      const r = turnInLost();
+      if (typeof r === 'string') { toast(r); sfx('error'); return; }
+      toast(`캠프 관리인이 물건을 받아 들고 한참을 들여다보더니, 뽑기권 ${r.tickets}장을 건넸습니다.`); addLog(`분실물을 전달하고 뽑기권 ${r.tickets}장을 받았습니다.`);
+      if (r.gift) toast(`그리고 감사의 표시로 「${r.gift}」을(를) 받았습니다.`); awardTitles(); renderProfile(); renderInventory(); renderAction(); sfx('levelup');
+    }
     else if (a.kind === 'enhance') openEnhance(); else if (a.kind === 'promo') openPromo(); else if (a.kind === 'farm') openFarm(); else if (a.kind === 'pet') openPets(); else if (a.kind === 'subjob') { view.quitAsk = false; openJob(); }
     else if (a.kind === 'travel') { // 시간이 걸리지 않는 이동은 묻지 않고 바로 간다. 이동장치에서 지상으로 내려가는 1분짜리만 묻는다
       if (LOCATIONS[a.to].danger && state.location === '이동장치') askAction(el.dataset.choice); else doTravel(a.to);
@@ -1213,8 +1259,8 @@ const A = {
     renderBag(); openFarm(true);
     if (txt) { sfx('ok'); toast(`수확: ${txt}${err ? ` (${err})` : ''}`); } else { toast(err || '수확할 작물이 없습니다.'); sfx('error'); }
   },
+  'pet-feed-pick': el => { view.feed = el.dataset.item; petRefresh(el); },
   'pet-feed': el => {
-    const sel = petRoot(el).querySelector('#feedSel'); if (sel && sel.value) view.feed = sel.value;
     const pet = state.pets[+el.dataset.i], before = pet && pet.pers, err = feedPet(+el.dataset.i, view.feed);
     if (err) { toast(err); sfx('error'); return; }
     renderBag(); renderBuffs(true); sfx('ok'); toast(pet.pers !== before ? `${petName(pet)}의 성격이 '${pet.pers}'(으)로 바뀌었습니다. ${petFeedLine(pet)}` : petFeedLine(pet)); petRefresh(el);
@@ -1226,7 +1272,6 @@ const A = {
   'pet-active': el => { const i = +el.dataset.i, err = setActivePet(state.petActive === i ? -1 : i); if (err) { toast(err); sfx('error'); return; } renderBuffs(true); petRefresh(el); },
   'pet-send': el => {
     const sel = petRoot(el).querySelector('#expZone'); if (sel) view.expZone = sel.value;
-    const fsel = petRoot(el).querySelector('#feedSel'); if (fsel && fsel.value) view.feed = fsel.value;
     const err = sendExpedition(+el.dataset.i, view.expZone, view.feed);
     if (err) { toast(err); sfx('error'); return; }
     renderBag(); sfx('ok'); toast(`펫이 ${view.expZone} 탐험을 떠났습니다. 24시간 뒤에 돌아와요.`); petRefresh(el);
@@ -1466,13 +1511,13 @@ const A = {
   'stat-commit': () => { if (commitStatDraft(view.statDraft)) { view.statDraft = {}; sfx('ok'); toast('스테이터스를 저장했습니다.'); renderStatus(); renderCraft(); renderProfile(); save(); } else { view.statDraft = {}; renderStatus(); } },
   craft: el => { // 여러 개 만들 수 있으면 몇 개 만들지 먼저 고른다
     const i = +el.dataset.index, rc = RECIPES[i];
-    if (rc && !state.crafting && canCraft(rc) && maxCraft(rc) > 1) { openCraftQty(i); return; }
+    if (rc && !state.crafting && canCraft(rc) && (maxCraft(rc) > 1 || needsPick(rc))) { openCraftQty(i); return; }
     A['craft-go']({ dataset: { index: i, qty: 1 } });
   },
   'cq-step': el => { const q = $('#cqQty'); q.value = clamp((+q.value || 1) + (+el.dataset.d), 1, +q.max); cqUpdate(); },
   'cq-max': () => { const q = $('#cqQty'); q.value = q.max; cqUpdate(); },
   'craft-go': el => {
-    const res = craft(+el.dataset.index, el.dataset.qty ? +el.dataset.qty : intIn($('#cqQty').value, 1, MAX_BATCH, 1)), name = RECIPES[+el.dataset.index].out;
+    const res = craft(+el.dataset.index, el.dataset.qty ? +el.dataset.qty : intIn($('#cqQty').value, 1, MAX_BATCH, 1), el.dataset.qty ? null : curPicks()), name = RECIPES[+el.dataset.index].out;
     if (!el.dataset.qty) closeModal();
     const msgs = { ok: `${name} 제작을 시작했습니다.`, mats: '재료가 부족합니다.', space: '가방 공간이 부족합니다.', busy: '이미 제작 중인 아이템이 있습니다.', rank: '아직 모르는 레시피입니다.' };
     toast(msgs[res]);
@@ -1560,6 +1605,17 @@ const A = {
     openTrade(el.dataset.player);
   },
   'enh-tab': el => { view.enhTab = el.dataset.tab; openEnhance(); },
+  'nick-open': el => {
+    const n = el.dataset.name; if (!canNick(n)) { toast('A랭까지 강화한 무기에만 이름을 붙일 수 있어요.'); return; }
+    view.nickFor = n;
+    modal('무기 이름 붙이기', `<p class="detail-desc">A랭까지 키운 「${esc(n)}」에 이름을 붙여 주세요. 설명에 ‘${esc(state.character.name || '')}의 애착이 담긴 무기’가 더해집니다. (최대 ${NICK_MAX}자, 비우면 원래 이름)</p><div class="srow fontrow"><span>이름</span><input id="nickInput" maxlength="${NICK_MAX}" value="${esc(nickOf(n))}" placeholder="${esc(n)}"></div>`, ['<button data-act="nick-cancel">취소</button>', '<button class="primary" data-act="nick-save">저장</button>'], true);
+  },
+  'nick-cancel': () => openEnhance(true),
+  'nick-save': () => {
+    const r = setNick(view.nickFor, ($('#nickInput') || {}).value || '');
+    if (r) { toast(r); sfx('error'); return; }
+    renderEquip(); renderInventory(); sfx('ok'); toast(nickOf(view.nickFor) ? `「${nickOf(view.nickFor)}」(으)로 이름을 붙였어요.` : '원래 이름으로 돌렸어요.'); openEnhance(true);
+  },
   'reinforce-roll': el => {
     const r = reinforceItem(el.dataset.name);
     if (typeof r === 'string') { toast(r); sfx('error'); return; }
@@ -1910,7 +1966,7 @@ function sendChat(val) {
 /* ---------- 임무 수주 / 상점 / 길드 창 ---------- */
 const fmtLeft = ms => { const h = Math.floor(ms / 3600000), m = Math.ceil(ms % 3600000 / 60000); return h ? `${h}시간 ${m % 60}분` : `${m}분`; };
 function openQuestBoard(keepScroll) {
-  const place = placeKey(), list = QUESTS.filter(q => q.board === place);
+  const place = placeKey(), list = QUESTS.filter(q => q.board === place && (!q.daily || q.id === dailyQuestId() || state.questTaken[q.id]));
   if (!list.length) { toast('이곳에서는 임무를 수주할 수 없습니다.'); return; }
   const active = activeBoard().length;
   const st = keepScroll ? $('#modalBody').scrollTop : 0;
@@ -2042,8 +2098,9 @@ function petCareHtml() { // 펫 돌보기 화면 (창과 오른쪽 '펫' 탭이 
   }).join('');
   return `<p class="tiny">펫은 지상의 짐승 지형에서 <b>길들이기</b>로 얻어요. 펫 보관함은 소지품과 별도이고, 같은 종은 한 마리만 모을 수 있어요. 한 마리는 <b>동행</b>(먹이를 준 뒤 24시간 타일 이동 시간 단축), 나머지는 <b>24시간 자동 탐험</b>을 보낼 수 있어요.</p>` +
     `<div class="choice-label">펫 도감 ${state.pets.length}/${petCap()}</div><div class="pet-dex-grid">${dex}</div>` +
-    `<div class="row-gap"><label class="tiny" for="feedSel">줄 간식</label><select id="feedSel" ${feeds.length ? '' : 'disabled'}>${feeds.length ? feeds.map(x => `<option value="${esc(x.n)}" ${x.n === view.feed ? 'selected' : ''}>${esc(x.n)} ×${x.q} (친밀도 +${ITEMS[x.n].feed})</option>`).join('') : '<option>먹이 없음 (작물·펫 사료)</option>'}</select>` +
-    `<label class="tiny" for="expZone">탐험 구역</label><select id="expZone">${DANGER_ZONES.map(z => `<option value="${esc(z.id)}" ${z.id === view.expZone ? 'selected' : ''}>${esc(z.name)}</option>`).join('')}</select></div>` +
+    `<div class="choice-label">줄 간식 <small class="tiny">${feeds.length ? '— 눌러서 고르고, 펫의 \'간식 주기\'를 누르세요' : ''}</small></div>` +
+    (feeds.length ? `<div class="feed-picks" id="feedPicks">${feeds.map(x => `<button class="feed-opt ${x.n === view.feed ? 'selected' : ''}" data-act="pet-feed-pick" data-item="${esc(x.n)}" data-tip-title="${esc(x.n)}" data-tip-desc="${esc(itemTip(x.n) + `\n친밀도 +${ITEMS[x.n].feed}`)}" aria-pressed="${x.n === view.feed}">${icon(ITEMS[x.n].icon)}<span>${esc(x.n)}</span><b>×${x.q}</b><small>+${ITEMS[x.n].feed}</small></button>`).join('')}</div>` : '<div class="empty">먹일 간식이 없어요. (작물·펫 사료·성격 허브)</div>') +
+    `<div class="row-gap"><label class="tiny" for="expZone">탐험 구역</label><select id="expZone">${DANGER_ZONES.map(z => `<option value="${esc(z.id)}" ${z.id === view.expZone ? 'selected' : ''}>${esc(z.name)}</option>`).join('')}</select></div>` +
     `<p class="tiny">성격 허브(활발·얌전·장난꾸러기·느긋·호기심·의젓)를 간식으로 주면 펫의 성격이 바뀌고, 성격에 따라 돌보는 문구가 달라져요. 허브는 농장에서 키울 수 있고 씨앗은 채집하다 아주 가끔 나옵니다.</p>` +
     `<p class="tiny">탐험을 보내면 먹이 1개가 들고, 돌아오면 그 구역의 재료·희귀 재료·특산 씨앗을 확률로 가져와요. (친밀도가 높고 고향 구역이면 더 많이)</p>` +
     (rows || '<div class="empty">아직 길들인 펫이 없습니다. 지상에서 작물이나 펫 사료를 들고 짐승을 길들여 보세요.</div>');
@@ -2129,8 +2186,8 @@ function openEnhance(keepScroll) {
     intro = `<p class="tiny">무기를 F랭에서 A랭까지 키웁니다. 랭크가 오를수록 무기 공격력이 늘지만, 도전에 실패하면 CR만 잃어요. (랭크는 내려가지 않아요) 보유 CR ${state.money}</p>`;
     rows = names.filter(n => ITEMS[n].slot === '무기').map(n => {
       const it = ITEMS[n], lv = reinforceLv(n), max = lv >= REINFORCE_RANKS.length - 1;
-      return `<div class="nearby-row"><div class="round-avatar">${icon(it.icon)}</div><div class="grow"><strong>${esc(n)} <em class="tag">${REINFORCE_RANKS[lv]}랭</em></strong><small>${worn.has(n) ? '착용 중' : '소지품'} · 공격력 +${it.atk + reinforceBonus(n)}${lv ? ` (강화 +${reinforceBonus(n)})` : ''}</small><small>${max ? '최고 랭크입니다.' : `${REINFORCE_RANKS[lv]} → ${REINFORCE_RANKS[lv + 1]} · 성공 ${Math.round(REINFORCE_RATE[lv] * 100)}% · 공격력 +${REINFORCE_BONUS[lv + 1] - REINFORCE_BONUS[lv]}`}</small></div>` +
-        `<button class="primary" data-act="reinforce-roll" data-name="${esc(n)}" ${max || state.money < REINFORCE_COST[lv] ? 'disabled' : ''}>${max ? 'MAX' : `강화 (${REINFORCE_COST[lv]} CR)`}</button></div>`;
+      return `<div class="nearby-row"><div class="round-avatar">${icon(it.icon)}</div><div class="grow"><strong>${esc(shownName(n))}${nickOf(n) ? ` <small>(${esc(n)})</small>` : ''} <em class="tag">${REINFORCE_RANKS[lv]}랭</em></strong><small>${worn.has(n) ? '착용 중' : '소지품'} · 공격력 +${it.atk + reinforceBonus(n)}${lv ? ` (강화 +${reinforceBonus(n)})` : ''}</small><small>${max ? (nickOf(n) ? `최고 랭크입니다. 이름: 「${esc(nickOf(n))}」` : '최고 랭크입니다. 이제 이 무기에 이름을 붙일 수 있어요.') : `${REINFORCE_RANKS[lv]} → ${REINFORCE_RANKS[lv + 1]} · 성공 ${Math.round(REINFORCE_RATE[lv] * 100)}% · 공격력 +${REINFORCE_BONUS[lv + 1] - REINFORCE_BONUS[lv]}`}</small></div>` +
+        (max ? `<button class="primary" data-act="nick-open" data-name="${esc(n)}">${icon('edit')} ${nickOf(n) ? '이름 바꾸기' : '이름 붙이기'}</button></div>` : `<button class="primary" data-act="reinforce-roll" data-name="${esc(n)}" ${state.money < REINFORCE_COST[lv] ? 'disabled' : ''}>강화 (${REINFORCE_COST[lv]} CR)</button></div>`);
     }).join('') || '<div class="empty">강화할 무기가 없습니다. 무기를 얻거나 제작해 보세요.</div>';
   } else {
     intro = `<p class="tiny">CR ${ENCHANT_COST}을 내면 장비에 무작위 효과(스탯 +1~2, 최대 HP·기력 +5~15)가 하나 붙습니다. 장착하면 적용되고, 다시 세공하면 새 효과로 바뀝니다. 같은 이름의 장비는 효과를 함께 씁니다. 보유 CR ${state.money}</p>`;

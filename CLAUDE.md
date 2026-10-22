@@ -164,3 +164,22 @@ STUB_ICONS=1 python3 tests/smoke.py   # 아이콘 폰트를 못 받는 환경(�
 - 위험지대 터치 드래그: 타일 위에서 시작해도 8px 이상 끌면 지도 이동(`drag.pend`), 끈 직후 클릭은 무시(`view.noClickUntil`).
 - 서버 백업 삭제: `supabase/backups.sql`의 `delete_backup` (SQL 다시 실행 필요), 목록의 '삭제' → 확인창.
 - 승급 시험 C(Lv.10)/B(Lv.15) 추가(`promo_c`, `promo_b`, `PROMO_ORDER`=F,E,D,C,B): C=제4구역 급류 수달3·석상 골렘2·동굴 거미2 + 구리 광석6·수정 원석4 → 개척 배낭(44칸) 등. B=제5구역 빙하 곰2·서리 정령2·설원 늑대3 + 서리 결정8·설산 약초6 → 정예 배낭(52칸) 등. `FARM_PLOTS`에 C~S도 6칸으로 추가(등급 키가 없으면 3칸으로 떨어지므로 주의). 칭호 '정예 대원'/'상급 대원'.
+
+## 2026-10-23 추가 (재료 분류 · 정글 · 깊이 난이도 · 반지 · 펫 간식)
+- 재료 분류 `MAT_GROUPS`(data.js): '물고기'·'알'·'과일'. 레시피 `mats`에 분류 이름을 쓰면 그 분류의 아무 아이템이나 쓴다(`matCount/canCraft/maxCraft/takeMats`, picks={분류:아이템}). 고르지 않으면 값싼 것부터. 제작 시작 때 실제로 쓴 재료를 `state.crafting.used`에 기록하고 취소하면 그대로 돌려준다(옛 저장은 분류의 첫 항목으로 환불). 레시피 UI: 분류가 있고 가진 종류가 2개 이상이면 `openCraftQty` 창에 `select.mat-pick`. 새 물고기·알은 `how:'낚시'/'채집'`·`group` 자동. **`countItem(분류이름)`은 오류** — 반드시 `matCount`를 쓴다.
+- 민물고기·바닷물고기는 더 이상 새로 잡히지 않고(호수=붕어·잉어, 바다=고등어·광어·오징어) 가진 것은 '물고기'로 쓴다.
+- 제6구역 정글(열대숲·강·늪지: 사탕수수·과일·물고기·알). 지형 5개를 가정한 테스트는 `>=3`으로 바꿨다. `ZONE_REWARD`는 구역 간 차이 미세(1~1.15), 몬스터 HP/ATK도 `1+0.03(n-1)`. 입구에서 멀수록: HP×0.7~17, EXP·CR ×(1+`DEPTH_REWARD`=3.2·d), 전투 드롭·재료 확률 +`DEPTH_DROP`, 채집 추가 +1개/희귀 확률 `DEPTH_GATHER`(`resolveAction`의 `dd`=act.d; 채집 행동도 act.d 저장). 상수는 data.js 한 곳에서 조절.
+- 결혼반지·우정반지(`hold:{luk:1}`): 소지만으로 행운 +1(종류마다 1번). `statMods`에서 소지품을 훑는다. 종합 상가 RP템에서 판매.
+- 펫 간식: `select#feedSel` 대신 칩 목록(`pet-feed-pick`, `view.feed`).
+
+## 2026-10-24 추가 (전광판 · 이름 붙이기 · 낚시 크기 · 일일 의뢰 · 꼬시기 · 숨은 요소)
+- 전광판: `BILLBOARD`(뉴스/광고/공지/잡담, 리코 진행), `BILLBOARD_EVENT`에 문구를 넣으면 이벤트 동안 그것만 나온다(비우면 평소). 본부 화면(`billboardHtml`), 14초마다 글자만 교체.
+- 무기 이름: `state.nicks`, A랭(강화 5)만 `setNick`. 설명에 '○○의 애착이 담긴 무기'. 강화 창의 '이름 붙이기' 버튼.
+- 낚시: `FISH_SIZE`(cm 범위), 결과 `r.fish/fishShow`, 최고 기록 `state.fishBest`(도감에 표시, claimResult에서 범위 검증 후 기록).
+- 일일 의뢰: `DAILY_QUESTS` 6종 중 하루(오전 4시 기준 `todayIndex`)마다 `dailyQuestId()` 1개가 본부 게시판에 걸린다.
+- 펫 꼬시기: `tameShown`(칸 시드, `TAME_APPEAR` 30%), 실패는 `dungeon.tf[x,y]`에 누적, `TAME_FAIL_MAX`(3)번이면 그 칸에서 사라진다.
+- 도감 아이템 분류: 장비/요리/낚시/소모품/재료(`codexItemSub`). `hidden:true` 아이템은 얻기 전에는 도감에 나오지 않는다.
+- 숨은 요소가 하나 있다(구역별 특수 드롭과 캠프 전달). 상수는 data.js `LOST_*`. 패치노트·툴팁에는 일부러 쓰지 않는다.
+- 스테이터스 2페이지: 공격력/방어력, 이동속도(`stepSec`), 모의전투. 버프 `+N` 배지는 CSS로 숨김.
+- 종합 상가 '장비' 탭을 '무기'/'장비'로 분리(코드에서 슬롯으로 나눔). 숨은 요소를 처음 마치면 전용 칭호와 `hidden` 얼굴 장비를 준다(`state.flags`의 비밀 플래그, 도감·패치노트에는 안 나옴).
+- 추가 테스트: `python3 tests/fuzz.py [시드수] [횟수]`(게임 함수 무작위 대량 호출 + 불변 조건: NaN/가방/체력/sanitize 멱등·손실 없음/저장-불러오기 동일), `python3 tests/uifuzz.py [시드수] [클릭수]`(보이는 버튼 무작위 클릭 중 JS 오류 탐지).

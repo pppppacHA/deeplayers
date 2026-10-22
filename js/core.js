@@ -66,6 +66,10 @@ function hardenState(s) {
   STAT_DEFS.forEach(d => { s.stats[d.key] = intIn(s.stats[d.key], 0, 99, STAT_BASE); });
   s.enchants = Object.fromEntries(Object.entries(s.enchants && typeof s.enchants === 'object' ? s.enchants : {}).filter(([k, e]) => ITEMS[k] && ITEMS[k].tab === '장비' && e && (e.k === 'hp' || e.k === 'sp' || STAT_DEFS.some(d => d.key === e.k))).map(([k, e]) => [k, { k: e.k, v: intIn(e.v, 1, e.k === 'hp' || e.k === 'sp' ? 30 : 5, 1), n: intIn(e.n, 1, 9999, 1) }]));
   s.reinforce = Object.fromEntries(Object.entries(s.reinforce && typeof s.reinforce === 'object' ? s.reinforce : {}).filter(([k]) => ITEMS[k] && ITEMS[k].slot === '무기').map(([k, v]) => [k, intIn(v, 0, REINFORCE_RANKS.length - 1, 0)]).filter(([, v]) => v > 0));
+  s.nicks = Object.fromEntries(Object.entries(s.nicks && typeof s.nicks === 'object' ? s.nicks : {}).filter(([k, v]) => ITEMS[k] && ITEMS[k].slot === '무기' && s.reinforce[k] >= REINFORCE_RANKS.length - 1 && typeof v === 'string').map(([k, v]) => [k, cleanText(v, NICK_MAX)]).filter(([, v]) => v));
+  s.fishBest = Object.fromEntries(Object.entries(s.fishBest && typeof s.fishBest === 'object' ? s.fishBest : {}).filter(([k, v]) => FISH_SIZE[k] && Number.isFinite(v) && v > 0).map(([k, v]) => [k, Math.min(300, Math.round(v * 10) / 10)]));
+  s.flags = { ...(s.flags && typeof s.flags === 'object' ? s.flags : {}), lostFound: !!(s.flags && s.flags.lostFound) };
+  if (s.dungeon) s.dungeon.tf = Object.fromEntries(Object.entries(s.dungeon.tf && typeof s.dungeon.tf === 'object' ? s.dungeon.tf : {}).filter(([k, v]) => /^-?\d{1,3},-?\d{1,3}$/.test(k) && Number.isFinite(v)).map(([k, v]) => [k, intIn(v, 0, TAME_FAIL_MAX, 0)]));
   const v = s.vitals, mb = maxBonus(s.equipment, s.enchants);
   v.hpMax = 100 + mb.hp; v.spMax = 100 + mb.sp; v.hp = intIn(v.hp, 1, v.hpMax, v.hpMax); v.sp = intIn(v.sp, 0, v.spMax, v.spMax); v.exp = intIn(v.exp, 0, 999999, 0);
   s.settings.bgmVolume = intIn(s.settings.bgmVolume, 0, 100, BGM_DEFAULT_VOLUME); s.settings.sfxVolume = intIn(s.settings.sfxVolume, 0, 100, 65);
@@ -120,7 +124,7 @@ function hardenState(s) {
   if (s.active && s.active.id === '타일 이동' && s.active.cum && !(Array.isArray(s.active.cum) && s.active.cum.length === (s.active.path || []).length && s.active.cum.every(Number.isFinite))) delete s.active.cum;
   s.logs = (Array.isArray(s.logs) ? s.logs : []).filter(l => l && typeof l.text === 'string').map(l => ({ time: cleanText(l.time, 10), text: cleanText(l.text, 400) })).slice(0, 100);
   if (s.crafting && (!RECIPES[s.crafting.index] || !Number.isFinite(s.crafting.endAt))) s.crafting = null;
-  if (s.crafting) { s.crafting.out = RECIPES[s.crafting.index].out; s.crafting.qty = intIn(s.crafting.qty, 1, MAX_BATCH, 1); s.crafting.great = !!s.crafting.great; s.crafting.ready = !!s.crafting.ready; }
+  if (s.crafting) { s.crafting.out = RECIPES[s.crafting.index].out; s.crafting.qty = intIn(s.crafting.qty, 1, MAX_BATCH, 1); s.crafting.great = !!s.crafting.great; s.crafting.ready = !!s.crafting.ready; s.crafting.used = (Array.isArray(s.crafting.used) ? s.crafting.used : []).filter(u => Array.isArray(u) && ITEMS[u[0]]).map(u => [u[0], intIn(u[1], 1, 9999, 1)]).slice(0, 12); }
   if (!['장비', '음식', '약', '재료'].includes(s.craftTab)) s.craftTab = null;
   if (s.active && s.active.id === '구역 이동' && !(LOCATIONS[s.active.to] && LOCATIONS[s.active.to].danger && !s.dungeon && Number.isFinite(s.active.endAt))) s.active = null;
   if (s.active && s.active.id === '타일 이동' && !(s.dungeon && Array.isArray(s.active.path) && s.active.path.length)) s.active = null;
@@ -245,6 +249,16 @@ function reinforceItem(name, rnd = Math.random) { // 성공 { ok, lv } / 실패 
   save();
   return { ok, lv: ok ? lv + 1 : lv };
 }
+/* A랭까지 강화한 무기에는 이름을 붙일 수 있다 */
+const nickOf = n => (state.nicks && state.nicks[n]) || '';
+const shownName = n => nickOf(n) || n;
+const canNick = n => !!(ITEMS[n] && ITEMS[n].slot === '무기' && reinforceLv(n) >= REINFORCE_RANKS.length - 1);
+function setNick(name, text) { // 성공 null / 실패 사유
+  if (!canNick(name) || !enchantables().includes(name)) return 'A랭까지 강화한 무기에만 이름을 붙일 수 있습니다.';
+  const t = cleanText(text, NICK_MAX);
+  if (!t) { delete state.nicks[name]; save(); return null; }
+  state.nicks[name] = t; save(); return null;
+}
 /* 장착 변경. 성공 true / 공간 부족 'space' / 실패 false */
 function changeEquipment(slot, newName) {
   const cur = state.equipment[slot], list = state.inventory['장비'].slice();
@@ -328,12 +342,18 @@ function addBuff(id) {
   state.buffs.push({ id, endAt: nowMs() + BUFF_MS });
 }
 
-/* 장비 + 버프로 인한 스탯 보정 { str: n, ... } */
-function statMods() {
+/* 장비 + 소지(hold) 아이템 + 세트 + 세공으로 인한 스탯 보정 { str: n, ... } (버프는 빼고) */
+function gearMods() {
   const m = {}, add = o => { for (const k in o) m[k] = (m[k] || 0) + o[k]; };
+  new Set(Object.values(state.inventory).flat().map(s => s.n)).forEach(n => { if (ITEMS[n] && ITEMS[n].hold) add(ITEMS[n].hold); }); // 소지만 해도 적용되는 아이템(반지 등): 종류마다 한 번만
   Object.values(state.equipment).forEach(n => { if (!n) return; if (ITEMS[n].mods) add(ITEMS[n].mods); const e = state.enchants[n]; if (e && STAT_DEFS.some(d => d.key === e.k)) add({ [e.k]: e.v }); });
   ITEM_SETS.forEach(st => { if (st.need.every(n => Object.values(state.equipment).includes(n))) add(st.mods); });
-  activeBuffs().forEach(b => add(b.mods));
+  return m;
+}
+/* 장비 + 버프로 인한 스탯 보정 { str: n, ... } */
+function statMods() {
+  const m = gearMods();
+  activeBuffs().forEach(b => { for (const k in b.mods) m[k] = (m[k] || 0) + b.mods[k]; });
   return m;
 }
 function totalStats() {
@@ -448,10 +468,10 @@ function entranceDist(z) { // 입구(S)에서 각 칸까지 걸어서 몇 칸인
 }
 const tileDifficulty = (z, x, y) => { const e = entranceDist(z), n = e.d[`${x},${y}`]; return n === undefined ? .5 : clamp(n / e.max, 0, 1); }; // 0(입구)~1(가장 먼 곳)
 const curDifficulty = () => state.dungeon ? tileDifficulty(zoneOf(state.dungeon.zone), state.dungeon.x, state.dungeon.y) : 0;
-/* 같은 몬스터도 입구 근처는 약하고(체력 ×0.7) 가장 먼 곳은 아주 강하다(체력 ×17). 1렙은 입구 근처에서, 고레벨은 깊은 곳에서 겨룰 만하다 */
+/* 같은 몬스터도 입구 근처는 약하고(체력 ×0.7) 가장 먼 곳은 아주 강하다(체력 ×17). 보수(EXP·CR)와 드롭도 멀수록 크게 늘어난다. 구역끼리의 차이는 미세하다 */
 function scaleMonster(m, d) {
   const k = .7 + 16.3 * Math.pow(d, 2.3);
-  return { ...m, hp: Math.round(m.hp * k), atk: Math.max(1, Math.round(m.atk * (1 + .8 * d))), exp: Math.round(m.exp * (1 + d)), cr: Math.round(m.cr * (1 + d)), hit: 1 + 2 * d, diff: d };
+  return { ...m, hp: Math.round(m.hp * k), atk: Math.max(1, Math.round(m.atk * (1 + .8 * d))), exp: Math.round(m.exp * (1 + DEPTH_REWARD * d)), cr: Math.round(m.cr * (1 + DEPTH_REWARD * d)), hit: 1 + 2 * d, diff: d };
 }
 const monsterBase = a => a.monster || a.terrain.monster;
 const monsterOf = (a, d) => scaleMonster(monsterBase(a), d === undefined ? curDifficulty() : d);
@@ -513,6 +533,14 @@ function noteRepeat(id, n) {
 }
 /* 칸마다 나타나는 채집 행동: 이 칸의 지형이 주는 재료 중 0~2개가 무작위(입장할 때마다 다르게). 같은 칸은 같은 결과 */
 function seededRng(seed) { let a = seed >>> 0; return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+/* 펫 꼬시기: 칸마다 가끔 나타난다 (같은 칸은 같은 결과). 한 칸에서 TAME_FAIL_MAX 번 실패하면 그 칸에서는 사라진다 */
+function tameShown(z, x, y, seed) {
+  const t = z.terrains[terrainIndex(tileOf(z, x, y))];
+  if (!t || !t.tameId || state.pets.some(p => p.id === t.monster.name)) return false;
+  const d = state.dungeon;
+  if (d && d.x === x && d.y === y && d.zone === z.id && ((d.tf || {})[`${x},${y}`] | 0) >= TAME_FAIL_MAX) return false;
+  return seededRng((seed || 1) * 17 + x * 6271 + y * 9127 + z.n * 7919)() < TAME_APPEAR;
+}
 /* 칸마다 나타나는 몬스터: 이 지형의 몬스터 중 하나 (같은 칸은 같은 결과) */
 function tileBattleId(z, t, x, y, seed) { const r = seededRng((seed || 1) * 17 + x * 6151 + y * 92821 + z.n * 7919); return t.battleIds[Math.floor(r() * t.battleIds.length)]; }
 function tileGatherIds(z, x, y, seed) {
@@ -561,6 +589,7 @@ function startAction(id, mi = 0, baitName = null) {
   if (a.kind === 'tame') {
     const sp = PET_SPECIES[a.terrain.monster.name];
     if (state.pets.some(p => p.id === a.terrain.monster.name)) return '이미 길들인 종입니다.';
+    if (state.dungeon && !tameShown(zoneOf(state.dungeon.zone), state.dungeon.x, state.dungeon.y, state.dungeon.seed)) return '이 칸에는 더 이상 길들일 개체가 보이지 않습니다.';
     if (!baitItems().length) return '먹이가 될 작물이나 펫 사료가 필요합니다. 농장에서 키워 보세요.';
     bait = baitName == null ? baitItems()[0] : baitName; // 먹일 먹이는 직접 고른다 (고르지 않은 호출만 기본값)
     if (!baitItems().includes(bait)) return '고른 먹이가 가방에 없습니다. 먹일 먹이를 다시 골라 주세요.';
@@ -573,7 +602,7 @@ function startAction(id, mi = 0, baitName = null) {
   if (v.sp < spCost) return `기력이 부족합니다. (필요 ${spCost}) 식량을 먹거나 휴식하세요.`;
   v.sp -= spCost;
   if (bait) removeItem(bait);
-  state.active = { id, startAt: t, endAt: t + total * 1000, cycles, cycleSec, spCost, ...(bait ? { bait } : {}), ...(a.kind === 'battle' ? { seed: 1 + Math.floor(Math.random() * 2147483000), hp0: v.hp, bs: battleSnap(), d: curDifficulty() } : {}) };
+  state.active = { id, startAt: t, endAt: t + total * 1000, cycles, cycleSec, spCost, ...(bait ? { bait } : {}), ...(a.kind === 'battle' ? { seed: 1 + Math.floor(Math.random() * 2147483000), hp0: v.hp, bs: battleSnap(), d: curDifficulty() } : a.kind === 'gather' ? { d: curDifficulty() } : {}) };
   save();
   return null;
 }
@@ -885,11 +914,11 @@ function resolveAction(id, cycles = 1, spPaid = 0, act = null) {
     const mon = a.terrain.monster, ok = chance(tameChance());
     r.exp = 12; r.sp = 0; r.spCost = spPaid;
     if (ok) { r.pet = mon.name; r.text = `${mon.name}이(가) 먹이를 받아먹고 경계를 풀었습니다. 길들이기 성공! 「${PET_SPECIES[mon.name].name}」이(가) 곁에 따릅니다.`; }
-    else { r.text = `${mon.name}이(가) 먹이만 채 가고 달아났습니다.`; if (chance(.5)) { const h = rand(...a.hazard.hp); r.hp -= h; r.text += ` 달아나며 물려 HP를 ${h} 잃었습니다.`; } }
+    else { r.tameFail = true; r.text = `${mon.name}이(가) 먹이만 채 가고 달아났습니다.`; if (chance(.5)) { const h = rand(...a.hazard.hp); r.hp -= h; r.text += ` 달아나며 물려 HP를 ${h} 잃었습니다.`; } }
     floorLoss(r);
     return r;
   }
-  const zoneId = id.split(' ')[0], seed = ZONE_SEEDS[zoneId], jf = jobFx();
+  const zoneId = id.split(' ')[0], seed = ZONE_SEEDS[zoneId], jf = jobFx(), dd = (act && Number.isFinite(act.d) ? clamp(act.d, 0, 1) : 0);
   const bag = {}, add = (n, q) => { bag[n] = (bag[n] || 0) + q; };
   let done = 0, wins = 0, losses = 0, greats = 0, accidents = 0, stop = '', lowered = 0;
   const rep0 = repeatCount(id);
@@ -899,24 +928,36 @@ function resolveAction(id, cycles = 1, spPaid = 0, act = null) {
     if (!keep) lowered++;
     if (great) greats++;
     if (a.kind === 'gather') {
-      if (keep) { const it = pick(a.items); add(it, rand(1, 3) * mult); if (chance(jf.gather[a.method] || 0)) add(it, 1); if (a.rare && chance(.05 + fx.rare)) add(a.rare, mult); if (seed && chance(SEED_DROP.gather)) add(seed, 1); if (chance(PERS_SEED_DROP)) add(pick(PERS_SEEDS), 1); }
+      if (keep) { const it = pick(a.items); add(it, rand(1, 3) * mult); if (chance(jf.gather[a.method] || 0)) add(it, 1); if (dd && chance(DEPTH_GATHER.more * dd)) add(it, 1); if (a.rare && chance(.05 + fx.rare + DEPTH_GATHER.rare * dd)) add(a.rare, mult); if (seed && chance(SEED_DROP.gather)) add(seed, 1); if (chance(PERS_SEED_DROP)) add(pick(PERS_SEEDS), 1); }
       r.exp += 6;
       if (chance(a.hazard.chance)) { r.hp -= rand(...a.hazard.hp); accidents++; }
     } else {
       const m = monsterOf(a, act && act.d || 0), b = (br && br.runs[i]) || simulateBattle(m, Math.max(1, state.vitals.hp + r.hp));
       discover('monsters', m.name);
       r.hp -= b.lost;
-      if (b.win) { wins++; countKill(m.name); r.exp += m.exp; r.money += m.cr; if (keep) { if (chance(BATTLE_MAT)) add(pick(t.gather), rand(1, 2) * mult); m.drops.forEach(([n, p]) => { if (chance(p)) add(n, mult); }); } if (seed && chance(SEED_DROP.battle)) add(seed, 1); }
+      if (b.win) { wins++; countKill(m.name); r.exp += m.exp; r.money += m.cr; if (keep) { if (chance(Math.min(.95, BATTLE_MAT * (1 + DEPTH_DROP * dd)))) add(pick(t.gather), rand(1, 2) * mult); m.drops.forEach(([n, p]) => { if (chance(Math.min(.95, p * (1 + DEPTH_DROP * dd)))) add(n, mult); }); } if (seed && chance(SEED_DROP.battle)) add(seed, 1); }
       else { losses++; r.buff = '부상'; done++; stop = `${m.name}에게 패배해 후퇴했습니다.`; break; }
     }
     done++;
+  }
+  { // 분실물: 아주 드물게 구역마다 정해진 물건이 섞여 나온다 (알리지 않는다)
+    const lostN = LOST_ITEMS[zoneId], tries = a.kind === 'gather' ? done : wins;
+    for (let i = 0; lostN && i < tries; i++) if (chance((LOST_CHANCE[a.kind] || 0) * (1 + LOST_DEPTH * dd))) add(lostN, 1);
+  }
+  if (a.kind === 'gather' && a.method === '낚시') { // 낚은 물고기마다 크기(cm)가 정해진다. 큰 순서로 몇 마리만 보여 준다
+    const sizes = [];
+    Object.entries(bag).forEach(([n, q]) => { const rg = FISH_SIZE[n]; if (!rg) return; for (let k = 0; k < Math.min(q, 40); k++) { const u = (Math.random() + Math.random()) / 2, big = chance(.03) ? 1.15 : 1; sizes.push([n, Math.round((rg[0] + (rg[1] - rg[0]) * u) * big * 10) / 10]); } });
+    sizes.sort((x, y) => y[1] - x[1]);
+    const best = {}; sizes.forEach(([n, cm]) => { if (!best[n]) best[n] = cm; });
+    r.fish = Object.entries(best);
+    r.fishShow = sizes.slice(0, FISH_SHOW).map(([n, cm]) => `${n} ${cm}cm${cm > (state.fishBest[n] || 0) && best[n] === cm ? ' ★신기록' : ''}`);
   }
   r.items = Object.entries(bag);
   floorLoss(r);
   r.refund = (cycles - done) * per; r.sp = 0; r.spCost = spPaid - r.refund; // 쓰지 않은 회차의 기력은 '회복'이 아니라 소모에서 빼서 보여 준다
   noteRepeat(id, done);
   const tail = [lowered ? (a.kind === 'gather' ? `빈손 ${lowered}회` : `재료를 못 얻은 회차 ${lowered}회`) : '', greats ? `대성공 ${greats}회` : '', accidents ? `사고 ${accidents}회` : '', stop].filter(Boolean).join(' · ');
-  if (a.kind === 'gather') r.text = `${t.name}에서 ${done}회 「${a.label}」 했습니다.${tail ? ' ' + tail : ''}`;
+  if (a.kind === 'gather') r.text = `${t.name}에서 ${done}회 「${a.label}」 했습니다.${tail ? ' ' + tail : ''}${r.fishShow && r.fishShow.length ? `\n낚은 물고기: ${r.fishShow.join(' · ')}` : ''}`;
   else r.text = `${monsterBase(a).name}와(과) ${done}회 교전: ${wins}승 ${losses}패.${tail ? ' ' + tail : ''}`;
   return r;
 }
@@ -942,6 +983,8 @@ function claimResult() {
   r.items.forEach(([n, q]) => { const got = addItem(n, q); if (got < q) lost.push([n, q - got]); });
   state.money = Math.max(0, state.money + r.money);
   if (r.pet) addPet(r.pet);
+  if (r.tameFail && state.dungeon) { const tf = state.dungeon.tf || (state.dungeon.tf = {}), k = `${state.dungeon.x},${state.dungeon.y}`; tf[k] = Math.min(TAME_FAIL_MAX, (tf[k] | 0) + 1); }
+  (Array.isArray(r.fish) ? r.fish : []).forEach(([n, cm]) => { const rg = FISH_SIZE[n]; if (rg && Number.isFinite(cm) && cm > 0 && cm <= rg[1] * 1.15 + .1 && cm > (state.fishBest[n] || 0)) state.fishBest[n] = cm; });
   v.hp = clamp(v.hp + r.hp, 1, v.hpMax);
   v.sp = clamp(v.sp + r.sp + (r.refund || 0), 0, v.spMax);
   if (r.buff) addBuff(r.buff);
@@ -951,8 +994,37 @@ function claimResult() {
   return { id, lost, ups, result: r };
 }
 
+/* ---------- 분실물 ---------- */
+const lostHeld = () => Object.values(LOST_ITEMS).filter(n => countItem(n) > 0);
+function turnInLost() { // 캠프에서 분실물을 돌려준다. 성공 { n, tickets } / 사유 문자열
+  if (!state.created) return '먼저 캐릭터를 만드세요.';
+  if (!state.dungeon || placeKey() !== state.dungeon.zone) return '안전 캠프에서만 돌려줄 수 있습니다.';
+  const list = lostHeld(); if (!list.length) return '돌려줄 물건이 없습니다.';
+  const first = !state.flags.lostFound;
+  let n = 0; list.forEach(x => { n += removeItem(x, countItem(x)); });
+  const tk = n * LOST_REWARD_TICKETS; state.tickets = Math.min(9999, (state.tickets || 0) + tk);
+  let gift = null; if (first) { state.flags.lostFound = true; if (addItem('안대', 1)) gift = '안대'; }
+  save();
+  return { n, tickets: tk, names: list, gift };
+}
+
 /* ---------- 제작 ---------- */
-const canCraft = rc => Object.entries(rc.mats).every(([n, q]) => countItem(n) >= q);
+/* 재료 분류(MAT_GROUPS: '물고기'·'알'·'과일'): 레시피에 분류 이름이 들어 있으면 그 분류의 아무 아이템이나(또는 고른 것으로) 낼 수 있다. picks = { 분류: 고른 아이템 } */
+const groupPick = (g, picks) => { const p = picks && picks[g]; return p && MAT_GROUPS[g] && MAT_GROUPS[g].includes(p) ? p : ''; };
+const matCount = (n, picks) => { const g = MAT_GROUPS[n]; if (!g) return countItem(n); const p = groupPick(n, picks); return p ? countItem(p) : g.reduce((a, m) => a + countItem(m), 0); };
+const canCraft = (rc, picks) => Object.entries(rc.mats).every(([n, q]) => matCount(n, picks) >= q);
+const cheapFirst = g => [...MAT_GROUPS[g]].sort((a, b) => (ITEMS[a].sell || 0) - (ITEMS[b].sell || 0)); // 고르지 않으면 값싼 것부터 쓴다
+/* 재료를 실제로 꺼낸다. 쓴 것의 목록 [[이름, 수량]] (제작 취소 시 그대로 돌려준다) */
+function takeMats(rc, qty, picks) {
+  const used = {};
+  Object.entries(rc.mats).forEach(([n, q]) => {
+    let need = q * qty;
+    if (!MAT_GROUPS[n]) { removeItem(n, need); used[n] = (used[n] || 0) + need; return; }
+    const p = groupPick(n, picks);
+    for (const m of (p ? [p] : cheapFirst(n))) { const t = Math.min(countItem(m), need); if (t > 0) { removeItem(m, t); used[m] = (used[m] || 0) + t; need -= t; } if (need <= 0) break; }
+  });
+  return Object.entries(used);
+}
 /* 제작 아이템의 효과 문장 */
 function itemEffectParts(name) { // { base: 기본 효과, extra: 강화·세공·세트 } 문장 목록
   const it = ITEMS[name], base = [], extra = [];
@@ -961,8 +1033,10 @@ function itemEffectParts(name) { // { base: 기본 효과, extra: 강화·세공
   if (it.mods) base.push(...modText(it.mods));
   if (reinforceLv(name)) extra.push(`강화 ${REINFORCE_RANKS[reinforceLv(name)]}랭 (공격력 +${reinforceBonus(name)})`);
   if (state.enchants[name]) extra.push(`세공: ${enchantText(state.enchants[name])}`);
+  if (nickOf(name)) extra.push(`${state.character.name || '주인'}의 애착이 담긴 무기`);
   { const st = ITEM_SETS.find(x => x.need.includes(name)); if (st) extra.push(`세트 ${st.name}(${st.need.join('+')}): ${modText(st.mods).join(' ')}`); }
   if (it.capacity) base.push(`소지 칸 ${it.capacity}칸`);
+  if (it.hold) base.push(`소지만 해도 ${modText(it.hold).join(' ')}`);
   return { base, extra };
 }
 function itemEffectRaw(name) { // 설명에 없는 착용·사용 효과. 없으면 ''
@@ -974,7 +1048,7 @@ function itemLines(name) {
   const it = ITEMS[name]; if (!it) return ['', ''];
   const { base, extra } = itemEffectParts(name), b = base.join(' · ');
   const eff = [b && !it.desc.includes(b) ? b : '', ...extra].filter(Boolean).join(' · '); // 기본 효과가 설명에 이미 있으면 빼고, 강화·세공은 항상 붙인다
-  const l2 = [(it.tags || []).length ? `[태그] ${it.tags.join(' · ')}` : '', it.sell ? `[판매가] ${it.sell}CR` : ''].filter(Boolean).join(' ');
+  const l2 = [it.group ? `[분류] ${it.group}` : '', (it.tags || []).length ? `[태그] ${it.tags.join(' · ')}` : '', it.sell ? `[판매가] ${it.sell}CR` : ''].filter(Boolean).join(' ');
   return [it.desc + (eff ? ` | ${eff}` : ''), l2];
 }
 /* 제작 시간(초): 감각 스탯으로 단축 */
@@ -987,20 +1061,20 @@ function roomFor(name) {
   return free * STACK_MAX + list.filter(s => s.n === name).reduce((a, s) => a + Math.max(0, STACK_MAX - s.q), 0);
 }
 /* 지금 재료와 가방 자리로 한 번에 만들 수 있는 최대 개수 */
-const maxCraft = rc => Math.min(MAX_BATCH, roomFor(rc.out), ...Object.entries(rc.mats).map(([n, q]) => Math.floor(countItem(n) / q)));
+const maxCraft = (rc, picks) => Math.min(MAX_BATCH, roomFor(rc.out), ...Object.entries(rc.mats).map(([n, q]) => Math.floor(matCount(n, picks) / q)));
 const craftTotalSec = (rc, qty) => craftSec(rc) * qty;
-function craft(index, qty = 1) {
+function craft(index, qty = 1, picks = null) {
   const rc = RECIPES[index];
   if (!rc) return 'mats';
   qty = intIn(qty, 1, MAX_BATCH, 1);
   if (!recipeKnown(rc)) return 'unknown';
   if (state.crafting) return 'busy';
-  if (!canCraft(rc)) return 'mats';
+  if (!canCraft(rc, picks)) return 'mats';
   if (!canAdd(rc.out)) return 'space';
-  qty = Math.min(qty, Math.max(1, maxCraft(rc)));
-  Object.entries(rc.mats).forEach(([n, q]) => removeItem(n, q * qty));
+  qty = Math.min(qty, Math.max(1, maxCraft(rc, picks)));
+  const used = takeMats(rc, qty, picks);
   const t = nowMs();
-  state.crafting = { index, out: rc.out, qty, startAt: t, endAt: t + craftTotalSec(rc, qty) * 1000, great: chance(effects().craftGreat), ready: false };
+  state.crafting = { index, out: rc.out, qty, startAt: t, endAt: t + craftTotalSec(rc, qty) * 1000, great: chance(effects().craftGreat), ready: false, used };
   save();
   return 'ok';
 }
@@ -1025,7 +1099,8 @@ function collectCraft() {
 function cancelCraft() {
   const c = state.crafting;
   if (!c || c.ready) return false;
-  Object.entries(RECIPES[c.index].mats).forEach(([n, q]) => addItem(n, q * (c.qty || 1)));
+  if (Array.isArray(c.used) && c.used.length) c.used.forEach(([n, q]) => addItem(n, q));
+  else Object.entries(RECIPES[c.index].mats).forEach(([n, q]) => addItem(MAT_GROUPS[n] ? MAT_GROUPS[n][0] : n, q * (c.qty || 1))); // 옛 저장(재료 기록 없음)
   state.crafting = null; save();
   return true;
 }
@@ -1063,8 +1138,8 @@ function leaveDungeon() { state.dungeon = null; state.location = '이동장치';
 function currentGroups() {
   if (!state.dungeon) return LOCATIONS[state.location].groups;
   const z = zoneOf(state.dungeon.zone), ch = tileOf(z, state.dungeon.x, state.dungeon.y), ti = terrainIndex(ch);
-  if (ti >= 0) { const t = z.terrains[ti]; return [{ label: t.name, items: [t.actions[0], ...tileGatherIds(z, state.dungeon.x, state.dungeon.y, state.dungeon.seed), tileBattleId(z, t, state.dungeon.x, state.dungeon.y, state.dungeon.seed), ...(t.tameId ? [t.tameId] : [])] }]; }
-  if (ch === 'C') return [{ label: '안전 캠프', items: ['캠프 휴식', '임무 수주', '상점', '모닥불 주사위'] }];
+  if (ti >= 0) { const t = z.terrains[ti]; return [{ label: t.name, items: [t.actions[0], ...tileGatherIds(z, state.dungeon.x, state.dungeon.y, state.dungeon.seed), tileBattleId(z, t, state.dungeon.x, state.dungeon.y, state.dungeon.seed), ...(tameShown(z, state.dungeon.x, state.dungeon.y, state.dungeon.seed) ? [t.tameId] : [])] }]; }
+  if (ch === 'C') return [{ label: '안전 캠프', items: ['캠프 휴식', '임무 수주', '상점', '모닥불 주사위', ...(lostHeld().length ? ['분실물 전달'] : [])] }];
   if (ch === 'S') return [{ label: '입구', items: ['퇴장'] }];
   return [];
 }
