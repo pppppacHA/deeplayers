@@ -183,3 +183,7 @@ STUB_ICONS=1 python3 tests/smoke.py   # 아이콘 폰트를 못 받는 환경(�
 - 스테이터스 2페이지: 공격력/방어력, 이동속도(`stepSec`), 모의전투. 버프 `+N` 배지는 CSS로 숨김.
 - 종합 상가 '장비' 탭을 '무기'/'장비'로 분리(코드에서 슬롯으로 나눔). 숨은 요소를 처음 마치면 전용 칭호와 `hidden` 얼굴 장비를 준다(`state.flags`의 비밀 플래그, 도감·패치노트에는 안 나옴).
 - 추가 테스트: `python3 tests/fuzz.py [시드수] [횟수]`(게임 함수 무작위 대량 호출 + 불변 조건: NaN/가방/체력/sanitize 멱등·손실 없음/저장-불러오기 동일), `python3 tests/uifuzz.py [시드수] [클릭수]`(보이는 버튼 무작위 클릭 중 JS 오류 탐지).
+
+## 2026-10-24 버그 수정
+- 긴 전투(여러 회차)에서 한 번 지면 남은 회차를 모두 버리고 후퇴하던 규칙 제거(`battleRuns`/`resolveAction`). 진 회차는 보상 없이 부상만 입고 이어가며, HP가 `HP_RETREAT`(20) 이하가 되면 그때 중단. 재로그인·저장 불러오기와는 무관(`state.active`는 그대로 보존됨). 테스트 `battle_loss_does_not_end_long_run`/`battle_long_run_survives_reload`.
+- 스테이터스 본문(`#statusBody`)은 스크롤바를 숨긴다(높이를 줄여도 막대가 안 보임).

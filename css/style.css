@@ -151,7 +151,8 @@ textarea{min-height:75px;resize:vertical}
 
 /* ---------- 왼쪽: 스테이터스 ---------- */
 .point-badge{padding:1px 8px;border-radius:999px;background:var(--accent-soft);border:1px solid var(--accent-line);color:var(--accent-2);font-size:calc(10px*var(--fs));letter-spacing:0;text-transform:none}
-#statusBody{display:grid;gap:5px;padding:6px 8px 8px}
+#statusBody{display:grid;gap:5px;padding:6px 8px 8px;scrollbar-width:none}
+#statusBody::-webkit-scrollbar{display:none}
 .map-search{position:absolute;top:10px;left:10px;z-index:3;display:flex;flex-direction:column;gap:3px;max-width:60%}
 .map-search input{width:130px;padding:4px 8px;font-size:calc(11px*var(--fs));background:var(--panel);box-shadow:var(--shadow)}
 .map-search span{font-size:calc(10px*var(--fs));color:var(--text-2);background:var(--panel);border-radius:5px;padding:0 5px;width:fit-content}
@@ -1065,3 +1066,6 @@ textarea#mailBody{width:100%;min-height:80px;resize:vertical}
 .result{white-space:pre-line}
 .buff-icon .buff-count{display:none}
 .nearby-row .src.best{color:var(--accent-2);display:flex;align-items:center;gap:3px}
+/* 스테이터스 2페이지: 긴 글(긴 무기 이름 등)이 칸을 늘려 1페이지와 높이가 달라지지 않게 한 줄로 줄인다 */
+.stat-eff span.eff-l{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.stat-grid{grid-auto-rows:1fr}

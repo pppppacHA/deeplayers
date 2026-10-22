@@ -1724,6 +1724,18 @@ with sync_playwright() as p:
     ev(pg, "(()=>{leaveDungeon();state.location='본부';})()")
     # ---------- 전투 1회 HP 손실 상한 ----------
     check('battle_hp_loss_capped_at_4', ev(pg, "(()=>{let mx=0;for(let i=0;i<500;i++)mx=Math.max(mx,simulateBattle({hp:200,atk:30},100).lost);return mx<=4&&BATTLE_HP_CAP===4})()"))
+    check('battle_loss_does_not_end_long_run', ev(pg, """(()=>{const bak=JSON.stringify(state);const id='제3구역 용암 동굴 전투';let ok=true,minDone=99;
+      for(let n=0;n<25;n++){state.pending=null;state.vitals.hpMax=100;state.vitals.hp=100;
+        const act={id,startAt:0,endAt:1,cycles:10,cycleSec:360,spCost:0,seed:1+n*7919,hp0:100,bs:{atk:.1,evade:0,wa:3,top:'str'},d:1};
+        const t=resolveAction(id,10,0,act).text,m=/(\\d+)회 교전: (\\d+)승 (\\d+)패/.exec(t);if(!m){ok=false;break;}
+        minDone=Math.min(minDone,+m[1]);ok=ok&&+m[2]+ +m[3]===+m[1];}
+      Object.assign(state,JSON.parse(bak));return ok&&minDone>=4})()"""))
+    check('battle_long_run_survives_reload', ev(pg, """(()=>{const bak=JSON.stringify(state);const id='제3구역 용암 동굴 전투';state.pending=null;state.vitals.hpMax=100;state.vitals.hp=100;
+      state.active={id,startAt:Date.now()-3600e3,endAt:Date.now()+1000,cycles:10,cycleSec:360,spCost:0,seed:12345,hp0:100,bs:battleSnap(),d:.6};
+      flushSave();const s2=JSON.parse(localStorage.getItem(SAVE_KEY));const a=s2.active;
+      const same=a&&a.cycles===10&&a.seed===12345&&a.hp0===100&&a.d===.6;
+      const r1=resolveAction(id,10,0,state.active).text,r2=resolveAction(id,a.cycles,0,a).text;
+      state.active=null;Object.assign(state,JSON.parse(bak));return !!same&&r1.slice(0,40)===r1.slice(0,40)&&/\\d+회 교전/.test(r2)})()"""))
     # ---------- 전투 묘사=실제 결과 / 입구 거리 난이도 / 도박 / 표시 ----------
     ev(pg, "closeModal()")
     check('battle_log_matches_result', ev(pg, """(()=>{const bak=JSON.stringify(state);const id=Object.keys(ACTIONS).find(k=>ACTIONS[k].kind==='battle'),a=ACTIONS[id];let ok=true,wins=0;
@@ -2086,6 +2098,10 @@ with sync_playwright() as p:
     ev(pg, "(()=>{removeItem('노트북',1);renderInventory()})()")
     check('equip_fx_updates_when_hold_item_removed', '지능' not in text(pg, '#equipFx') and '감각 +2' in text(pg, '#equipFx'), text(pg, '#equipFx'))
     ev(pg, "(()=>{['결혼반지','우정반지'].forEach(n=>removeItem(n,1));changeEquipment('얼굴',null);removeItem('정찰용 바이저',countItem('정찰용 바이저'));renderBag()})()")
+    # 스테이터스 1·2페이지 높이: 2페이지가 더 커져도 같아야 한다
+    pg.add_style_tag(content='.mock-card .stat-plus{height:44px!important}'); ev(pg, "remeasureStat()")
+    check('stat_pages_same_height_even_if_page2_taller', ev(pg, "[0,1,0,1].map(p=>{view.statusPage=p;renderStatus();return Math.round(document.querySelector('#statusBody .stat-grid').getBoundingClientRect().height)}).every((h,i,a)=>h===a[0])") is True)
+    ev(pg, "(()=>{document.head.lastElementChild.remove();remeasureStat();view.statusPage=0;renderStatus()})()")
     check('no_js_errors', not errs, errs)
     b.close()
 

@@ -114,9 +114,18 @@ function combatPageHtml() { // 스테이터스 2페이지: 1단 공격력/방어
     `<button class="stat span2 mock-card" data-act="extras-open" data-tip-title="모의전투" data-tip-desc="상대를 골라 전투를 구경해 보세요. 실제 진행에는 영향이 없어요."><div class="stat-head"><b>모의전투</b><span class="stat-plus">${icon('sports_martial_arts')}</span></div><div class="stat-eff"><span>연습 상대와 겨뤄 보기</span></div></button>` +
     '</div>';
 }
+function remeasureStat() { // 글꼴이 늦게 로드되거나 창 크기·글자 크기가 바뀌어 칸 높이가 달라져도 1·2페이지 높이를 다시 맞춘다
+  if (!state.created || !$('#statusBody')) return;
+  const p = view.statusPage || 0, gh = () => { const g = $('#statusBody .stat-grid'); return g ? Math.round(g.getBoundingClientRect().height) : 0; };
+  view.statH = 0; view.statusPage = 0; renderStatus(); const n0 = gh();
+  view.statH = 0; view.statusPage = 1; renderStatus(); const n1 = gh();
+  view.statH = Math.max(n0, n1); view.statusPage = p; renderStatus(); // 두 페이지 중 더 큰 쪽 높이로 맞춘다
+}
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(remeasureStat);
+{ let _rt; addEventListener('resize', () => { clearTimeout(_rt); _rt = setTimeout(remeasureStat, 150); }); }
 function renderStatus() {
   $$('#statusPager button').forEach(b => b.classList.toggle('on', +b.dataset.p === (view.statusPage || 0)));
-  if (view.statusPage === 1) { const h = view.statH; $('#statusBody').innerHTML = combatPageHtml(); if (h) $('#statusBody .stat-grid').style.minHeight = h + 'px'; $('#statPoints').classList.toggle('hidden', !state.statPoints); $('#statPoints').textContent = `남은 포인트 ${state.statPoints}`; return; }
+  if (view.statusPage === 1) { const h = view.statH; $('#statusBody').innerHTML = combatPageHtml(); if (h) $('#statusBody .stat-grid').style.minHeight = h + 'px'; const g1 = $('#statusBody .stat-grid'), h1 = Math.round(g1.getBoundingClientRect().height); if (h1 > (view.statH || 0)) view.statH = h1; $('#statPoints').classList.toggle('hidden', !state.statPoints); $('#statPoints').textContent = `남은 포인트 ${state.statPoints}`; return; }
   const t = totalStats(), fx = effects(t), dr = view.statDraft || {}, drSum = Object.values(dr).reduce((a, b) => a + b, 0), pts = state.statPoints - drSum;
   $('#statSave').classList.toggle('hidden', !drSum);
   const badge = $('#statPoints');
@@ -131,7 +140,7 @@ function renderStatus() {
       `${dr[d.key] ? `<button class="stat-plus stat-minus" data-act="stat-down" data-stat="${d.key}" title="되돌리기">${icon('remove')}</button>` : ''}${pts ? `<button class="stat-plus" data-act="stat-up" data-stat="${d.key}" title="포인트 사용 (저장해야 확정)">${icon('add')}</button>` : ''}</div>` +
       `<div class="stat-eff stat-slide"><div class="se-main"><span class="eff-l">${cur.label}</span><b class="eff-v">${cur.val}</b></div><button class="se-next" data-act="stat-slide" data-stat="${d.key}" title="${idx ? '이전 효과' : '다음 효과'} (${idx + 1}/2)" aria-label="${idx ? '이전 효과 보기' : '다음 효과 보기'}">${icon(idx ? 'chevron_left' : 'chevron_right')}<i>${idx + 1}/2</i></button></div></div>`;
   }).join('') + '</div>';
-  const g = $('#statusBody .stat-grid'); if (g) view.statH = Math.round(g.getBoundingClientRect().height) || view.statH;
+  const g = $('#statusBody .stat-grid'); if (g) { if (view.statH) g.style.minHeight = view.statH + 'px'; const h0 = Math.round(g.getBoundingClientRect().height); if (h0 > (view.statH || 0)) view.statH = h0; }
 }
 
 /* ---------- 왼쪽 탭: 장비 / 인벤토리 / 제작 ---------- */

@@ -703,8 +703,7 @@ function battleRuns(act, a) { // [{win, rounds, lost, rs}] 회차별 전투 (res
   for (let i = 0; i < act.cycles; i++) {
     if (i > 0 && hp0 - lost <= HP_RETREAT) break;
     const b = simulateBattle(m, Math.max(1, hp0 - lost), rngFor(act, i), act.bs || battleSnap());
-    runs.push(b); lost += b.lost;
-    if (!b.win) break;
+    runs.push(b); lost += b.lost; // 져도 남은 회차는 계속한다 (HP가 바닥나면 위에서 멈춘다)
   }
   return { m, runs };
 }
@@ -936,7 +935,7 @@ function resolveAction(id, cycles = 1, spPaid = 0, act = null) {
       discover('monsters', m.name);
       r.hp -= b.lost;
       if (b.win) { wins++; countKill(m.name); r.exp += m.exp; r.money += m.cr; if (keep) { if (chance(Math.min(.95, BATTLE_MAT * (1 + DEPTH_DROP * dd)))) add(pick(t.gather), rand(1, 2) * mult); m.drops.forEach(([n, p]) => { if (chance(Math.min(.95, p * (1 + DEPTH_DROP * dd)))) add(n, mult); }); } if (seed && chance(SEED_DROP.battle)) add(seed, 1); }
-      else { losses++; r.buff = '부상'; done++; stop = `${m.name}에게 패배해 후퇴했습니다.`; break; }
+      else { losses++; r.buff = '부상'; } // 진 회차는 보상 없이 HP만 잃고, 남은 회차는 이어간다
     }
     done++;
   }
