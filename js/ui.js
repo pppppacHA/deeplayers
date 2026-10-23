@@ -1022,7 +1022,8 @@ async function announceRankA() {
     if (r && r.ok) { state.flags.annoA = 'done'; save(); toast('A급 승급을 월드 채팅에 알렸어요!'); chatPoll(); }
   } catch (e) { /* 다음에 다시 */ } finally { view.annoBusy = false; }
 }
-async function friendPoll() { // 서버에서 친구 신청·메일·교환 소식을 가져온다
+async function friendPoll() {
+  marketSync(); // 서버에서 친구 신청·메일·교환 소식을 가져온다
   if (!Cloud.enabled || !Cloud.user() || !state.created || _polling) return;
   announceRankA();
   _polling = true;
@@ -1304,7 +1305,7 @@ const A = {
       toast(`캠프 관리인이 물건을 받아 들고 한참을 들여다보더니, 뽑기권 ${r.tickets}장을 건넸습니다.`); addLog(`분실물을 전달하고 뽑기권 ${r.tickets}장을 받았습니다.`);
       if (r.gift) toast(`그리고 감사의 표시로 「${r.gift}」을(를) 받았습니다.`); awardTitles(); renderProfile(); renderInventory(); renderAction(); sfx('levelup');
     }
-    else if (a.kind === 'enhance') openEnhance(); else if (a.kind === 'dismantle') openDismantle(); else if (a.kind === 'storage') { view.storSel = null; openStorage(); } else if (a.kind === 'promo') openPromo(); else if (a.kind === 'farm') openFarm(); else if (a.kind === 'pet') openPets(); else if (a.kind === 'subjob') { view.quitAsk = false; openJob(); }
+    else if (a.kind === 'enhance') openEnhance(); else if (a.kind === 'dismantle') openDismantle(); else if (a.kind === 'market') openMarket('사기'); else if (a.kind === 'storage') { view.storSel = null; openStorage(); } else if (a.kind === 'promo') openPromo(); else if (a.kind === 'farm') openFarm(); else if (a.kind === 'pet') openPets(); else if (a.kind === 'subjob') { view.quitAsk = false; openJob(); }
     else if (a.kind === 'travel') { // 시간이 걸리지 않는 이동은 묻지 않고 바로 간다. 이동장치에서 지상으로 내려가는 1분짜리만 묻는다
       if (LOCATIONS[a.to].danger && state.location === '이동장치') askAction(el.dataset.choice); else doTravel(a.to);
     }
@@ -1772,6 +1773,33 @@ const A = {
     renderBag(); sfx('ok'); toast(`교환했습니다. 오늘 남은 교환 ${tradesLeft()}회`); addLog(`${el.dataset.player}님과 물건을 교환했습니다.`);
     openTrade(el.dataset.player);
   },
+  'mk-tab': el => { view.mkTab = el.dataset.tab; renderMarket(); if (view.mkTab === '사기') marketBrowse(); },
+  'mk-search': () => { view.mkQ = cleanText(($('#mkQ') || {}).value, 20); marketBrowse(); },
+  'mk-refresh': () => marketBrowse(),
+  'mk-list': async () => {
+    const name = ($('#mkItem') || {}).value, qty = intIn(($('#mkQty') || {}).value, 1, 99, 0), price = intIn(($('#mkPrice') || {}).value, 1, MARKET_TOTAL_MAX, 0);
+    const e = marketLocalList(name, qty, price); if (typeof e === 'string') { toast(e); sfx('error'); return; }
+    renderBag(); sfx('ok'); view.mkTab = '내 목록'; renderMarket();
+    try { const r = await Cloud.marketList(e.key, e.item, e.qty, e.price); if (r && r.ok === false) { state.market.sell = state.market.sell.filter(x => x !== e); marketGiveBack(e, 'r' + e.key.slice(-6)); save(); renderBag(); toast(r.msg === 'full' ? '서버에 올라간 물건이 너무 많아요. 먼저 정리해 주세요.' : '거래 등록이 거절돼 물건을 돌려받았어요.'); sfx('error'); } else if (r && r.ok) e.id = intIn(r.id, 1, 9e15, 0); save(); }
+    catch (x) { toast('서버와 연결하지 못했어요. 연결되면 자동으로 올라갑니다.'); }
+    if ($('#mkRoot')) renderMarket(true);
+  },
+  'mk-pick': () => { view.mkItem = ($('#mkItem') || {}).value; renderMarket(true); },
+  'mk-cancel': async el => {
+    const id = intIn(el.dataset.id, 1, 9e15, 0); if (!id) return;
+    try { const r = await Cloud.marketCancel(id); if (r && r.ok) { await marketSync(); toast('거래를 취소했어요.'); } else toast('이미 팔렸거나 정리된 거래예요.'); await marketSync(); }
+    catch (x) { toast('서버와 연결하지 못했어요.'); sfx('error'); }
+  },
+  'mk-buy': async el => {
+    const id = intIn(el.dataset.id, 1, 9e15, 0), x = (view.mkList || []).find(r => r.id === id); if (!x) return;
+    const err = marketBuyStart(id, x.item, x.qty, x.price); if (err) { toast(err); sfx('error'); return; }
+    renderProfile(); let res = 'retry';
+    try { res = marketBuyResult(id, await Cloud.marketBuy(id)); } catch (e) { /* 결과를 모르면 pending 으로 남긴다 */ }
+    if (res === 'ok') { toast('거래가 성사됐어요. 메일함에서 물건을 수령하세요.'); sfx('levelup'); view.mkList = (view.mkList || []).filter(r => r.id !== id); renderMailBadge(); }
+    else if (res === 'gone') { toast('다른 대원이 먼저 샀어요. CR을 돌려받았습니다.'); sfx('error'); view.mkList = (view.mkList || []).filter(r => r.id !== id); }
+    else toast('결과를 확인하는 중이에요. 잠시 뒤 자동으로 처리됩니다.');
+    renderProfile(); if ($('#mkRoot')) renderMarket(true);
+  },
   'storage-pick': el => { const n = el.dataset.name, side = el.dataset.side === 'stor' ? 'stor' : 'bag'; view.storSel = view.storSel && view.storSel.name === n && view.storSel.side === side ? null : { side, name: n }; openStorage(true); },
   'storage-put': el => {
     const n = el.dataset.name, err = ITEMS[n] ? storeItem(n, el.dataset.qty) : '알 수 없는 아이템입니다.';
@@ -1889,7 +1917,6 @@ const A = {
   'lt-plus': el => ltEdit(el.dataset.name, intIn(el.dataset.qty, 1, 99, 1)),
   'lt-minus': el => ltEdit(el.dataset.name, -intIn(el.dataset.qty, 1, 99, 1)),
   'lt-confirm': () => ltConfirm(),
-  'lt-cr': () => ltSetCr(intIn(($('#ltCr') || {}).value, 0, TRADE_CR_MAX, 0)),
   'lt-cancel': () => ltCancel(),
   'lt-answer': el => ltAnswer(el.dataset.accept === '1'),
   'lt-hide': () => { closeModal(); },
@@ -2026,15 +2053,68 @@ function equipChange(slot, name, doneText) {
 $('#closeModal').onclick = closeModal;
 $('#overlay').onclick = e => { if (e.target === $('#overlay')) closeModal(); };
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); if (e.key === 'Enter' && e.target && e.target.id === 'todoIn' && !e.isComposing) { e.preventDefault(); A['todo-add'](); } });
-function openTradeHub() { // 유저 간 거래 창: 어디에서든 파티원과, 같은 칸의 대원과 교환대를 연다
-  const on = Cloud.enabled && Cloud.user();
-  if (!on) { modal('유저 간 거래', '<p class="detail-desc">서버에 로그인해야 다른 대원과 거래할 수 있어요.</p>', [btnClose], true); return; }
-  const seen = new Set(), rows = [];
-  const add = (n, tag) => { if (!n || n === state.character.name || seen.has(n)) return; seen.add(n); rows.push(`<div class="nearby-row"><div class="round-avatar" data-user="${esc(n)}">${avatarOf(n)}</div><div class="grow"><strong data-user="${esc(n)}">${esc(n)}</strong><small>${tag}</small></div><button data-act="ftrade-open" data-name="${esc(n)}">교환</button></div>`); };
-  PARTY.members.forEach(m => add(m.name, '파티')); (view.nearby || []).forEach(p => add(p.name, '같은 칸'));
-  modal('유저 간 거래', `<p class="tiny">파티원과는 어디에서든, 그 밖의 대원과는 같은 칸에 있을 때 교환할 수 있어요. 상대가 접속 중이어야 하고 하루 ${TRADE_DAILY}회까지입니다. CR 은 한쪽만, 받는 물건 값어치의 ${TRADE_CR_RATE}배(최대 ${TRADE_CR_MAX} CR)까지 낼 수 있어요.</p>${rows.join('') || '<div class="empty">거래할 수 있는 대원이 없어요. 같은 칸에 있거나 파티를 맺은 대원만 나타납니다.</div>'}`, [btnClose], true);
+/* ---------- 대원 간 거래 (상점가 '대원 간 상점' · 상단 아이콘으로 어디서든) ---------- */
+let _mkBusy = false;
+async function marketSync() { // 내가 올린 것·처리 중인 구매를 서버와 맞춘다 (비어 있으면 아무것도 보내지 않는다)
+  if (!Cloud.enabled || !Cloud.user() || !state.created || _mkBusy) return;
+  if (!state.market.sell.length && !state.market.buy.length) return;
+  _mkBusy = true;
+  try {
+    for (const b of state.market.buy.slice()) { // 결과를 모르는 구매는 다시 확인한다 (이미 산 것이면 같은 답이 온다)
+      const r = marketBuyResult(b.id, await Cloud.marketBuy(b.id)); if (r === 'ok') toast('거래가 성사됐어요. 메일함에서 물건을 수령하세요.'); else if (r === 'gone') toast('다른 대원이 먼저 샀어요. CR을 돌려받았습니다.');
+    }
+    if (state.market.sell.length) {
+      for (const e of state.market.sell.filter(x => !x.id)) { try { const r = await Cloud.marketList(e.key, e.item, e.qty, e.price); if (r && r.ok === false && r.msg) { state.market.sell = state.market.sell.filter(x => x !== e); marketGiveBack(e, 'r' + e.key.slice(-6)); toast('거래 등록이 거절돼 물건을 돌려받았어요.'); } } catch (x) { /* 다음에 다시 */ } }
+      const out = marketSettleSell(await Cloud.marketMine());
+      out.sold.forEach(s => { toast(`${s.item} ×${s.qty}이(가) 팔렸어요! +${s.net} CR`); addLog(`거래: ${s.item} ×${s.qty} 판매 (+${s.net} CR)`); sfx('ok'); });
+      out.back.forEach(s => toast(`${s.item} ×${s.qty} 거래가 끝나 물건을 돌려받았어요.`));
+      for (const id of out.acks) { try { await Cloud.marketAck(id); } catch (x) { /* 다음에 다시 */ } }
+    }
+    renderBag(); renderProfile(); renderMailBadge();
+  } catch (e) { /* 서버 준비 전 */ } finally { _mkBusy = false; if ($('#mkRoot')) renderMarket(true); }
 }
-if ($('#tradeHubBtn')) $('#tradeHubBtn').onclick = openTradeHub;
+async function marketBrowse() {
+  view.mkList = null; if ($('#mkRoot')) renderMarket(true);
+  try { const r = await Cloud.marketBrowse(view.mkQ || ''); view.mkList = (Array.isArray(r) ? r : []).slice(0, 40).map(x => ({ id: intIn(x && x.id, 1, 9e15, 0), seller: cleanText(x && x.seller, 12), item: x && x.item, qty: intIn(x && x.qty, 1, 99, 1), price: intIn(x && x.price, 1, MARKET_TOTAL_MAX, 1) })).filter(x => x.id && ITEMS[x.item]); }
+  catch (e) { view.mkList = []; view.mkErr = true; }
+  if ($('#mkRoot')) renderMarket(true);
+}
+function marketHtml() {
+  const tab = ['사기', '팔기', '내 목록', '교환'].includes(view.mkTab) ? view.mkTab : '사기';
+  const tabs = `<div class="tabs flush">${['사기', '팔기', '내 목록', '교환'].map(t => `<button class="${t === tab ? 'active' : ''}" data-act="mk-tab" data-tab="${t}">${t}${t === '내 목록' && state.market.sell.length ? ` ${state.market.sell.length}` : ''}</button>`).join('')}</div>`;
+  let body;
+  if (tab === '사기') {
+    const rows = view.mkList == null ? '<div class="empty">불러오는 중…</div>' : view.mkList.map(x => `<div class="shop-row"><span class="shop-ic">${icon(ITEMS[x.item].icon)}</span><div class="grow"><strong>${esc(shownName(x.item))} <span class="tiny">×${x.qty}</span></strong><small class="tiny">판매자 ${esc(x.seller)} · 개당 ${Math.ceil(x.price / x.qty)} CR${tradeValue(x.item) ? ` (상점 시세 ${tradeValue(x.item)} CR)` : ''}</small></div><button class="primary" data-act="mk-buy" data-id="${x.id}" ${state.money < x.price ? 'disabled' : ''}>${x.price} CR</button></div>`).join('') || `<div class="empty">${view.mkErr ? '서버에 연결하지 못했어요.' : '올라온 물건이 없어요.'}</div>`;
+    body = `<div class="mk-search"><input id="mkQ" maxlength="20" placeholder="물건 이름 검색" value="${esc(view.mkQ || '')}"><button data-act="mk-search">검색</button><button data-act="mk-refresh">새로고침</button></div><div class="shop-list">${rows}</div>`;
+  } else if (tab === '팔기') {
+    const bag = {}; Object.values(state.inventory).flat().forEach(s => { bag[s.n] = (bag[s.n] || 0) + s.q; });
+    const names = Object.keys(bag).filter(n => ITEMS[n] && !ITEMS[n].hidden && n !== MAIL_SHIP_ITEM).sort((x, y) => ITEMS[x].tab.localeCompare(ITEMS[y].tab) || x.localeCompare(y));
+    const sel = names.includes(view.mkItem) ? view.mkItem : names[0];
+    body = names.length ? `<div class="mk-sell"><label>물건<select id="mkItem">${names.map(n => `<option value="${esc(n)}" ${n === sel ? 'selected' : ''}>${esc(shownName(n))} (×${bag[n]})</option>`).join('')}</select></label>` +
+      `<label>수량<input id="mkQty" type="number" min="1" max="${Math.min(99, bag[sel])}" value="1"></label><label>총 가격(CR)<input id="mkPrice" type="number" min="1" max="${MARKET_TOTAL_MAX}" value="${Math.min(MARKET_TOTAL_MAX, Math.max(1, tradeValue(sel)))}"></label>` +
+      `<p class="tiny">상점 시세 ${tradeValue(sel)} CR · 개당 최대 ${marketUnitMax(sel)} CR · 팔리면 수수료 ${Math.round(MARKET_FEE * 100)}%를 뗍니다. 올린 물건은 소지품에서 빠지고, 취소하거나 3일이 지나면 돌아옵니다. (동시 ${MARKET_SLOTS}건)</p><button class="primary" data-act="mk-list">올리기</button></div>` : '<div class="empty">팔 수 있는 소지품이 없어요.</div>';
+  } else if (tab === '내 목록') {
+    const rows = state.market.sell.map(e => `<div class="shop-row"><span class="shop-ic">${icon(ITEMS[e.item].icon)}</span><div class="grow"><strong>${esc(shownName(e.item))} <span class="tiny">×${e.qty}</span></strong><small class="tiny">${e.price} CR · ${e.id ? '판매 중' : '등록 중… (연결되면 올라가요)'}</small></div>${e.id ? `<button data-act="mk-cancel" data-id="${e.id}">취소</button>` : ''}</div>`).join('') || '<div class="empty">올려 둔 물건이 없어요.</div>';
+    body = rows + (state.market.buy.length ? `<p class="tiny">처리 중인 구매 ${state.market.buy.length}건 — 결과가 나오면 물건이 메일로 옵니다.</p>` : '');
+  } else {
+    const seen = new Set(), rows = [];
+    const add = (n, tag) => { if (!n || n === state.character.name || seen.has(n)) return; seen.add(n); rows.push(`<div class="nearby-row"><div class="round-avatar" data-user="${esc(n)}">${avatarOf(n)}</div><div class="grow"><strong data-user="${esc(n)}">${esc(n)}</strong><small>${tag}</small></div><button data-act="ftrade-open" data-name="${esc(n)}">교환</button></div>`); };
+    PARTY.members.forEach(m => add(m.name, '파티')); (view.nearby || []).forEach(p => add(p.name, '같은 칸'));
+    body = `<p class="tiny">교환은 물건끼리 바꾸는 실시간 교환대예요. 파티원과는 어디에서든, 그 밖의 대원과는 같은 칸에서 할 수 있고 하루 ${TRADE_DAILY}회까지입니다.</p>${rows.join('') || '<div class="empty">교환할 수 있는 대원이 없어요.</div>'}`;
+  }
+  return `<div id="mkRoot">${tabs}${body}</div>`;
+}
+function renderMarket(keep) {
+  const sc = keep && $('#modalBody') ? $('#modalBody').scrollTop : 0, q = $('#mkQ') ? $('#mkQ').value : null, act = document.activeElement && document.activeElement.id;
+  modal('대원 간 거래', marketHtml(), [btnClose], true);
+  if (q != null && $('#mkQ')) { $('#mkQ').value = q; if (act === 'mkQ') $('#mkQ').focus(); }
+  if ($('#modalBody')) $('#modalBody').scrollTop = sc;
+}
+function openMarket(tab) {
+  if (!(Cloud.enabled && Cloud.user())) { modal('대원 간 거래', '<p class="detail-desc">서버에 로그인해야 다른 대원과 거래할 수 있어요.</p>', [btnClose], true); return; }
+  view.mkTab = tab || view.mkTab || '사기'; renderMarket(); marketSync(); if (view.mkTab === '사기' && view.mkList == null) marketBrowse();
+}
+if ($('#tradeHubBtn')) { $('#tradeHubBtn').title = '대원 간 거래'; $('#tradeHubBtn').onclick = () => openMarket(); }
 $$('[data-board]').forEach(b => { b.onclick = () => openBoard(b.dataset.board); });
 $$('[data-system]').forEach(b => { b.onclick = () => openSystem(b.dataset.system); });
 $('#settingsBtn').onclick = openSettings;
@@ -2048,7 +2128,7 @@ document.addEventListener('input', e => {
   if (e.target.id === 'sfxVolume') $('#sfxValue').textContent = e.target.value + '%';
 });
 const SETTING_IDS = ['bgmOn', 'bgmVolume', 'clickOn', 'alertOn', 'sfxVolume', 'notifyOn', 'guildAlertOn', 'cursorOn', 'themeSelect', 'customBase', 'customAccent', 'fontSize', ...CHAT_TABS.map(k => 'ctab_' + k)];
-document.addEventListener('change', e => { if (SETTING_IDS.includes(e.target.id) && e.target.closest('#modalBody')) applySettingsNow(); }); // 설정은 바꾸는 즉시 저장
+document.addEventListener('change', e => { if (e.target.id === 'mkItem') { A['mk-pick'](); return; } if (SETTING_IDS.includes(e.target.id) && e.target.closest('#modalBody')) applySettingsNow(); }); // 설정은 바꾸는 즉시 저장
 document.addEventListener('change', e => {
   if (e.target.id === 'themeSelect') $('#customOpts').classList.toggle('hidden', e.target.value !== 'custom');
   if (['themeSelect', 'customBase', 'customAccent', 'cursorOn', 'fontSize'].includes(e.target.id)) previewTheme();
@@ -2424,8 +2504,8 @@ async function ltApply(v) {
     return;
   }
   // 교환대가 열린 상태: 내 기록이 서버 목록과 다르면(올리다 끊긴 경우) 서버에 다시 보낸다
-  if (state.bench && state.bench.id === v.id && (!sameList(state.bench.items, v.mine) || benchCr() !== intIn(v.mine_cr, 0, TRADE_CR_MAX, 0)) && !view.ltAct) {
-    try { const r = await Cloud.liveTradeSet(v.id, state.bench.items, benchCr()); if (r && r.view) { view.lt = { ...r.view, name: v.name, mine: cleanItemList(r.view.mine, 5), their: cleanItemList(r.view.their, 5) }; v = view.lt; } } catch (e) { /* 다음에 다시 */ }
+  if (state.bench && state.bench.id === v.id && (!sameList(state.bench.items, v.mine)) && !view.ltAct) {
+    try { const r = await Cloud.liveTradeSet(v.id, state.bench.items, 0); if (r && r.view) { view.lt = { ...r.view, name: v.name, mine: cleanItemList(r.view.mine, 5), their: cleanItemList(r.view.their, 5) }; v = view.lt; } } catch (e) { /* 다음에 다시 */ }
   }
   if (isLtOpen()) renderLive();
   else if (!$('#overlay').classList.contains('open')) openLive();
@@ -2435,7 +2515,7 @@ async function ltFinish(v) {
   const r = settleLive(v);
   if (r) {
     renderBag(); renderProfile(); renderMailBadge();
-    if (r.done) { addLog(`${r.name} 대원과 물건을 교환했습니다.`); sfx('levelup'); toast((r.got.length ? `${r.name} 대원과 교환이 성사됐어요! 받은 물건은 메일함에서 수령하세요.` : `${r.name} 대원과 교환이 성사됐어요.`) + (r.gotCr ? ` (+${r.gotCr} CR)` : '')); }
+    if (r.done) { addLog(`${r.name} 대원과 물건을 교환했습니다.`); sfx('levelup'); toast((r.got.length ? `${r.name} 대원과 교환이 성사됐어요! 받은 물건은 메일함에서 수령하세요.` : `${r.name} 대원과 교환이 성사됐어요.`)); }
     else { sfx('error'); toast(r.back.length ? '교환이 취소됐어요. 올려 둔 물건을 돌려받았어요.' : `${r.name} 대원과의 교환이 이루어지지 않았어요.`); }
   }
   try { await Cloud.liveTradeAck(v.id); } catch (e) { /* 다음에 다시 */ }
@@ -2474,30 +2554,12 @@ async function ltEdit(name, delta) { // 교환대에 올리기(+) / 내리기(�
     if (delta > 0) { // 내 기기에서 먼저 빼고 서버에 알린다 (끊기면 다음 확인 때 다시 보낸다)
       const r = benchRaise(v.id, name, delta); if (typeof r === 'string') { toast(r); sfx('error'); return; }
       renderBag(); sfx('click');
-      const res = await Cloud.liveTradeSet(v.id, r, benchCr()); if (res && res.view) await ltApply(res.view);
+      const res = await Cloud.liveTradeSet(v.id, r, 0); if (res && res.view) await ltApply(res.view);
     } else { // 서버가 받아들인 뒤에 돌려받는다
       const have = benchQty(name), m = Math.min(-delta, have); if (!m) return;
       const err = benchLowerOk(name, m); if (err) { toast(err); sfx('error'); return; }
-      const next = benchNext(name, -m), res = await Cloud.liveTradeSet(v.id, next, benchCr());
+      const next = benchNext(name, -m), res = await Cloud.liveTradeSet(v.id, next, 0);
       if (res && res.ok) { benchLower(name, m, next); renderBag(); sfx('click'); }
-      if (res && res.view) await ltApply(res.view);
-    }
-  } catch (e) { toast('서버와 연결하지 못했어요. 잠시 뒤 다시 시도해 주세요.'); sfx('error'); }
-  finally { view.ltAct = false; if (isLtOpen()) renderLive(true); }
-}
-async function ltSetCr(amount) { // 교환대에 올리는 내 CR (올릴 때는 지갑에서 먼저, 내릴 때는 서버가 받은 뒤에 돌려받는다)
-  const v = view.lt; if (!v || v.status !== 'open' || view.ltAct) return;
-  const err = benchCrOk(amount, v.their, intIn(v.their_cr, 0, TRADE_CR_MAX, 0)); if (err) { toast(err); sfx('error'); return; }
-  const d = amount - benchCr(); if (!d) return;
-  view.ltAct = true;
-  try {
-    if (d > 0) {
-      const e2 = benchCrSet(v.id, amount); if (e2) { toast(e2); sfx('error'); return; }
-      renderProfile(); sfx('click');
-      const res = await Cloud.liveTradeSet(v.id, benchList(), amount); if (res && res.view) await ltApply(res.view);
-    } else {
-      const res = await Cloud.liveTradeSet(v.id, benchList(), amount);
-      if (res && res.ok) { benchCrSet(v.id, amount); renderProfile(); sfx('click'); }
       if (res && res.view) await ltApply(res.view);
     }
   } catch (e) { toast('서버와 연결하지 못했어요. 잠시 뒤 다시 시도해 주세요.'); sfx('error'); }
@@ -2505,8 +2567,7 @@ async function ltSetCr(amount) { // 교환대에 올리는 내 CR (올릴 때는
 }
 async function ltConfirm() {
   const v = view.lt; if (!v || v.status !== 'open' || view.ltAct) return;
-  { const e = benchCrOk(benchCr(), v.their, intIn(v.their_cr, 0, TRADE_CR_MAX, 0)); if (e) { toast(e); sfx('error'); return; } }
-  if (!sameList(benchList(), v.mine) || benchCr() !== intIn(v.mine_cr, 0, TRADE_CR_MAX, 0)) { toast('올린 물건을 서버에 맞추는 중이에요. 잠시 뒤 다시 눌러 주세요.'); ltPoll(); return; }
+  if (!sameList(benchList(), v.mine)) { toast('올린 물건을 서버에 맞추는 중이에요. 잠시 뒤 다시 눌러 주세요.'); ltPoll(); return; }
   view.ltAct = true;
   try {
     const r = await Cloud.liveTradeConfirm(v.id, v.ver);
@@ -2535,12 +2596,11 @@ function liveHtml(v) {
   }).join('') || '<div class="lt-empty">올릴 소지품이 없어요.</div>';
   return `<div id="ltRoot"><p class="tiny">서로 물건을 올린 뒤 <b>둘 다 '교환'</b>을 누르면 바뀝니다. 누른 뒤 누구든 물건을 바꾸면 확인이 풀려요. 올린 물건은 내 소지품에서 빠져 있고, 취소하면 돌아옵니다. (15분 동안 아무 변화가 없으면 자동 취소)</p>` +
     `<div class="lt-grid">${col('내 교환대', mine, true, v.my_ok)}${col(`${v.name}의 교환대`, their, false, v.their_ok)}</div>` +
-    `<div class="lt-cr"><label for="ltCr">내가 내는 CR</label><input id="ltCr" type="number" min="0" max="${TRADE_CR_MAX}" value="${benchCr()}" inputmode="numeric"><button data-act="lt-cr">올리기</button><small class="tiny">${v.their_cr ? `${esc(v.name)}이(가) ${intIn(v.their_cr, 0, TRADE_CR_MAX, 0)} CR 을 올렸어요` : `받는 물건 값어치의 ${TRADE_CR_RATE}배까지 (지금 최대 ${tradeCrLimit(v.their)} CR) · 보유 ${state.money} CR`}</small></div>` +
     `<div class="choice-label">내 소지품에서 올리기 <small class="tiny">— 종류 5개 · 종류마다 99개까지</small></div><div class="lt-pick">${pick}</div></div>`;
 }
 function liveButtons(v) {
   const b = ['<button data-act="lt-hide">창 닫기</button>', '<button class="danger" data-act="lt-cancel">교환 취소</button>'];
-  if (v.status === 'open') { const can = (benchList().length + v.their.length + benchCr() + intIn(v.their_cr, 0, TRADE_CR_MAX, 0)) > 0; b.push(`<button class="primary" data-act="lt-confirm" ${v.my_ok || !can ? 'disabled' : ''}>${v.my_ok ? '확인함 · 상대를 기다리는 중' : '교환'}</button>`); }
+  if (v.status === 'open') { const can = (benchList().length + v.their.length) > 0; b.push(`<button class="primary" data-act="lt-confirm" ${v.my_ok || !can ? 'disabled' : ''}>${v.my_ok ? '확인함 · 상대를 기다리는 중' : '교환'}</button>`); }
   return b;
 }
 function openLive() {
@@ -2551,7 +2611,7 @@ function openLive() {
 }
 function renderLive(force) { // 바뀐 것이 있을 때만 다시 그린다 (스크롤 위치 유지)
   const v = view.lt; if (!v || !isLtOpen()) return;
-  const key = JSON.stringify([v.status, v.ver, v.my_ok, v.their_ok, v.their, benchList(), benchCr(), v.their_cr, state.money, usedSlots()]);
+  const key = JSON.stringify([v.status, v.ver, v.my_ok, v.their_ok, v.their, benchList(), usedSlots()]);
   if (!force && key === view.ltKey) return;
   view.ltKey = key;
   const sc = $('#modalBody').scrollTop;

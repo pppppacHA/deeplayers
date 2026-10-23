@@ -60,7 +60,13 @@ function hardenState(s) {
   c.allowFriend = c.allowFriend !== false; c.allowGuild = c.allowGuild !== false;
   s.unlockSeen = Object.fromEntries(Object.entries(s.unlockSeen && typeof s.unlockSeen === 'object' ? s.unlockSeen : {}).filter(([k, v]) => typeof k === 'string' && k.length < 30 && v === true));
   s.profileEditAt = intIn(s.profileEditAt, 0, 4e12, 0);
-  { const b = s.bench, items = b && typeof b === 'object' ? cleanItemList(b.items, 5) : []; const cr = b && typeof b === 'object' ? intIn(b.cr, 0, TRADE_CR_MAX, 0) : 0; s.bench = (items.length || cr) && Number.isFinite(+b.id) && +b.id > 0 ? { id: intIn(b.id, 1, 9e15, 1), items, cr } : null; s.ltSeen = (Array.isArray(s.ltSeen) ? s.ltSeen : []).map(x => intIn(x, 1, 9e15, 0)).filter(Boolean).slice(-20); }
+  { const m = s.market && typeof s.market === 'object' ? s.market : {};
+    s.market = {
+      sell: (Array.isArray(m.sell) ? m.sell : []).filter(r => r && ITEMS[r.item] && typeof r.key === 'string' && /^[\w-]{6,40}$/.test(r.key)).slice(0, MARKET_SLOTS).map(r => ({ key: r.key, id: intIn(r.id, 0, 9e15, 0), item: r.item, qty: intIn(r.qty, 1, 99, 1), price: intIn(r.price, 1, MARKET_TOTAL_MAX, 1) })),
+      buy: (Array.isArray(m.buy) ? m.buy : []).filter(r => r && Number.isFinite(+r.id) && +r.id > 0).slice(0, 10).map(r => ({ id: intIn(r.id, 1, 9e15, 1), price: intIn(r.price, 1, MARKET_TOTAL_MAX, 1) })),
+    };
+    s.mseen = (Array.isArray(s.mseen) ? s.mseen : []).filter(x => typeof x === 'string' && /^[sc]\d{1,16}$/.test(x)).slice(-60); }
+  { const b = s.bench, items = b && typeof b === 'object' ? cleanItemList(b.items, 5) : []; s.bench = items.length && Number.isFinite(+b.id) && +b.id > 0 ? { id: intIn(b.id, 1, 9e15, 1), items } : null; s.ltSeen = (Array.isArray(s.ltSeen) ? s.ltSeen : []).map(x => intIn(x, 1, 9e15, 0)).filter(Boolean).slice(-20); }
   { const st = {}; let kinds = 0; if (s.storage && typeof s.storage === 'object') Object.keys(s.storage).forEach(n => { const q = intIn(s.storage[n], 0, STORAGE_STACK, 0); if (ITEMS[n] && q > 0 && kinds < STORAGE_KINDS) { st[n] = q; kinds++; } }); s.storage = st; }
   { const lz = s.leisure && typeof s.leisure === 'object' ? s.leisure : {}; s.leisure = { day: intIn(lz.day, -1, 1e7, -1), id: LEISURE_IDS.includes(lz.id) ? lz.id : '' }; }
   s.deaths = intIn(s.deaths, 0, 99999, 0);
@@ -341,7 +347,6 @@ function masteryText(tag) { // 마우스를 올렸을 때 보이는 보너스 �
    올린 물건은 내 기기에서 먼저 빼 두고(state.bench) 서버에는 올린 목록만 둔다. 늘릴 때는 '내 기기에서 빼기 → 서버 반영', 줄일 때는 '서버 반영 → 돌려받기' 순서라
    어느 순간에도 서버 목록 ⊆ 내 기록이 되어 물건이 복사되거나 사라지지 않는다. 마감(성사/취소) 때 settleLive 가 한 번에 정리한다. */
 const benchList = () => (state.bench ? state.bench.items : []);
-const benchCr = () => (state.bench ? state.bench.cr || 0 : 0);
 const benchQty = n => (benchList().find(r => r[0] === n) || [0, 0])[1];
 function benchNext(name, delta) { // 이름의 수량을 delta 만큼 바꾼 새 목록 (불가능하면 null)
   const cur = benchList().map(r => r.slice()), r = cur.find(x => x[0] === name), q = (r ? r[1] : 0) + delta;
@@ -354,40 +359,82 @@ function benchRaise(id, name, n) { // 소지품에서 빼서 교환대 기록에
   const next = benchNext(name, n); if (!next) return '교환대에는 물건을 5종류까지, 한 종류에 99개까지 올릴 수 있어요.';
   if (state.bench && state.bench.id !== id) return '이미 다른 교환 기록이 남아 있어요.';
   if (countItem(name) < n) return `${name}이(가) 모자랍니다.`;
-  removeItem(name, n); state.bench = { id, items: next, cr: state.bench ? state.bench.cr : 0 }; save(); return next;
+  removeItem(name, n); state.bench = { id, items: next }; save(); return next;
 }
 function benchLowerOk(name, n) { // 줄일 때 돌려받을 자리가 있는지 (있으면 null, 없으면 사유)
   const free = (STACK_MAX * (bagCapacity() - usedSlots())) + (state.inventory[ITEMS[name].tab] || []).filter(s => s.n === name).reduce((a, s) => a + Math.max(0, STACK_MAX - s.q), 0);
   return ITEMS[name].tab === '장비' ? (usedSlots() + n <= bagCapacity() ? null : '가방에 자리가 없어요.') : (free >= n ? null : '가방에 자리가 없어요.');
 }
 function benchLower(name, n, next) { // 서버가 줄인 목록을 받아들였을 때: 돌려받고 기록을 맞춘다
-  addItem(name, n); const cr = state.bench.cr || 0; state.bench = next.length || cr ? { id: state.bench.id, items: next, cr } : null; save();
+  addItem(name, n); state.bench = next.length ? { id: state.bench.id, items: next } : null; save();
 }
-/* CR 거래: 한쪽만 낼 수 있고, 받는 물건의 상점 값어치(tradeValue)의 TRADE_CR_RATE배까지 + 한 번에 TRADE_CR_MAX 까지.
-   값어치 = 상점에서 파는 가장 싼 값, 상점에 없으면 판매가의 2배. (CR 은 클라이언트 기준이라 규칙도 클라이언트에서 막는다) */
+/* 값어치 = 상점에서 파는 가장 싼 값, 상점에 없으면 판매가의 2배 (대원 간 거래 가격 한도의 기준) */
 function tradeValue(name) {
   let best = 0;
   Object.keys(SHOPS).forEach(p => shopRows(p).forEach(r => { if (r[0] === name && (!best || r[1] < best)) best = r[1]; }));
   return best || (sellPrice(name) * 2);
 }
-const tradeValueOf = list => list.reduce((a, [n, q]) => a + tradeValue(n) * q, 0);
-const tradeCrLimit = theirItems => Math.min(TRADE_CR_MAX, Math.floor(tradeValueOf(theirItems) * TRADE_CR_RATE));
-function benchCrOk(amount, theirItems, theirCr) { // 내가 amount CR 을 내도 되는가 (되면 null, 아니면 사유)
-  if (!Number.isInteger(amount) || amount < 0) return 'CR 금액을 확인하세요.';
-  if (!amount) return null;
-  if (theirCr > 0) return '상대가 이미 CR 을 올렸어요. CR 은 한쪽만 낼 수 있어요.';
-  const lim = tradeCrLimit(theirItems);
-  if (!lim) return '상대의 물건이 없으면 CR 을 낼 수 없어요. (선물 금지)';
-  if (amount > lim) return `받는 물건의 값어치에 비해 너무 많아요. (최대 ${lim} CR)`;
+/* ---------- 대원 간 거래 (상점가 '대원 간 상점') ----------
+   올릴 때 내 기기에서 물건을 먼저 빼 state.market.sell 에 기록한다(서버 호출이 끊겨도 같은 key 로 다시 보내면 한 번만 올라간다).
+   팔리면 수수료를 뗀 CR 을 받고(state.mseen 으로 한 번만), 취소·만료면 물건을 돌려받는다. 살 때는 값을 먼저 치르고 결과를 받으면
+   물건을 메일로 받는다(결과를 모르면 pending 으로 남겨 다시 확인한다). CR 은 클라이언트 기준이라 가격 규칙도 클라이언트에서 막는다. */
+const marketUnitMax = n => Math.max(2, Math.ceil(tradeValue(n) * MARKET_UNIT_RATIO));
+const marketNet = price => Math.floor(price * (1 - MARKET_FEE));
+const marketKey = () => 'k' + Math.floor(Math.random() * 1e9).toString(36) + nowMs().toString(36);
+function marketListCheck(name, qty, price) { // 올려도 되는가 (되면 null)
+  if (!ITEMS[name] || ITEMS[name].hidden || name === MAIL_SHIP_ITEM) return '거래할 수 없는 물건이에요.';
+  if (!Number.isInteger(qty) || qty < 1 || qty > 99) return '수량은 1~99개예요.';
+  if (!Number.isInteger(price) || price < 1) return '가격을 확인하세요.';
+  if (price > MARKET_TOTAL_MAX) return `한 건은 ${MARKET_TOTAL_MAX} CR까지예요.`;
+  if (Math.ceil(price / qty) > marketUnitMax(name)) return `개당 가격이 너무 비싸요. (개당 최대 ${marketUnitMax(name)} CR)`;
+  if (state.market.sell.length >= MARKET_SLOTS) return `동시에 ${MARKET_SLOTS}건까지 올릴 수 있어요.`;
+  if (countItem(name) < qty) return `${name}이(가) 모자랍니다.`;
   return null;
 }
-function benchCrSet(id, amount) { // 내 CR 을 올릴 때 먼저 내 지갑에서 뺀다. 성공하면 null, 실패하면 사유
-  const cur = benchCr(), d = amount - cur;
-  if (d > 0 && state.money < d) return 'CR이 부족합니다.';
-  if (state.bench && state.bench.id !== id) return '이미 다른 교환 기록이 남아 있어요.';
-  state.money -= d; state.bench = { id, items: benchList().map(r => r.slice()), cr: amount };
-  if (!state.bench.items.length && !amount) state.bench = null;
-  save(); return null;
+function marketLocalList(name, qty, price) { // 소지품에서 빼 기록한다. 성공하면 기록, 실패하면 사유 문자열
+  const err = marketListCheck(name, qty, price); if (err) return err;
+  const e = { key: marketKey(), id: 0, item: name, qty, price };
+  removeItem(name, qty); state.market.sell.push(e); save(); return e;
+}
+function marketGiveBack(e, tag) { // 물건을 돌려받는다 (가방이 모자라면 메일)
+  const g = addItem(e.item, e.qty);
+  if (g < e.qty) receiveServerMail('대원 간 거래', '거래 물건 반환', '가방에 자리가 없어 못 돌려받은 물건입니다. 수령하세요.', [[e.item, e.qty - g]], 'b' + tag);
+}
+function marketSettleSell(rows) { // 서버의 내 목록과 맞춘다. → { sold: [{item,qty,net}], back: [{item,qty}], acks: [id] }
+  const out = { sold: [], back: [], acks: [] }, byKey = {}; (Array.isArray(rows) ? rows : []).forEach(r => { if (r && typeof r.ckey === 'string') byKey[r.ckey] = r; });
+  const keep = [];
+  state.market.sell.forEach(e => {
+    const r = byKey[e.key];
+    if (!r) { keep.push(e); return; } // 아직 서버에 없다 (올리는 중이거나 끊겼다) — 다시 보낸다
+    const id = intIn(r.id, 1, 9e15, 0); if (!id) { keep.push(e); return; }
+    if (r.status === 'open') { e.id = id; keep.push(e); return; }
+    const tag = (r.status === 'sold' ? 's' : 'c') + id;
+    if (!state.mseen.includes(tag)) {
+      state.mseen.push(tag); state.mseen = state.mseen.slice(-60);
+      if (r.status === 'sold') { const net = marketNet(e.price); state.money += net; out.sold.push({ item: e.item, qty: e.qty, net }); }
+      else { marketGiveBack(e, id); out.back.push({ item: e.item, qty: e.qty }); }
+    }
+    out.acks.push(id);
+  });
+  state.market.sell = keep; save(); return out;
+}
+function marketBuyStart(id, item, qty, price) { // 값을 먼저 치른다. 성공하면 null, 실패하면 사유
+  if (!ITEMS[item]) return '알 수 없는 물건이에요.';
+  if (state.money < price) return 'CR이 부족합니다.';
+  if (state.market.buy.length >= 10) return '처리 중인 구매가 많아요. 잠시 뒤 다시 시도하세요.';
+  if (state.market.buy.some(b => b.id === id)) return '이미 구매를 처리하는 중이에요.';
+  state.money -= price; state.market.buy.push({ id, price }); save(); return null;
+}
+function marketBuyResult(id, r) { // 서버 답을 받았다. ok 면 물건을 메일로, gone 이면 환불 → 'ok' | 'gone' | 'retry'
+  const i = state.market.buy.findIndex(b => b.id === id); if (i < 0) return 'gone';
+  const b = state.market.buy[i];
+  if (r && r.ok && ITEMS[r.item]) {
+    state.market.buy.splice(i, 1);
+    receiveServerMail('대원 간 거래', '거래 성사', `거래가 성사됐어요. ${r.item} ×${intIn(r.qty, 1, 99, 1)}을(를) 수령하세요.`, [[r.item, intIn(r.qty, 1, 99, 1)]], 'mb' + id);
+    save(); return 'ok';
+  }
+  if (r && r.ok === false && (r.msg === 'gone' || r.msg === 'mine')) { state.market.buy.splice(i, 1); state.money += b.price; save(); return 'gone'; }
+  return 'retry';
 }
 const listDiff = (a, b) => a.map(([n, q]) => [n, q - (b.find(r => r[0] === n) || [0, 0])[1]]).filter(r => r[1] > 0); // a 에서 b 를 뺀 몫
 function settleLive(v) { // 마감된 교환(done/cancelled)을 정리한다. → { done, name, got, back } (이미 정리한 번호면 null)
@@ -395,8 +442,6 @@ function settleLive(v) { // 마감된 교환(done/cancelled)을 정리한다. �
   if (!id || state.ltSeen.includes(id)) return null;
   const done = v.status === 'done', b = state.bench && state.bench.id === id ? state.bench : null;
   let back = [];
-  if (b && !done) state.money += b.cr || 0; // 취소면 낸 CR 을 돌려받는다
-  if (done) state.money += intIn(v.their_cr, 0, TRADE_CR_MAX, 0) + (b ? Math.max(0, (b.cr || 0) - intIn(v.mine_cr, 0, TRADE_CR_MAX, 0)) : 0); // 성사면 받는 CR (낸 CR 은 이미 빠져 있다)
   if (b) back = done ? listDiff(b.items, cleanItemList(v.mine, 5)) : b.items.map(r => r.slice()); // 성사됐으면 서버에 못 올라간 몫만, 취소면 전부
   const left = [];
   back.forEach(([n, q]) => { const g = addItem(n, q); if (g < q) left.push([n, q - g]); });
@@ -408,7 +453,7 @@ function settleLive(v) { // 마감된 교환(done/cancelled)을 정리한다. �
   }
   if (b) state.bench = null;
   state.ltSeen.push(id); state.ltSeen = state.ltSeen.slice(-20); save();
-  return { done, name, got, back, gotCr: done ? intIn(v.their_cr, 0, TRADE_CR_MAX, 0) : 0 };
+  return { done, name, got, back };
 }
 function releaseStaleBench(activeId) { // 서버에 없는 교환의 기록이 남아 있으면 물건을 전부 돌려받는다
   if (!state.bench || state.bench.id === activeId) return null;

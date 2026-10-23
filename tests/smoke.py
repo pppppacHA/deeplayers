@@ -490,8 +490,8 @@ with sync_playwright() as p:
 
     # ---------- 상점 (공중 상점가) / 아직 안 만든 선택지 ----------
     go('상점가')
-    check('shop_choices', pg.locator('#choices button').count() == 5 and text(pg, '#mapLocation') == '상점가', text(pg, '#choices'))
-    check('shop_choices_names', all(t in text(pg, '#choices') for t in ['보급품 상점', '종합 상가', '서브잡', '뽑기', '뒷골목 카드 한 판']) and '대원 간 상점' not in text(pg, '#choices'))
+    check('shop_choices', pg.locator('#choices button').count() == 6 and text(pg, '#mapLocation') == '상점가', text(pg, '#choices'))
+    check('shop_choices_names', all(t in text(pg, '#choices') for t in ['보급품 상점', '종합 상가', '서브잡', '뽑기', '뒷골목 카드 한 판']) and '대원 간 상점' in text(pg, '#choices'))
     check('shop_no_longer_todo', ev(pg, "ACTIONS['보급품 상점'].kind")== 'shop' and ev(pg, "ACTIONS['종합 상가'].kind")== 'shop' and ev(pg, "ACTIONS['임무 수주'].kind")== 'board' and ev(pg, "ACTIONS['뽑기'].kind")== 'gacha')
     m0, f0 = ev(pg, "state.money"), ev(pg, "countItem('건조 식량')")
     pg.click('#choices button:has-text("보급품 상점")'); pg.wait_for_timeout(80)
@@ -2283,6 +2283,7 @@ with sync_playwright() as p:
     check('mastery_titles_by_level', ev(pg, "masteryTitleOf('요리',9)===''&&masteryTitleOf('요리',10)==='초보 요리사'&&masteryTitleOf('목공',20)==='숙련 목수'&&masteryTitleOf('재봉',30)==='레전드 재봉사'&&masteryTitleOf('대장',25)==='숙련 대장장이'"))
     check('mastery_titles_are_titles', ev(pg, "['초보 요리사','숙련 요리사','레전드 요리사','초보 낚시꾼','레전드 광부'].every(n=>TITLES.includes(n))"))
     check('mastery_title_awarded_and_shown', ev(pg, "(()=>{const lvl=l=>{let x=0;for(let i=1;i<l;i++)x+=MASTERY_NEED(i);return x};state.mastery['요리']=lvl(10);const got=checkTitles();state.mastery['요리']=lvl(20);const got2=checkTitles();const html=masteryPageHtml();state.mastery['요리']=0;state.titles=state.titles.filter(t=>!/요리사$/.test(t));return got.includes('초보 요리사')&&got2.includes('숙련 요리사')&&html.includes('숙련 요리사')})()"))
+    check('market_action_in_shop_street', ev(pg, "LOCATIONS['상점가'].groups[0].items.includes('대원 간 상점')&&ACTIONS['대원 간 상점'].kind==='market'"))
     # ---- 개인실 창고 ----
     ev(pg, "(()=>{state.location='개인실';state.storage={};addItem('감자',30);addItem('구리 반지',1);renderAction()})()")
     check('storage_action_in_private_room', ev(pg, "LOCATIONS['개인실'].items.includes('창고')&&ACTIONS['창고'].kind==='storage'"))
