@@ -1108,3 +1108,8 @@ textarea#mailBody{width:100%;min-height:80px;resize:vertical}
 .party-row button+button{margin-left:0}
 .party-foot{display:flex;align-items:center;justify-content:space-between;margin-top:6px;font-size:11px;color:var(--muted,#888)}
 .party-foot button{padding:2px 8px;font-size:11px}
+
+/* 업데이트 안내 막대: 새로고침 전까지 계속 보인다 */
+#updateBar{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);z-index:9999;display:flex;align-items:center;gap:10px;max-width:calc(100vw - 24px);padding:8px 10px 8px 14px;border-radius:12px;background:var(--accent);color:#fff;font-size:13px;font-weight:700;box-shadow:0 4px 18px rgba(0,0,0,.28)}
+#updateBar span{display:flex;align-items:center;gap:6px;min-width:0}
+#updateBar button{flex:none;padding:5px 12px;border-radius:8px;border:0;background:#fff;color:var(--accent);font-weight:800;cursor:pointer}

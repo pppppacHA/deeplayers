@@ -429,6 +429,33 @@ language sql security definer set search_path = public as $$
   where s.data->'character'->>'name' = any (p_names[1:40]);
 $$;
 
+-- ===== 파티 표 (chat_channel이 참조하므로 채팅보다 먼저 만든다) =====
+create table if not exists public.parties (
+  id         bigint generated always as identity primary key,
+  leader_uid uuid not null references auth.users(id) on delete cascade,
+  created_at timestamptz not null default now()
+);
+create table if not exists public.party_members (
+  user_id   uuid primary key references auth.users(id) on delete cascade,
+  party_id  bigint not null references public.parties(id) on delete cascade,
+  joined_at timestamptz not null default now()
+);
+create index if not exists party_members_p on public.party_members(party_id);
+create table if not exists public.party_reqs (
+  id         bigint generated always as identity primary key,
+  party_id   bigint not null references public.parties(id) on delete cascade,
+  from_uid   uuid not null references auth.users(id) on delete cascade,
+  to_uid     uuid not null references auth.users(id) on delete cascade,
+  from_name  text not null,
+  created_at timestamptz not null default now()
+);
+create unique index if not exists party_reqs_uniq on public.party_reqs(party_id, to_uid);
+create index if not exists party_reqs_to on public.party_reqs(to_uid);
+alter table public.parties enable row level security;
+alter table public.party_members enable row level security;
+alter table public.party_reqs enable row level security;
+
+
 create table if not exists public.chat_msgs (
   id bigint generated always as identity primary key,
   channel text not null,          -- 'world' 또는 'g<길드번호>'
@@ -528,31 +555,6 @@ grant execute on function public.guild_rename(text) to authenticated;
 -- ===== 파티 (2~4인) =====
 -- 초대 → 상대 수락. 파티장만 초대할 수 있고, 파티원 사이에는 파티 채팅과 교환(주위 대원 취급)이 열린다.
 -- 파티장이 나가면 다음 사람이 파티장이 되고, 혼자 남으면 파티가 사라진다.
-create table if not exists public.parties (
-  id         bigint generated always as identity primary key,
-  leader_uid uuid not null references auth.users(id) on delete cascade,
-  created_at timestamptz not null default now()
-);
-create table if not exists public.party_members (
-  user_id   uuid primary key references auth.users(id) on delete cascade,
-  party_id  bigint not null references public.parties(id) on delete cascade,
-  joined_at timestamptz not null default now()
-);
-create index if not exists party_members_p on public.party_members(party_id);
-create table if not exists public.party_reqs (
-  id         bigint generated always as identity primary key,
-  party_id   bigint not null references public.parties(id) on delete cascade,
-  from_uid   uuid not null references auth.users(id) on delete cascade,
-  to_uid     uuid not null references auth.users(id) on delete cascade,
-  from_name  text not null,
-  created_at timestamptz not null default now()
-);
-create unique index if not exists party_reqs_uniq on public.party_reqs(party_id, to_uid);
-create index if not exists party_reqs_to on public.party_reqs(to_uid);
-alter table public.parties enable row level security;
-alter table public.party_members enable row level security;
-alter table public.party_reqs enable row level security;
-
 -- 내 파티 + 나에게 온 초대 (오래된 초대는 1일 뒤 정리)
 create or replace function public.party_info() returns jsonb
 language plpgsql security definer set search_path = public as $$

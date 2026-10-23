@@ -443,6 +443,10 @@ with sync_playwright() as p:
     check('update_notice_posted', ev(pg, "state.chats['알림'].some(m=>m[0]==='업데이트'&&m[1].includes('새로고침'))"))
     ev(pg, "checkUpdate()"); pg.wait_for_timeout(50)
     check('update_notice_only_once', ev(pg, "state.chats['알림'].filter(m=>m[0]==='업데이트').length")== 1)
+    check('update_bar_persistent_until_reload', pg.locator('#updateBar').count() == 1 and pg.locator('#updateBar').is_visible() and '새로고침' in text(pg, '#updateBar'))
+    ev(pg, "(()=>{state.chats['알림']=[];renderChat();checkUpdate();openSettings();closeModal()})()"); pg.wait_for_timeout(100)
+    check('update_bar_survives_ui_changes_and_not_duplicated', pg.locator('#updateBar').count() == 1)
+    ev(pg, "document.getElementById('updateBar').remove();_verNotified=false;_ver=null")
     # ---------- 채팅 줄바꿈: 짧은 문장은 한 줄 ----------
     ev(pg, "view.chatAt=0")
     ev(pg, "sendChat('짧은말')"); pg.wait_for_timeout(60)

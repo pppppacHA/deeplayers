@@ -2074,6 +2074,7 @@ async function syncNotices() {
   if (!(Cloud.enabled && Cloud.user())) return;
   let rows; try { rows = await Cloud.listNotices(); } catch (e) { return; }
   state.chats['알림'] = [...NOTICE_FEED(), ...rows.slice().reverse().map(r => [cleanText(r.head, 20), cleanText(r.body, 300)])];
+  if (_verNotified) state.chats['알림'].push(['업데이트', '게임이 업데이트되었어요! 새로고침(F5, 안 되면 Ctrl+F5)하면 새 버전이 적용돼요.']);
   if ($('#chatFeed')) renderChat();
 }
 const CHAT_COOL_MS = 3000; // 도배 방지: 채팅은 3초에 한 번
@@ -2749,6 +2750,15 @@ async function checkUpdate() {
   _verNotified = true;
   state.chats['알림'].push(['업데이트', '게임이 업데이트되었어요! 새로고침(F5, 안 되면 Ctrl+F5)하면 새 버전이 적용돼요.']);
   renderChat(); toast('업데이트되었어요. 새로고침해 주세요.'); sfx('ok');
+  showUpdateBar();
+}
+/* 새로고침하기 전까지 사라지지 않는 안내 막대 (채팅 알림은 다시 그려지면 지워질 수 있어서 따로 둔다) */
+function showUpdateBar() {
+  if (document.getElementById('updateBar')) return;
+  const b = document.createElement('div'); b.id = 'updateBar'; b.setAttribute('role', 'alert');
+  b.innerHTML = `<span>${icon('system_update_alt')} 게임이 업데이트되었어요. 새로고침하면 새 버전이 적용돼요.</span><button type="button" id="updateReload">새로고침</button>`;
+  document.body.appendChild(b);
+  document.getElementById('updateReload').onclick = () => { try { flushSave(); } catch (e) { /* 저장 실패해도 새로고침 */ } location.reload(); };
 }
 function init() {
   state.chats['알림'] = state.chats['알림'].filter(m => m[0] !== '업데이트'); // 지난 업데이트 공지는 새로고침하면 사라진다
