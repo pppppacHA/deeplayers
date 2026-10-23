@@ -402,11 +402,11 @@ textarea{min-height:75px;resize:vertical}
 .modal-actions{display:flex;justify-content:flex-end;gap:6px;padding:10px 14px;border-top:1px solid var(--line)}
 .post-layout{display:grid;grid-template-columns:190px 1fr;min-height:240px}
 .post-list{padding-right:9px;border-right:1px solid var(--line)}
-.post-item{display:block;width:100%;margin-bottom:5px;text-align:left;font-size:calc(11px*var(--fs));background:transparent;border-color:transparent}
+.post-item{display:block;width:100%;margin-bottom:5px;text-align:left;font-size:calc(13px*var(--fs));background:transparent;border-color:transparent}
 .post-item.active{background:var(--accent-soft);border-color:var(--accent-line);color:var(--accent-2)}
 .post-detail{padding:8px 12px}
-.post-detail h3{margin:0 0 10px;font-size:calc(14px*var(--fs))}
-.post-detail p{font-size:calc(11px*var(--fs));line-height:1.8;color:var(--text-2)}
+.post-detail h3{margin:0 0 10px;font-size:calc(16px*var(--fs))}
+.post-detail p{font-size:calc(13px*var(--fs));line-height:1.8;color:var(--text-2)}
 .form-row{display:grid;grid-template-columns:115px 1fr;gap:10px;align-items:center;margin-bottom:11px}
 .form-row label{font-size:calc(11px*var(--fs));color:var(--muted)}
 .detail-desc{margin:8px 0;font-size:calc(12px*var(--fs));line-height:1.7;color:var(--text-2)}
@@ -1113,3 +1113,28 @@ textarea#mailBody{width:100%;min-height:80px;resize:vertical}
 #updateBar{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);z-index:9999;display:flex;align-items:center;gap:10px;max-width:calc(100vw - 24px);padding:8px 10px 8px 14px;border-radius:12px;background:var(--accent);color:#fff;font-size:13px;font-weight:700;box-shadow:0 4px 18px rgba(0,0,0,.28)}
 #updateBar span{display:flex;align-items:center;gap:6px;min-width:0}
 #updateBar button{flex:none;padding:5px 12px;border-radius:8px;border:0;background:#fff;color:var(--accent);font-weight:800;cursor:pointer}
+.use-gain{display:flex;align-items:center;gap:5px;margin:6px 0 0;font-size:13px;color:var(--accent)}
+.use-gain small{color:var(--muted,#888);font-weight:400}
+#useQty{min-width:64px}
+.msg-del{margin-left:6px;padding:0 4px;border:0;background:none;color:var(--muted,#888);cursor:pointer;vertical-align:middle;line-height:1}
+.msg-del .material-symbols-rounded{font-size:15px}
+.msg-del:hover{color:#d33}
+/* 펫 이름 수정: 박스 안 가운데 */
+.pet-row,.pet-side-row{flex-wrap:wrap}
+.pet-edit-row{flex:1 0 100%;display:flex;justify-content:center;align-items:center;gap:6px;margin-top:2px}
+.pet-edit-row.search-row input{flex:1;max-width:220px}
+.pet-edit-row button.mini{padding:2px 12px;font-size:11px}
+.codex-search{margin:8px 0 6px}
+.codex-search input{flex:1;min-width:0}
+.codex-bar{margin-bottom:10px}
+.codex-list{margin-top:4px}
+/* 타인 프로필: 이능력은 맨 위 카드(사진·칭호·이름) 오른쪽에 */
+.user-card{justify-content:flex-start;gap:14px;align-items:center}
+.user-card .uc-name{flex:none;max-width:42%}
+.user-card .uc-ability{flex:1;min-width:0;margin-left:auto;padding:8px 11px;border:1px solid var(--line);border-radius:8px;background:var(--panel-2)}
+.user-card .uc-ability b{display:flex;align-items:center;gap:5px;font-size:calc(12px*var(--fs));color:var(--accent-2)}
+.user-card .uc-ability p{margin:4px 0 0;font-size:calc(11px*var(--fs));line-height:1.5;color:var(--text-2);white-space:pre-wrap;word-break:break-word;max-height:5.6em;overflow:auto}
+@media (max-width:520px){.user-card{flex-wrap:wrap;justify-content:center}.user-card .uc-ability{flex:1 0 100%;margin:0}}
+
+.slot-tag{font-style:normal;margin-left:4px}
+.slot-hint{margin:0 0 8px}

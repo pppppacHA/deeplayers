@@ -409,6 +409,15 @@ function collapseNow() {
   addBuff('부상'); save();
   return { why, lost };
 }
+/* 사용했을 때 실제로 늘어나는 양 { hp, sp } (최대치를 넘는 부분은 뺀다) */
+function useGain(name, n = 1) {
+  const use = ITEMS[name] && ITEMS[name].use, v = state.vitals;
+  if (!use || use.warp) return { hp: 0, sp: 0 };
+  n = Math.min(intIn(n, 1, MAX_BATCH, 1), Math.max(1, countItem(name)));
+  const m = 1 + healBonus(name);
+  return { hp: use.hp ? Math.max(0, Math.min(v.hpMax, v.hp + Math.round(use.hp * m) * n) - v.hp) : 0, sp: use.sp ? Math.max(0, Math.min(v.spMax, v.sp + Math.round(use.sp * m) * n) - v.sp) : 0 };
+}
+const useGainText = (name, n) => { const g = useGain(name, n), b = []; if (ITEMS[name].use.hp) b.push(`HP +${g.hp}`); if (ITEMS[name].use.sp) b.push(`기력 +${g.sp}`); return b.join(' · '); };
 function useItem(name, n = 1) {
   const use = ITEMS[name].use, v = state.vitals;
   n = use && use.warp ? 1 : Math.min(intIn(n, 1, MAX_BATCH, 1), countItem(name));
@@ -613,7 +622,7 @@ function actionPreview(id, mi = 0) {
     const odds = `승리 약 ${bo.win}% · 다칠 확률 약 ${bo.hurt}% (1회 최대 HP -${m.hpCap || BATTLE_HP_CAP}) · 재료 ${pct(BATTLE_MAT * rep)} · ${m.drops.map(([n, p]) => `${n} ${pct(p * rep)}`).join(' · ')}`;
     return { time, gain: `승리 시 EXP +${m.exp} · CR +${m.cr} · 재료 (회당)`, cost: costs.join(' · '), note, odds };
   }
-  if (a.kind === 'tame') return { time: '10분', gain: `성공하면 펫을 얻음 (성공 확률 약 ${Math.round(tameChance() * 100)}% · 감각이 높을수록 유리) · EXP +12`, cost: `기력 -${sp} · 먹이 1개(직접 고른 작물/펫 사료) 소모 · 실패하면 HP 손실 가능` };
+  if (a.kind === 'tame') return { time: '10분', gain: `성공하면 펫을 얻음 (성공 확률 약 ${Math.round(tameChance() * 100)}% · 감각이 높을수록 유리 · 펫 사료를 먹이면 +${Math.round(TAME_FOOD_BONUS * 100)}%p) · EXP +12`, cost: `기력 -${sp} · 먹이 1개(직접 고른 작물/펫 사료) 소모 · 실패하면 HP 손실 가능` };
   if (a.kind === 'train') { const n = learnableRecipes().length; return { time: '25분', gain: `새 제작 레시피 1종을 무작위로 습득 · EXP +${TRAIN_EXP}`, cost: `기력 -${sp}`, note: n ? `지금 배울 수 있는 레시피 ${n}종 (승급하면 후보가 늘어납니다)` : '지금은 더 배울 수 있는 레시피가 없습니다.' }; }
   if (a.kind === 'rest') return { time: a.sec >= 3600 ? `${a.sec / 3600}시간` : a.sec >= 120 ? `${a.sec / 60}분` : '1분', gain: a.full ? 'HP · 기력 완전 회복 · 충분한 휴식(의지 +2, 5분)' : `HP +30 · 기력 +${a.restSp ?? REST_SP} · 충분한 휴식(의지 +2, 5분)`, cost: '없음' };
   if (a.kind === 'travel') return { time: LOCATIONS[a.to].danger ? `${ZONE_TRIP_SEC / 60}분` : '즉시', gain: `이동 후 그 구역의 선택지를 이용할 수 있음${ZONE_MIN_RANK[a.to] ? ` (${ZONE_MIN_RANK[a.to]}등급 이상)` : ''}`, cost: moveCost(a.to) ? `기력 -${moveCost(a.to)}` : '기력 소모 없음' };
@@ -1051,7 +1060,7 @@ function resolveAction(id, cycles = 1, spPaid = 0, act = null) {
     return r;
   }
   if (a.kind === 'tame') {
-    const mon = a.terrain.monster, ok = chance(tameChance());
+    const mon = a.terrain.monster, ok = chance(tameChance(act && act.bait));
     r.exp = 12; r.sp = 0; r.spCost = spPaid;
     if (ok) { r.pet = mon.name; r.text = `${mon.name}이(가) 먹이를 받아먹고 경계를 풀었습니다. 길들이기 성공! 「${PET_SPECIES[mon.name].name}」이(가) 곁에 따릅니다.`; }
     else { r.tameFail = true; r.text = `${mon.name}이(가) 먹이만 채 가고 달아났습니다.`; if (chance(.5)) { const h = rand(...a.hazard.hp); r.hp -= h; r.text += ` 달아나며 물려 HP를 ${h} 잃었습니다.`; } }
@@ -1681,7 +1690,8 @@ const activePet = () => state.pets[state.petActive] || null;
 const petSpeed = () => { const p = activePet(); return p && petFed(p) ? petBuff(p) : 0; };
 const stepSec = () => DUNGEON_STEP_SEC * (1 - petSpeed());
 const baitItems = () => Object.values(state.inventory).flat().filter(s => ITEMS[s.n].feed).map(s => s.n).sort((a, b) => ITEMS[a].feed - ITEMS[b].feed);
-const tameChance = () => clamp(TAME_BASE + totalStats().sen * .02, 0, .8);
+const tameChance = bait => clamp(TAME_BASE + totalStats().sen * .02 + (bait === PET_FOOD ? TAME_FOOD_BONUS : 0), 0, .8);
+const feedGain = n => Math.round((ITEMS[n].feed || 0) * (n === PET_FOOD ? FOOD_BOND_MULT : 1));
 function addPet(id) {
   if (!PET_SPECIES[id] || state.pets.some(p => p.id === id) || state.pets.length >= petCap()) return false;
   state.pets.push({ id, bond: PET_BOND_START, fedAt: 0, exp: null, pers: pick(PET_PERS_LIST) });
@@ -1698,7 +1708,7 @@ function feedPet(i, item) {
   if (herb && p.pers === herb) return `${petName(p)}은(는) 이미 ${herb} 성격입니다.`;
   if (!removeItem(item)) return '먹이가 없습니다.';
   if (herb) p.pers = herb;
-  p.bond = Math.min(100, p.bond + it.feed); p.fedAt = nowMs(); save();
+  p.bond = Math.min(100, p.bond + feedGain(item)); p.fedAt = nowMs(); save();
   return null;
 }
 /* 돌보기(간식·쓰다듬기·기분 묻기): 개인실에서, 또는 함께 다니는 펫이면 어디서든 */

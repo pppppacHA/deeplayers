@@ -210,3 +210,10 @@ STUB_ICONS=1 python3 tests/smoke.py   # 아이콘 폰트를 못 받는 환경(�
 - **무기**: 채찍·빗자루·요요(종합 상가). **장비 묘사**: `WEAPON_LINES`·`SLOT_LINES`(이동 t/전투 b/채집 g/조사 i)를 `equipLine(kind, r)`가 아이템 전용 문장과 섞어 쓰고 `fixJosa`로 조사를 맞춘다. 채집 로그 20%, 조사 30%.
 - **이능력 주/부 스탯**: `character.mainStat(+2)/subStat(+1)`(`MAIN_STAT_BONUS/SUB_STAT_BONUS`), 캐릭터 생성 2단계·프로필 수정(24시간 간격 공유)에서 선택, `gearMods`에 반영. 서버 `get_profile`에도 포함.
 - **교환은 상대가 접속 중일 때만**: 서버 `presence`(`touch_presence()`를 `chat_fetch`/`party_info`가 부름, 90초 안 신호면 접속 중, `is_online`). `propose_trade`가 오프라인이면 `offline`으로 거절(맡긴 물건은 되돌림), 파티원은 `party_info`의 `online`으로 상황 탭에 '접속 중/오프라인' 표시, 오프라인이면 교환 창이 열리지 않음.
+
+## 2026-10-23 (2) 소소한 개선
+- 소모품 사용: 개수 드롭다운 `select#useQty`(기본 1)+회복량 `#useGain`(`useGain/useGainText`). 알림 탭은 이모티콘/주사위 숨김. 개발자(관리자)는 알림 공지 삭제(`delete_notice`, `supabase/admin.sql` 재실행 필요). 업데이트 안내 막대는 새로고침 전까지 유지(`showUpdateBar`).
+- 프로필: 쿨타임 중에도 주/부 스탯이 둘 다 비어 있으면 그것만 설정 가능(타이머 불변). 타인 프로필은 이능력이 `.user-card .uc-ability`(오른쪽). 도감 검색 `#codexQ`(발견한 항목만). 펫 돌보기는 비동행 펫도 `editRow`의 가운데 '이름 수정' 버튼으로 개명. 가이드는 9항목으로 통합, 게시글 글자 확대.
+- 종합 상가 장비/무기 행에 `착용 위치 · 슬롯` 태그(`.slot-tag`)와 안내문(`.slot-hint`).
+- 새 레시피 `NEW_RECIPES3`(data.js, 쓰이는 곳 없던 재료 14종 소진: 요리 5·약 3·장비 6). 약은 `MEDICINES.add`. 테스트 `unused_materials_now_have_recipes`/`new_recipes_valid`.
+- 펫 사료(`PET_FOOD`): 길들이기 성공 확률 +`TAME_FOOD_BONUS`(8%p, `tameChance(bait)`, 결과 계산은 `act.bait`), 간식 친밀도 ×`FOOD_BOND_MULT`(1.5, `feedGain`). 먹이 선택 표시도 `feedGain`.

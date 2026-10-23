@@ -12,7 +12,7 @@ def rect(pg, sel):
 def check(n, c, info=None):
     print(('ok  ' if c else 'FAIL'), n, '' if c else info)
     if not c: fails.append(n)
-server = {'party': {'party': None, 'incoming': []}, 'pcalls': [], 'backups': [], 'bdata': {}, 'bnow': 0, 'chat': [], 'chatsent': [], 'avatars': {}, 'avq': [], 'setav': [], 'rev': 0, 'data': None, 'pushes': [], 'sent': [], 'incoming': [], 'results': [], 'answers': [], 'acks': [], 'friends': [], 'mails': [], 'inmail': [], 'mack': [], 'props': [], 'tb': {'incoming': [], 'sent': [], 'results': []}, 'tans': [], 'tack': [], 'gcalls': [], 'ginfo': {'guild': None, 'incoming': [], 'sent': []}}
+server = {'notices': [], 'ndel': [], 'party': {'party': None, 'incoming': []}, 'pcalls': [], 'backups': [], 'bdata': {}, 'bnow': 0, 'chat': [], 'chatsent': [], 'avatars': {}, 'avq': [], 'setav': [], 'rev': 0, 'data': None, 'pushes': [], 'sent': [], 'incoming': [], 'results': [], 'answers': [], 'acks': [], 'friends': [], 'mails': [], 'inmail': [], 'mack': [], 'props': [], 'tb': {'incoming': [], 'sent': [], 'results': []}, 'tans': [], 'tack': [], 'gcalls': [], 'ginfo': {'guild': None, 'incoming': [], 'sent': []}}
 pg_name = ['테스터']
 def api(route):
     req = route.request; u = req.url; h = {'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'content-type': 'application/json'}
@@ -57,6 +57,8 @@ def api(route):
     if '/rpc/chat_send' in u: server['chatsent'].append(body); return route.fulfill(headers=h, body=json.dumps({'ok': True}))
     if '/rpc/get_avatars' in u: server['avq'].append(body.get('p_names')); return route.fulfill(headers=h, body=json.dumps({n: server['avatars'][n] for n in body.get('p_names', []) if n in server['avatars']}))
     if '/rpc/set_avatar' in u: server['setav'].append(body.get('p_img')); return route.fulfill(headers=h, body='null')
+    if '/rpc/list_notices' in u: return route.fulfill(headers=h, body=json.dumps(sorted(server['notices'], key=lambda r: -r['id'])))
+    if '/rpc/delete_notice' in u: server['ndel'].append(body.get('p_id')); server['notices'] = [r for r in server['notices'] if r['id'] != body.get('p_id')]; return route.fulfill(headers=h, body='null')
     if '/rpc/is_admin' in u: return route.fulfill(headers=h, body='true')
     if '/rpc/pull_save' in u:
         return route.fulfill(headers=h, body=json.dumps(None if server['data'] is None else {'rev': server['rev'], 'data': server['data'], 'at': '2026-10-21T03:00:00Z'}))
@@ -139,6 +141,7 @@ with sync_playwright() as p:
     pg.evaluate("friendPoll()"); pg.wait_for_timeout(500)
     pg.evaluate("viewUser('하늘')"); pg.wait_for_timeout(500)
     check('other_profile_loads_ability_title_guild', '그림자 이동' in pg.inner_text('#modalBody') and '신입 능력자' in pg.inner_text('#modalBody') and '별무리' in pg.inner_text('#modalBody') and pg.locator('.user-grid .uc').count() >= 5, pg.inner_text('#modalBody'))
+    check('other_profile_ability_at_top_right', pg.evaluate("(()=>{const u=document.querySelector('.user-card'),a=u&&u.querySelector('.uc-ability'),n=u&&u.querySelector('.uc-name');if(!a||!n)return false;const ab=a.getBoundingClientRect(),nb=n.getBoundingClientRect();return ab.left>=nb.right+8&&ab.top<nb.bottom+40})()"))
     pg.evaluate("viewUser('없는사람')"); pg.wait_for_timeout(500)
     check('other_profile_missing_shows_reason', '찾지 못' in pg.inner_text('#modalBody') or '최신본' in pg.inner_text('#modalBody'), pg.inner_text('#modalBody'))
     pg.evaluate("closeModal()")
@@ -213,6 +216,21 @@ with sync_playwright() as p:
     pg.evaluate("view.chatAt=0")
     pg.evaluate("sendChat('길드 인사')"); pg.wait_for_timeout(500)
     check('guild_chat_uses_guild_channel', server['chatsent'][-1] == {'p_channel': 'guild', 'p_body': '길드 인사'}, server['chatsent'])
+    pg.evaluate("state.chatTab='월드';renderChat()")
+    # ---- 공지 삭제 (관리자) ----
+    server['notices'] = [{'id': 5, 'head': '공지', 'body': '실수로 보낸 공지', 'created_at': '2026-10-23T07:00:00Z'}]
+    pg.evaluate("view.isAdmin=true"); pg.evaluate("syncNotices()"); pg.wait_for_timeout(500)
+    pg.evaluate("state.chatTab='알림';renderChat()")
+    check('notice_delete_button_for_admin', pg.locator('#chatFeed [data-act="notice-del"]').count() == 1, pg.inner_html('#chatFeed')[:200])
+    pg.click('#chatFeed [data-act="notice-del"]'); pg.wait_for_timeout(200)
+    check('notice_delete_asks_first', '정말' in pg.inner_text('#modalBody') and server['ndel'] == [])
+    pg.click('[data-act="confirm-cancel"]'); pg.wait_for_timeout(100)
+    check('notice_delete_cancel_keeps', server['ndel'] == [] and '실수로 보낸 공지' in pg.inner_text('#chatFeed'))
+    pg.click('#chatFeed [data-act="notice-del"]'); pg.wait_for_timeout(200)
+    pg.click('[data-act="notice-del-do"]'); pg.wait_for_timeout(600)
+    check('notice_delete_removes', server['ndel'] == [5] and '실수로 보낸 공지' not in pg.inner_text('#chatFeed'), server['ndel'])
+    pg.evaluate("view.isAdmin=false"); server['notices'] = [{'id': 6, 'head': '공지', 'body': '다른 공지', 'created_at': '2026-10-23T07:00:00Z'}]; pg.evaluate("syncNotices()"); pg.wait_for_timeout(400)
+    check('notice_delete_hidden_for_non_admin', pg.locator('#chatFeed [data-act="notice-del"]').count() == 0 or pg.evaluate("canNotice()"))
     pg.evaluate("state.chatTab='월드';renderChat()")
     # ---- 파티 ----
     UID_ME = pg.evaluate("Cloud.userUid"); UID_A = '55555555-5555-5555-5555-555555555555'
