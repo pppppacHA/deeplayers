@@ -1780,7 +1780,7 @@ const A = {
     const name = ($('#mkItem') || {}).value, qty = intIn(($('#mkQty') || {}).value, 1, 99, 0), price = intIn(($('#mkPrice') || {}).value, 1, MARKET_TOTAL_MAX, 0);
     const e = marketLocalList(name, qty, price); if (typeof e === 'string') { toast(e); sfx('error'); return; }
     renderBag(); sfx('ok'); view.mkTab = '내 목록'; renderMarket();
-    try { const r = await Cloud.marketList(e.key, e.item, e.qty, e.price); if (r && r.ok === false) { state.market.sell = state.market.sell.filter(x => x !== e); marketGiveBack(e, 'r' + e.key.slice(-6)); save(); renderBag(); toast(r.msg === 'full' ? '서버에 올라간 물건이 너무 많아요. 먼저 정리해 주세요.' : '거래 등록이 거절돼 물건을 돌려받았어요.'); sfx('error'); } else if (r && r.ok) e.id = intIn(r.id, 1, 9e15, 0); save(); }
+    try { const r = await Cloud.marketList(e.key, e.item, e.qty, e.price); if (r && r.ok === false) { state.market.sell = state.market.sell.filter(x => x !== e); marketGiveBack(e, e.qty, 'r' + e.key.slice(-6)); save(); renderBag(); toast(r.msg === 'full' ? '서버에 올라간 물건이 너무 많아요. 먼저 정리해 주세요.' : '거래 등록이 거절돼 물건을 돌려받았어요.'); sfx('error'); } else if (r && r.ok) e.id = intIn(r.id, 1, 9e15, 0); save(); }
     catch (x) { toast('서버와 연결하지 못했어요. 연결되면 자동으로 올라갑니다.'); }
     if ($('#mkRoot')) renderMarket(true);
   },
@@ -1792,13 +1792,15 @@ const A = {
   },
   'mk-buy': async el => {
     const id = intIn(el.dataset.id, 1, 9e15, 0), x = (view.mkList || []).find(r => r.id === id); if (!x) return;
-    const err = marketBuyStart(id, x.item, x.qty, x.price); if (err) { toast(err); sfx('error'); return; }
+    const qty = intIn(($('#mkN' + id) || {}).value, 1, x.qty, 1);
+    const s = marketBuyStart(id, x.item, qty, x.price); if (typeof s === 'string') { toast(s); sfx('error'); return; }
     renderProfile(); let res = 'retry';
-    try { res = marketBuyResult(id, await Cloud.marketBuy(id)); } catch (e) { /* 결과를 모르면 pending 으로 남긴다 */ }
-    if (res === 'ok') { toast('거래가 성사됐어요. 메일함에서 물건을 수령하세요.'); sfx('levelup'); view.mkList = (view.mkList || []).filter(r => r.id !== id); renderMailBadge(); }
-    else if (res === 'gone') { toast('다른 대원이 먼저 샀어요. CR을 돌려받았습니다.'); sfx('error'); view.mkList = (view.mkList || []).filter(r => r.id !== id); }
-    else toast('결과를 확인하는 중이에요. 잠시 뒤 자동으로 처리됩니다.');
-    renderProfile(); if ($('#mkRoot')) renderMarket(true);
+    try { res = marketBuyResult(s.req, await Cloud.marketBuy(id, qty, s.req)); } catch (e) { /* 결과를 모르면 pending 으로 남긴다 */ }
+    renderBag(); renderProfile();
+    if (res === 'ok') { toast(`${x.item} ×${qty}을(를) 샀어요. (-${x.price * qty} CR)`); sfx('levelup'); }
+    else if (res === 'retry') toast('결과를 확인하는 중이에요. 잠시 뒤 자동으로 처리됩니다.');
+    else { toast(res === 'short' ? '남은 개수가 모자라 CR을 돌려받았어요. 목록을 새로 불러옵니다.' : '이미 팔려서 CR을 돌려받았어요.'); sfx('error'); }
+    if (res !== 'retry') marketBrowse(); else if ($('#mkRoot')) renderMarket(true);
   },
   'storage-pick': el => { const n = el.dataset.name, side = el.dataset.side === 'stor' ? 'stor' : 'bag'; view.storSel = view.storSel && view.storSel.name === n && view.storSel.side === side ? null : { side, name: n }; openStorage(true); },
   'storage-put': el => {
@@ -2016,7 +2018,7 @@ async function viewUser(name) { // 이름·아이콘을 누르면 그 대원의 
       `<div class="user-grid">${cell('상태', st)}${r ? cell('레벨', 'Lv.' + intIn(r.level, 1, MAX_LEVEL, 1)) + cell('등급', ('FEDCBAS'.includes(r.rank) ? r.rank : 'F') + '등급') : ''}${pr ? cell('나이', intIn(pr.age, 0, 999, 0) + '세') : ''}${cell('관계', has ? '친구' : '친구 아님')}${pr ? cell('길드', pr.guild ? cleanText(pr.guild, 12) : '-') : ''}</div>` +
       (kw ? `<div class="char-tags">${esc(kw)}</div>` : '') + (pr && pr.equipment ? otherEquipHtml(pr.equipment) : pr ? '<p class="tiny">장비 정보는 서버에 supabase/friends.sql 최신본을 실행하면 보여요.</p>' : '') +
       (pr ? '' : (Cloud.enabled && Cloud.user() ? `<p class="tiny">${esc(note || '자세한 프로필을 불러오는 중…')}</p>` : '<p class="tiny">서버에 로그인하면 이능력 등 자세한 프로필을 볼 수 있어요.</p>')),
-      [btnClose, uid && chatOnline() && (!PARTY.id || partyLeader()) && !PARTY.members.some(m => m.name === name) ? `<button data-act="party-invite" data-uid="${esc(uid)}" data-name="${esc(name)}">파티 초대</button>` : '', !has && uid ? `<button class="primary" data-act="friend-req" data-uid="${esc(uid)}" data-name="${esc(name)}">친구 신청</button>` : ''].filter(Boolean));
+      [btnClose, (PARTY.members.some(m => m.name === name) || (view.nearby || []).some(p => p.name === name)) ? `<button class="primary" data-act="ftrade-open" data-name="${esc(name)}">교환</button>` : '', uid && chatOnline() && (!PARTY.id || partyLeader()) && !PARTY.members.some(m => m.name === name) ? `<button data-act="party-invite" data-uid="${esc(uid)}" data-name="${esc(name)}">파티 초대</button>` : '', !has && uid ? `<button class="primary" data-act="friend-req" data-uid="${esc(uid)}" data-name="${esc(name)}">친구 신청</button>` : ''].filter(Boolean));
     view.userShown = name;
   };
   draw(null, '');
@@ -2061,10 +2063,10 @@ async function marketSync() { // 내가 올린 것·처리 중인 구매를 서�
   _mkBusy = true;
   try {
     for (const b of state.market.buy.slice()) { // 결과를 모르는 구매는 다시 확인한다 (이미 산 것이면 같은 답이 온다)
-      const r = marketBuyResult(b.id, await Cloud.marketBuy(b.id)); if (r === 'ok') toast('거래가 성사됐어요. 메일함에서 물건을 수령하세요.'); else if (r === 'gone') toast('다른 대원이 먼저 샀어요. CR을 돌려받았습니다.');
+      const r = marketBuyResult(b.req, await Cloud.marketBuy(b.id, b.qty, b.req)); if (r === 'ok') toast(`${b.item} ×${b.qty} 구매가 처리됐어요.`); else if (r !== 'retry') toast('이미 팔려서 CR을 돌려받았어요.');
     }
     if (state.market.sell.length) {
-      for (const e of state.market.sell.filter(x => !x.id)) { try { const r = await Cloud.marketList(e.key, e.item, e.qty, e.price); if (r && r.ok === false && r.msg) { state.market.sell = state.market.sell.filter(x => x !== e); marketGiveBack(e, 'r' + e.key.slice(-6)); toast('거래 등록이 거절돼 물건을 돌려받았어요.'); } } catch (x) { /* 다음에 다시 */ } }
+      for (const e of state.market.sell.filter(x => !x.id)) { try { const r = await Cloud.marketList(e.key, e.item, e.qty, e.price); if (r && r.ok === false && r.msg) { state.market.sell = state.market.sell.filter(x => x !== e); marketGiveBack(e, e.qty, 'r' + e.key.slice(-6)); toast('거래 등록이 거절돼 물건을 돌려받았어요.'); } } catch (x) { /* 다음에 다시 */ } }
       const out = marketSettleSell(await Cloud.marketMine());
       out.sold.forEach(s => { toast(`${s.item} ×${s.qty}이(가) 팔렸어요! +${s.net} CR`); addLog(`거래: ${s.item} ×${s.qty} 판매 (+${s.net} CR)`); sfx('ok'); });
       out.back.forEach(s => toast(`${s.item} ×${s.qty} 거래가 끝나 물건을 돌려받았어요.`));
@@ -2080,27 +2082,22 @@ async function marketBrowse() {
   if ($('#mkRoot')) renderMarket(true);
 }
 function marketHtml() {
-  const tab = ['사기', '팔기', '내 목록', '교환'].includes(view.mkTab) ? view.mkTab : '사기';
-  const tabs = `<div class="tabs flush">${['사기', '팔기', '내 목록', '교환'].map(t => `<button class="${t === tab ? 'active' : ''}" data-act="mk-tab" data-tab="${t}">${t}${t === '내 목록' && state.market.sell.length ? ` ${state.market.sell.length}` : ''}</button>`).join('')}</div>`;
+  const tab = ['사기', '팔기', '내 목록'].includes(view.mkTab) ? view.mkTab : '사기';
+  const tabs = `<div class="tabs flush">${['사기', '팔기', '내 목록'].map(t => `<button class="${t === tab ? 'active' : ''}" data-act="mk-tab" data-tab="${t}">${t}${t === '내 목록' && state.market.sell.length ? ` ${state.market.sell.length}` : ''}</button>`).join('')}</div>`;
   let body;
   if (tab === '사기') {
-    const rows = view.mkList == null ? '<div class="empty">불러오는 중…</div>' : view.mkList.map(x => `<div class="shop-row"><span class="shop-ic">${icon(ITEMS[x.item].icon)}</span><div class="grow"><strong>${esc(shownName(x.item))} <span class="tiny">×${x.qty}</span></strong><small class="tiny">판매자 ${esc(x.seller)} · 개당 ${Math.ceil(x.price / x.qty)} CR${tradeValue(x.item) ? ` (상점 시세 ${tradeValue(x.item)} CR)` : ''}</small></div><button class="primary" data-act="mk-buy" data-id="${x.id}" ${state.money < x.price ? 'disabled' : ''}>${x.price} CR</button></div>`).join('') || `<div class="empty">${view.mkErr ? '서버에 연결하지 못했어요.' : '올라온 물건이 없어요.'}</div>`;
+    const rows = view.mkList == null ? '<div class="empty">불러오는 중…</div>' : view.mkList.map(x => `<div class="shop-row"><span class="shop-ic">${icon(ITEMS[x.item].icon)}</span><div class="grow"><strong>${esc(shownName(x.item))} <span class="tiny">남은 ${x.qty}개</span></strong><small class="tiny">판매자 ${esc(x.seller)} · 개당 ${x.price} CR${tradeValue(x.item) ? ` (상점 시세 ${tradeValue(x.item)} CR)` : ''}</small></div><input type="number" class="mk-n" id="mkN${x.id}" min="1" max="${x.qty}" value="1" aria-label="살 개수"><button class="primary" data-act="mk-buy" data-id="${x.id}">구매</button></div>`).join('') || `<div class="empty">${view.mkErr ? '서버에 연결하지 못했어요.' : '올라온 물건이 없어요.'}</div>`;
     body = `<div class="mk-search"><input id="mkQ" maxlength="20" placeholder="물건 이름 검색" value="${esc(view.mkQ || '')}"><button data-act="mk-search">검색</button><button data-act="mk-refresh">새로고침</button></div><div class="shop-list">${rows}</div>`;
   } else if (tab === '팔기') {
     const bag = {}; Object.values(state.inventory).flat().forEach(s => { bag[s.n] = (bag[s.n] || 0) + s.q; });
     const names = Object.keys(bag).filter(n => ITEMS[n] && !ITEMS[n].hidden && n !== MAIL_SHIP_ITEM).sort((x, y) => ITEMS[x].tab.localeCompare(ITEMS[y].tab) || x.localeCompare(y));
     const sel = names.includes(view.mkItem) ? view.mkItem : names[0];
     body = names.length ? `<div class="mk-sell"><label>물건<select id="mkItem">${names.map(n => `<option value="${esc(n)}" ${n === sel ? 'selected' : ''}>${esc(shownName(n))} (×${bag[n]})</option>`).join('')}</select></label>` +
-      `<label>수량<input id="mkQty" type="number" min="1" max="${Math.min(99, bag[sel])}" value="1"></label><label>총 가격(CR)<input id="mkPrice" type="number" min="1" max="${MARKET_TOTAL_MAX}" value="${Math.min(MARKET_TOTAL_MAX, Math.max(1, tradeValue(sel)))}"></label>` +
-      `<p class="tiny">상점 시세 ${tradeValue(sel)} CR · 개당 최대 ${marketUnitMax(sel)} CR · 팔리면 수수료 ${Math.round(MARKET_FEE * 100)}%를 뗍니다. 올린 물건은 소지품에서 빠지고, 취소하거나 3일이 지나면 돌아옵니다. (동시 ${MARKET_SLOTS}건)</p><button class="primary" data-act="mk-list">올리기</button></div>` : '<div class="empty">팔 수 있는 소지품이 없어요.</div>';
+      `<label>수량<input id="mkQty" type="number" min="1" max="${Math.min(99, bag[sel])}" value="1"></label><label>개당 가격(CR)<input id="mkPrice" type="number" min="1" max="${marketUnitMax(sel)}" value="${Math.max(1, tradeValue(sel))}"></label>` +
+      `<p class="tiny">상점 시세 ${tradeValue(sel)} CR · 개당 최대 ${marketUnitMax(sel)} CR · 한 건 전체 ${MARKET_TOTAL_MAX} CR까지 · 사는 대원이 원하는 개수만큼 나눠 살 수 있고, 팔린 만큼 수수료 ${Math.round(MARKET_FEE * 100)}%를 뗍니다. 올린 물건은 소지품에서 빠지고, 취소하거나 3일이 지나면 돌아옵니다. (동시 ${MARKET_SLOTS}건)</p><button class="primary" data-act="mk-list">올리기</button></div>` : '<div class="empty">팔 수 있는 소지품이 없어요.</div>';
   } else if (tab === '내 목록') {
-    const rows = state.market.sell.map(e => `<div class="shop-row"><span class="shop-ic">${icon(ITEMS[e.item].icon)}</span><div class="grow"><strong>${esc(shownName(e.item))} <span class="tiny">×${e.qty}</span></strong><small class="tiny">${e.price} CR · ${e.id ? '판매 중' : '등록 중… (연결되면 올라가요)'}</small></div>${e.id ? `<button data-act="mk-cancel" data-id="${e.id}">취소</button>` : ''}</div>`).join('') || '<div class="empty">올려 둔 물건이 없어요.</div>';
-    body = rows + (state.market.buy.length ? `<p class="tiny">처리 중인 구매 ${state.market.buy.length}건 — 결과가 나오면 물건이 메일로 옵니다.</p>` : '');
-  } else {
-    const seen = new Set(), rows = [];
-    const add = (n, tag) => { if (!n || n === state.character.name || seen.has(n)) return; seen.add(n); rows.push(`<div class="nearby-row"><div class="round-avatar" data-user="${esc(n)}">${avatarOf(n)}</div><div class="grow"><strong data-user="${esc(n)}">${esc(n)}</strong><small>${tag}</small></div><button data-act="ftrade-open" data-name="${esc(n)}">교환</button></div>`); };
-    PARTY.members.forEach(m => add(m.name, '파티')); (view.nearby || []).forEach(p => add(p.name, '같은 칸'));
-    body = `<p class="tiny">교환은 물건끼리 바꾸는 실시간 교환대예요. 파티원과는 어디에서든, 그 밖의 대원과는 같은 칸에서 할 수 있고 하루 ${TRADE_DAILY}회까지입니다.</p>${rows.join('') || '<div class="empty">교환할 수 있는 대원이 없어요.</div>'}`;
+    const rows = state.market.sell.map(e => `<div class="shop-row"><span class="shop-ic">${icon(ITEMS[e.item].icon)}</span><div class="grow"><strong>${esc(shownName(e.item))} <span class="tiny">×${e.qty}</span></strong><small class="tiny">개당 ${e.price} CR · ${e.id ? `판매 중${e.got ? ` (${e.got}개 팔림)` : ''}` : '등록 중… (연결되면 올라가요)'}</small></div>${e.id ? `<button data-act="mk-cancel" data-id="${e.id}">취소</button>` : ''}</div>`).join('') || '<div class="empty">올려 둔 물건이 없어요.</div>';
+    body = rows + (state.market.buy.length ? `<p class="tiny">처리 중인 구매 ${state.market.buy.length}건 — 결과가 확인되면 바로 소지품에 들어옵니다.</p>` : '');
   }
   return `<div id="mkRoot">${tabs}${body}</div>`;
 }
@@ -2508,8 +2505,8 @@ async function ltApply(v) {
     try { const r = await Cloud.liveTradeSet(v.id, state.bench.items, 0); if (r && r.view) { view.lt = { ...r.view, name: v.name, mine: cleanItemList(r.view.mine, 5), their: cleanItemList(r.view.their, 5) }; v = view.lt; } } catch (e) { /* 다음에 다시 */ }
   }
   if (isLtOpen()) renderLive();
-  else if (!$('#overlay').classList.contains('open')) openLive();
-  else if (view.ltToast !== v.id) { view.ltToast = v.id; toast(`${v.name} 대원과의 교환이 진행 중이에요. (친구 창의 교환 버튼으로 다시 열 수 있어요)`); }
+  else if (!$('#overlay').classList.contains('open') && view.ltOpened !== v.id) openLive(); // 처음 한 번만 자동으로 연다 (닫은 창을 다시 띄우지 않는다)
+  else if (view.ltToast !== v.id) { view.ltToast = v.id; toast(`${v.name} 대원과의 교환이 진행 중이에요. (상대 프로필의 교환 버튼으로 다시 열 수 있어요)`); }
 }
 async function ltFinish(v) {
   const r = settleLive(v);
@@ -2605,6 +2602,7 @@ function liveButtons(v) {
 }
 function openLive() {
   const v = view.lt; if (!v) return;
+  view.ltOpened = v.id;
   modal(`${v.name} 대원과 교환`, liveHtml(v), liveButtons(v), true);
   view.ltKey = '';
   if (!view.ltTimer) view.ltTimer = setInterval(() => { if (!isLtOpen()) { clearInterval(view.ltTimer); view.ltTimer = 0; return; } ltPoll(); }, 2000);

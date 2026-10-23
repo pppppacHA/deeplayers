@@ -62,7 +62,7 @@ const Cloud = (() => {
     async marketList(key, item, qty, price) { return await call('/rest/v1/rpc/market_list', { p_ckey: key, p_item: item, p_qty: qty, p_price: price }, await token()); },
     async marketBrowse(q) { return await call('/rest/v1/rpc/market_browse', { p_q: q || '' }, await token()); },
     async marketMine() { return await call('/rest/v1/rpc/market_mine', {}, await token()); },
-    async marketBuy(id) { return await call('/rest/v1/rpc/market_buy', { p_id: id }, await token()); },
+    async marketBuy(id, qty, req) { return await call('/rest/v1/rpc/market_buy', { p_id: id, p_qty: qty, p_req: req }, await token()); },
     async marketCancel(id) { return await call('/rest/v1/rpc/market_cancel', { p_id: id }, await token()); },
     async marketAck(id) { await call('/rest/v1/rpc/market_ack', { p_id: id }, await token()); },
     async nearbyPlayers(loc) { return await call('/rest/v1/rpc/nearby_players', { p_loc: loc || '' }, await token()); },

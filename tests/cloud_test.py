@@ -68,14 +68,19 @@ def api(route):
         if M.get('fail') and op in ('list', 'mine', 'buy', 'browse'): return route.fulfill(status=500, headers=h, body=json.dumps({'message': 'boom'}))
         if op == 'list':
             r = next((x for x in M['rows'] if x['ckey'] == body.get('p_ckey')), None)
-            if not r: r = {'id': 100 + len(M['rows']), 'ckey': body['p_ckey'], 'item': body['p_item'], 'qty': body['p_qty'], 'price': body['p_price'], 'status': 'open', 'ack': False}; M['rows'].append(r)
+            if not r: r = {'id': 100 + len(M['rows']), 'ckey': body['p_ckey'], 'item': body['p_item'], 'qty': body['p_qty'], 'price': body['p_price'], 'sold': 0, 'status': 'open', 'ack': False}; M['rows'].append(r)
             return J({'ok': True, 'id': r['id']})
-        if op == 'browse': return J([{'id': x['id'], 'seller': x['seller_name'], 'item': x['item'], 'qty': x['qty'], 'price': x['price']} for x in M['other'] if x['status'] == 'open'])
-        if op == 'mine': return J([{k: x[k] for k in ('id', 'ckey', 'item', 'qty', 'price', 'status')} for x in M['rows'] if not x.get('ack')])
+        if op == 'browse': return J([{'id': x['id'], 'seller': x['seller_name'], 'item': x['item'], 'qty': x['qty'], 'price': x['price']} for x in M['other'] if x['status'] == 'open' and x['qty'] > 0])
+        if op == 'mine': return J([{k: x[k] for k in ('id', 'ckey', 'item', 'qty', 'price', 'status', 'sold')} for x in M['rows'] if not x.get('ack')])
         if op == 'buy':
+            M.setdefault('reqs', {})
+            if body['p_req'] in M['reqs']: return J(M['reqs'][body['p_req']])
             x = next((y for y in M['other'] if y['id'] == body.get('p_id')), None)
-            if not x or x['status'] != 'open' and x.get('buyer') != 'me': return J({'ok': False, 'msg': 'gone'})
-            x['status'] = 'sold'; x['buyer'] = 'me'; return J({'ok': True, 'item': x['item'], 'qty': x['qty'], 'price': x['price']})
+            if not x or x['status'] != 'open' or x['qty'] <= 0: return J({'ok': False, 'msg': 'gone'})
+            if x['qty'] < body['p_qty']: return J({'ok': False, 'msg': 'short', 'left': x['qty']})
+            x['qty'] -= body['p_qty']; ans = {'ok': True, 'item': x['item'], 'qty': body['p_qty'], 'price': x['price']}; M['reqs'][body['p_req']] = ans
+            if x['qty'] == 0: x['status'] = 'sold'
+            return J(ans)
         if op == 'cancel':
             x = next((y for y in M['rows'] if y['id'] == body.get('p_id')), None)
             if x and x['status'] == 'open': x['status'] = 'cancelled'; return J({'ok': True})
@@ -320,6 +325,9 @@ with sync_playwright() as p:
     server['ltview']['status'] = 'open'; server['ltview']['ver'] += 1
     pg.evaluate("ltPoll()"); pg.wait_for_timeout(500)
     check('live_trade_bench_opens_on_accept', pg.locator('.lt-grid .lt-col').count() == 2 and pg.locator('[data-act="lt-confirm"]').count() == 1 and pg.locator('[data-act="lt-confirm"][disabled]').count() == 1)
+    pg.evaluate("closeModal()"); pg.evaluate("ltPoll()"); pg.wait_for_timeout(500)
+    check('live_trade_closed_window_stays_closed', not pg.evaluate("isLtOpen()"))
+    pg.evaluate("openLive()"); pg.wait_for_timeout(200)
     pg.click('[data-act="lt-plus"][data-name="목재"][data-qty="1"]'); pg.wait_for_timeout(500)
     check('live_trade_put_item_deducts_and_syncs', pg.evaluate("countItem('목재')") == 5 and server['ltview']['mine'] == [['목재', 1]] and pg.evaluate("state.bench.items") == [['목재', 1]], [pg.evaluate("countItem('목재')"), server['ltview']['mine']])
     pg.click('[data-act="lt-plus"][data-name="목재"][data-qty="5"]'); pg.wait_for_timeout(500)
@@ -375,29 +383,40 @@ with sync_playwright() as p:
     pg.evaluate("view.lt=null"); server['ltcalls'] = []
     pg.evaluate("A['ftrade-open']({dataset:{name:'멀리있는사람'}})"); pg.wait_for_timeout(300)
     check('trade_blocked_when_not_nearby_or_party', 'invite' not in LT())
+    pg.evaluate("viewUser('미나')"); pg.wait_for_timeout(300)
+    check('profile_has_trade_button_for_nearby', pg.locator('#modalFoot [data-act="ftrade-open"][data-name="미나"], #modal [data-act="ftrade-open"][data-name="미나"]').count() >= 1)
+    pg.evaluate("viewUser('아무개')"); pg.wait_for_timeout(300)
+    check('profile_no_trade_button_for_stranger', pg.locator('[data-act="ftrade-open"][data-name="아무개"]').count() == 0)
+    pg.evaluate("closeModal()")
     check('loc_key_private_room_empty', pg.evaluate("(state.location='개인실',locKey())") == '' and pg.evaluate("(state.location='본부',locKey())") == '본부')
     # ---------- 대원 간 거래 (상점) ----------
     pg.evaluate("closeModal();state.market={sell:[],buy:[]};state.mseen=[];state.mail=[];state.money=1000;removeItem('목재',countItem('목재'));addItem('목재',10)")
-    server['mk'] = {'rows': [], 'other': [{'id': 900, 'seller_name': '하늘', 'item': '약초', 'qty': 2, 'price': 20, 'status': 'open', 'buyer': None}], 'calls': []}
-    check('market_unit_cap_enforced', pg.evaluate("marketListCheck('목재',2,marketUnitMax('목재')*2+1)") is not None and pg.evaluate("marketListCheck('목재',2,marketUnitMax('목재')*2)") is None)
-    check('market_total_cap_and_qty', pg.evaluate("marketListCheck('목재',100,10)") is not None and pg.evaluate("marketListCheck('목재',11,10)") is not None and pg.evaluate("marketListCheck('없는템',1,10)") is not None)
+    server['mk'] = {'rows': [], 'other': [{'id': 900, 'seller_name': '하늘', 'item': '약초', 'qty': 3, 'price': 7, 'status': 'open'}], 'calls': []}
+    um = pg.evaluate("marketUnitMax('목재')")
+    check('market_unit_cap_enforced', pg.evaluate(f"marketListCheck('목재',2,{um+1})") is not None and pg.evaluate(f"marketListCheck('목재',2,{um})") is None)
+    check('market_total_cap_and_qty', pg.evaluate("marketListCheck('목재',100,1)") is not None and pg.evaluate("marketListCheck('목재',11,1)") is not None and pg.evaluate("marketListCheck('없는템',1,1)") is not None and pg.evaluate("marketListCheck('목재',2,MARKET_TOTAL_MAX)") is not None)
     pg.evaluate("openMarket('팔기')"); pg.wait_for_timeout(400)
-    check('market_window_tabs', pg.locator('#mkRoot .tabs button').count() == 4 and pg.locator('#mkItem').count() == 1)
+    check('market_window_tabs', pg.locator('#mkRoot .tabs button').count() == 3 and pg.locator('#mkItem').count() == 1)
     pg.select_option('#mkItem', '목재'); pg.wait_for_timeout(100)
-    um = pg.evaluate("marketUnitMax('목재')"); PR = um * 3; pg.fill('#mkQty', '3'); pg.fill('#mkPrice', str(PR)); pg.click('[data-act="mk-list"]'); pg.wait_for_timeout(700)
-    check('market_list_moves_item_and_syncs', pg.evaluate("countItem('목재')") == 7 and len(server['mk']['rows']) == 1 and server['mk']['rows'][0]['qty'] == 3 and pg.evaluate("state.market.sell[0].id") == server['mk']['rows'][0]['id'], server['mk']['rows'])
+    pg.fill('#mkQty', '3'); pg.fill('#mkPrice', str(um)); pg.click('[data-act="mk-list"]'); pg.wait_for_timeout(700)
+    check('market_list_moves_item_and_syncs', pg.evaluate("countItem('목재')") == 7 and len(server['mk']['rows']) == 1 and server['mk']['rows'][0]['qty'] == 3 and server['mk']['rows'][0]['price'] == um and pg.evaluate("state.market.sell[0].id") == server['mk']['rows'][0]['id'], server['mk']['rows'])
     check('market_my_list_shows_entry', '판매 중' in pg.inner_text('#mkRoot'))
-    # 팔림 → 수수료 뗀 CR
-    server['mk']['rows'][0]['status'] = 'sold'; m0 = pg.evaluate("state.money")
+    # 일부만 팔림 → 팔린 만큼만 수수료 뗀 CR, 나머지는 계속 판매
+    R = server['mk']['rows'][0]; R['sold'] = 1; R['qty'] = 2; m0 = pg.evaluate("state.money")
     pg.evaluate("marketSync()"); pg.wait_for_timeout(700)
-    check('market_sold_pays_net_once', pg.evaluate("state.money") == m0 + pg.evaluate("marketNet(%d)" % PR) and pg.evaluate("state.market.sell.length") == 0 and server['mk']['rows'][0]['ack'] is True, pg.evaluate("state.money"))
-    pg.evaluate("marketSync()"); pg.wait_for_timeout(300)
-    check('market_sold_not_paid_twice', pg.evaluate("state.money") == m0 + pg.evaluate("marketNet(%d)" % PR))
-    # 취소 → 물건 반환
-    pg.evaluate("state.market.sell.push({key:'kcancel01',id:0,item:'목재',qty:2,price:6});removeItem('목재',2)"); n0 = pg.evaluate("countItem('목재')")
-    server['mk']['rows'].append({'id': 777, 'ckey': 'kcancel01', 'item': '목재', 'qty': 2, 'price': 6, 'status': 'cancelled', 'ack': False})
+    check('market_partial_sale_pays_sold_part', pg.evaluate("state.money") == m0 + pg.evaluate(f"marketNet({um})") and pg.evaluate("state.market.sell.length") == 1 and pg.evaluate("state.market.sell[0].got") == 1, pg.evaluate("state.money"))
+    pg.evaluate("marketSync()"); pg.wait_for_timeout(500)
+    check('market_partial_not_paid_twice', pg.evaluate("state.money") == m0 + pg.evaluate(f"marketNet({um})"))
+    # 전부 팔림
+    R['sold'] = 3; R['qty'] = 0; R['status'] = 'sold'
+    pg.evaluate("marketSync()"); pg.wait_for_timeout(1500)
+    pg.wait_for_timeout(1000)
+    check('market_sold_out_finishes', pg.evaluate("state.money") == m0 + (pg.evaluate(f"marketNet({um})") + pg.evaluate(f"marketNet({um}*2)")) and pg.evaluate("state.market.sell.length") == 0 and R['ack'] is True, pg.evaluate("state.money"))
+    # 취소: 일부 팔린 뒤 남은 개수만 돌려받는다
+    pg.evaluate("state.market.sell.push({key:'kcancel01',id:0,item:'목재',qty:4,price:2,got:0});removeItem('목재',4)"); n0 = pg.evaluate("countItem('목재')"); m1 = pg.evaluate("state.money")
+    server['mk']['rows'].append({'id': 777, 'ckey': 'kcancel01', 'item': '목재', 'qty': 3, 'price': 2, 'sold': 1, 'status': 'cancelled', 'ack': False})
     pg.evaluate("marketSync()"); pg.wait_for_timeout(700)
-    check('market_cancelled_returns_item', pg.evaluate("countItem('목재')") == n0 + 2 and pg.evaluate("state.market.sell.length") == 0)
+    check('market_cancel_returns_only_remaining', pg.evaluate("countItem('목재')") == n0 + 3 and pg.evaluate("state.money") == m1 + pg.evaluate("marketNet(2)") and pg.evaluate("state.market.sell.length") == 0)
     # 올리다 끊김 → 같은 key 로 다시 보낸다
     server['mk']['fail'] = True; pg.evaluate("openMarket('팔기')"); pg.wait_for_timeout(300)
     pg.fill('#mkQty', '1'); pg.fill('#mkPrice', str(um)); pg.click('[data-act="mk-list"]'); pg.wait_for_timeout(600)
@@ -405,16 +424,22 @@ with sync_playwright() as p:
     k = pg.evaluate("state.market.sell[0].key"); server['mk']['fail'] = False
     pg.evaluate("marketSync()"); pg.wait_for_timeout(700)
     check('market_list_retry_same_key', any(c[1].get('p_ckey') == k for c in server['mk']['calls'] if c[0] == 'list') and pg.evaluate("state.market.sell[0].id") > 0, pg.evaluate("state.market.sell"))
-    # 사기
+    # 사기: 개수를 직접 정해 1개만
     pg.evaluate("state.market={sell:[],buy:[]};openMarket('사기')"); pg.wait_for_timeout(700)
-    check('market_browse_lists_other_listing', pg.locator('[data-act="mk-buy"][data-id="900"]').count() == 1)
-    m0 = pg.evaluate("state.money"); pg.click('[data-act="mk-buy"][data-id="900"]'); pg.wait_for_timeout(700)
-    check('market_buy_pays_and_mails_item', pg.evaluate("state.money") == m0 - 20 and pg.evaluate("state.mail.some(m=>m.sid==='mb900'&&JSON.stringify(m.items)===JSON.stringify([['약초',2]]))") and pg.evaluate("state.market.buy.length") == 0)
-    pg.evaluate("marketBuyStart(901,'약초',1,10)"); m1 = pg.evaluate("state.money")
-    check('market_buy_unknown_result_stays_pending', pg.evaluate("marketBuyResult(901,null)") == 'retry' and pg.evaluate("state.market.buy.length") == 1)
-    check('market_buy_gone_refunds', pg.evaluate("marketBuyResult(901,{ok:false,msg:'gone'})") == 'gone' and pg.evaluate("state.money") == m1 + 10 and pg.evaluate("state.market.buy.length") == 0)
-    check('market_buy_needs_money', pg.evaluate("(state.money=5,marketBuyStart(902,'약초',1,10))") == 'CR이 부족합니다.')
-    check('market_harden_cleans_garbage', pg.evaluate("(()=>{const s=JSON.parse(JSON.stringify(state));s.market={sell:[{key:'x',item:'목재',qty:5,price:5},{key:'goodkey123',item:'없는템',qty:1,price:1},{key:'goodkey456',item:'목재',qty:999,price:99999,id:'abc'}],buy:[{id:-1,price:5},{id:7,price:'x'}]};s.mseen=['s1','zzz',5];hardenState(s);return s.market.sell.length===1&&s.market.sell[0].qty===99&&s.market.sell[0].price===5000&&s.market.sell[0].id===0&&s.market.buy.length===1&&JSON.stringify(s.mseen)==='[\"s1\"]'})()"))
+    check('market_browse_lists_other_listing', pg.locator('[data-act="mk-buy"][data-id="900"]').count() == 1 and pg.locator('#mkN900').count() == 1)
+    m0 = pg.evaluate("state.money"); h0 = pg.evaluate("countItem('약초')"); pg.fill('#mkN900', '1'); pg.click('[data-act="mk-buy"][data-id="900"]'); pg.wait_for_timeout(900)
+    check('market_buy_one_goes_straight_to_bag', pg.evaluate("state.money") == m0 - 7 and pg.evaluate("countItem('약초')") == h0 + 1 and pg.evaluate("state.mail.length") == 0 and pg.evaluate("state.market.buy.length") == 0 and server['mk']['other'][0]['qty'] == 2, pg.evaluate("state.money"))
+    pg.evaluate("openMarket('사기')"); pg.wait_for_timeout(700)
+    pg.fill('#mkN900', '2'); pg.click('[data-act="mk-buy"][data-id="900"]'); pg.wait_for_timeout(900)
+    check('market_buy_remaining_two', pg.evaluate("countItem('약초')") == h0 + 3 and pg.evaluate("state.money") == m0 - 21 and server['mk']['other'][0]['status'] == 'sold')
+    pg.evaluate("state.money=100"); r1 = pg.evaluate("marketBuyStart(901,'약초',2,10)")
+    check('market_buy_unknown_result_stays_pending', r1['req'] and pg.evaluate("state.money") == 80 and pg.evaluate(f"marketBuyResult('{r1['req']}',null)") == 'retry' and pg.evaluate("state.market.buy.length") == 1)
+    check('market_buy_gone_refunds', pg.evaluate(f"marketBuyResult('{r1['req']}',{{ok:false,msg:'gone'}})") == 'gone' and pg.evaluate("state.money") == 100 and pg.evaluate("state.market.buy.length") == 0)
+    r2 = pg.evaluate("marketBuyStart(902,'약초',2,10)")
+    check('market_buy_short_refunds', pg.evaluate(f"marketBuyResult('{r2['req']}',{{ok:false,msg:'short',left:1}})") == 'short' and pg.evaluate("state.money") == 100)
+    check('market_buy_needs_money_and_space', pg.evaluate("(state.money=5,marketBuyStart(903,'약초',1,10))") == 'CR이 부족합니다.' and pg.evaluate("(state.money=500,marketBuyStart(904,'약초',0,10))") == '살 수 없는 물건이에요.')
+    check('market_buy_full_bag_refused', pg.evaluate("(()=>{state.money=5000;const keep=state.inventory['재료'];const cap=bagCapacity();let i=0;while(usedSlots()<cap){state.inventory['재료'].push({n:'목재',q:1});i++;if(i>999)break}const r=marketBuyStart(905,'약초',99,10);state.inventory['재료']=keep;return r})()") == '가방에 자리가 없어요.')
+    check('market_harden_cleans_garbage', pg.evaluate("(()=>{const s=JSON.parse(JSON.stringify(state));s.market={sell:[{key:'x',item:'목재',qty:5,price:5},{key:'goodkey123',item:'없는템',qty:1,price:1},{key:'goodkey456',item:'목재',qty:999,price:99999,id:'abc',got:500}],buy:[{id:-1,req:'abcdef',item:'약초',qty:1,price:5},{id:7,req:'abcdefg',item:'약초',qty:3,price:'x'},{id:8,req:'bad req',item:'약초',qty:1,price:1}]};s.mseen=['s1','zzz',5];hardenState(s);return s.market.sell.length===1&&s.market.sell[0].qty===99&&s.market.sell[0].price===5000&&s.market.sell[0].got===99&&s.market.buy.length===1&&s.market.buy[0].id===7&&s.mseen.length===1&&s.mseen[0]==='s1'})()"))
     pg.evaluate("closeModal();state.money=500")
     pg.evaluate("state.trades={day:todayKey(),n:TRADE_DAILY};view.lt=null"); server['ltcalls'] = []
     pg.evaluate("A['ftrade-open']({dataset:{name:'라온'}})"); pg.wait_for_timeout(400)
