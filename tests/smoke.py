@@ -416,7 +416,7 @@ with sync_playwright() as p:
     ev(pg, "addItem('응급 키트',3);renderBag()"); pg.click('#inventoryList [data-act="item"] >> nth=0') if False else None
     ev(pg, "A.item({dataset:{item:'응급 키트'}})")
     check('use_qty_is_dropdown_default_1', pg.locator('select#useQty').count() == 1 and ev(pg, "document.querySelector('#useQty').value") == '1' and ev(pg, "document.querySelectorAll('#useQty option').length") == ev(pg, "Math.min(countItem('응급 키트'),MAX_BATCH)"))
-    check('use_shows_recovery_amount', '회복' in text(pg, '#useGain') and 'HP +' in text(pg, '#useGain'), text(pg, '#useGain'))
+    check('use_shows_recovery_amount', '→' in text(pg, '#useGain') and 'HP ' in text(pg, '#useGain'), text(pg, '#useGain'))
     ev(pg, "state.vitals.hp=1;state.vitals.sp=1")
     pg.select_option('#useQty', '2')
     check('use_recovery_text_updates_with_count', '2개' in text(pg, '#useGain') and ev(pg, "useGain('응급 키트',2).hp") >= ev(pg, "useGain('응급 키트',1).hp"), text(pg, '#useGain'))

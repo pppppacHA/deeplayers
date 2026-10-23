@@ -594,7 +594,8 @@ function useGain(name, n = 1) {
   const m = 1 + healBonus(name);
   return { hp: use.hp ? Math.max(0, Math.min(v.hpMax, v.hp + Math.round(use.hp * m) * n) - v.hp) : 0, sp: use.sp ? Math.max(0, Math.min(v.spMax, v.sp + Math.round(use.sp * m) * n) - v.sp) : 0 };
 }
-const useGainText = (name, n) => { const g = useGain(name, n), b = []; if (ITEMS[name].use.hp) b.push(`HP +${g.hp}`); if (ITEMS[name].use.sp) b.push(`기력 +${g.sp}`); return b.join(' · '); };
+const useGainText = (name, n) => { const g = useGain(name, n), v = state.vitals, b = []; if (ITEMS[name].use.hp) b.push(`HP ${v.hp} → ${v.hp + g.hp}`); if (ITEMS[name].use.sp) b.push(`기력 ${v.sp} → ${v.sp + g.sp}`); return b.join(' · '); }; // 지금 수치 → 사용 뒤 수치
+const useFull = (name, n) => { const g = useGain(name, n), u = ITEMS[name].use; return (!u.hp || !g.hp) && (!u.sp || !g.sp); }; // 오를 수치가 하나도 없다
 function useItem(name, n = 1) {
   const use = ITEMS[name].use, v = state.vitals;
   n = use && use.warp ? 1 : Math.min(intIn(n, 1, MAX_BATCH, 1), countItem(name));

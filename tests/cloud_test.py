@@ -440,6 +440,10 @@ with sync_playwright() as p:
     check('market_buy_needs_money_and_space', pg.evaluate("(state.money=5,marketBuyStart(903,'약초',1,10))") == 'CR이 부족합니다.' and pg.evaluate("(state.money=500,marketBuyStart(904,'약초',0,10))") == '살 수 없는 물건이에요.')
     check('market_buy_full_bag_refused', pg.evaluate("(()=>{state.money=5000;const keep=state.inventory['재료'];const cap=bagCapacity();let i=0;while(usedSlots()<cap){state.inventory['재료'].push({n:'목재',q:1});i++;if(i>999)break}const r=marketBuyStart(905,'약초',99,10);state.inventory['재료']=keep;return r})()") == '가방에 자리가 없어요.')
     check('market_harden_cleans_garbage', pg.evaluate("(()=>{const s=JSON.parse(JSON.stringify(state));s.market={sell:[{key:'x',item:'목재',qty:5,price:5},{key:'goodkey123',item:'없는템',qty:1,price:1},{key:'goodkey456',item:'목재',qty:999,price:99999,id:'abc',got:500}],buy:[{id:-1,req:'abcdef',item:'약초',qty:1,price:5},{id:7,req:'abcdefg',item:'약초',qty:3,price:'x'},{id:8,req:'bad req',item:'약초',qty:1,price:1}]};s.mseen=['s1','zzz',5];hardenState(s);return s.market.sell.length===1&&s.market.sell[0].qty===99&&s.market.sell[0].price===5000&&s.market.sell[0].got===99&&s.market.buy.length===1&&s.market.buy[0].id===7&&s.mseen.length===1&&s.mseen[0]==='s1'})()"))
+    pg.evaluate("state.market.sell.push({key:'kpopup001',id:0,item:'목재',qty:1,price:2,got:0});openMarket('내 목록')"); pg.wait_for_timeout(500)
+    pg.evaluate("closeModal()"); pg.evaluate("marketSync()"); pg.wait_for_timeout(900); pg.evaluate("marketBrowse()"); pg.wait_for_timeout(600)
+    check('market_window_not_reopened_by_background', not pg.evaluate("document.querySelector('#overlay').classList.contains('open')"))
+    pg.evaluate("state.market.sell=[]")
     pg.evaluate("closeModal();state.money=500")
     pg.evaluate("state.trades={day:todayKey(),n:TRADE_DAILY};view.lt=null"); server['ltcalls'] = []
     pg.evaluate("A['ftrade-open']({dataset:{name:'라온'}})"); pg.wait_for_timeout(400)

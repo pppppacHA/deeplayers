@@ -1684,7 +1684,7 @@ const A = {
   item: el => {
     const name = el.dataset.item, it = ITEMS[name], have = countItem(name), canEquip = it.slot && state.inventory['장비'].some(s => s.n === name);
     modal(shownName(name), `<div class="nearby-row"><div class="round-avatar">${icon(it.icon)}</div><div class="grow"><strong>${esc(shownName(name))}</strong><small>${it.slot ? esc(it.slot) + ' 장비' : esc(it.tab)} · 보유 ${countItem(name)}개</small></div></div><p class="detail-desc item-info">${itemInfoHtml(name)}</p>` +
-      (it.use && !it.use.warp ? `<p class="use-gain" id="useGain">${icon('healing')} 사용하면 <b>${esc(useGainText(name, 1))}</b> 회복${/\+0(?!\d)/.test(useGainText(name, 1)) ? ' <small>(이미 가득 찬 수치는 오르지 않아요)</small>' : ''}</p>` : '') +
+      (it.use && !it.use.warp ? `<p class="use-gain" id="useGain">${icon('healing')} 사용하면 <b>${esc(useGainText(name, 1))}</b>${useFull(name, 1) ? ' <small>(이미 가득 차서 오르지 않아요)</small>' : ''}</p>` : '') +
       ((it.mods || state.enchants[name]) ? `<div class="buffs">${[...(it.mods ? modText(it.mods) : []), ...(state.enchants[name] ? [`세공 · ${enchantText(state.enchants[name])}`] : [])].map(b => `<span class="buff">${esc(b)}</span>`).join('')}</div>` : ''),
       [btnClose, `<button class="danger" data-act="drop-open" data-item="${esc(name)}">${icon('delete')} 버리기</button>`, ...(it.engrave ? [`<button class="primary" data-act="engrave-open" data-item="${esc(name)}">${icon('edit')} 이름 새기기</button>`] : []), ...(it.use ? [(it.use.warp || have < 2 ? '' : `<select id="useQty" data-item="${esc(name)}" aria-label="사용 개수" title="사용할 개수">${Array.from({ length: Math.min(have, MAX_BATCH) }, (_, k) => `<option value="${k + 1}">${k + 1}</option>`).join('')}</select>`) + `<button class="primary" data-act="use" data-item="${esc(name)}">사용</button>`] : []), ...(canEquip ? [`<button class="primary" data-act="equip" data-item="${esc(name)}">장착</button>`] : [])], true);
   },
@@ -1782,7 +1782,7 @@ const A = {
     renderBag(); sfx('ok'); view.mkTab = '내 목록'; renderMarket();
     try { const r = await Cloud.marketList(e.key, e.item, e.qty, e.price); if (r && r.ok === false) { state.market.sell = state.market.sell.filter(x => x !== e); marketGiveBack(e, e.qty, 'r' + e.key.slice(-6)); save(); renderBag(); toast(r.msg === 'full' ? '서버에 올라간 물건이 너무 많아요. 먼저 정리해 주세요.' : '거래 등록이 거절돼 물건을 돌려받았어요.'); sfx('error'); } else if (r && r.ok) e.id = intIn(r.id, 1, 9e15, 0); save(); }
     catch (x) { toast('서버와 연결하지 못했어요. 연결되면 자동으로 올라갑니다.'); }
-    if ($('#mkRoot')) renderMarket(true);
+    if (isMkOpen()) renderMarket(true);
   },
   'mk-pick': () => { view.mkItem = ($('#mkItem') || {}).value; renderMarket(true); },
   'mk-cancel': async el => {
@@ -1800,7 +1800,7 @@ const A = {
     if (res === 'ok') { toast(`${x.item} ×${qty}을(를) 샀어요. (-${x.price * qty} CR)`); sfx('levelup'); }
     else if (res === 'retry') toast('결과를 확인하는 중이에요. 잠시 뒤 자동으로 처리됩니다.');
     else { toast(res === 'short' ? '남은 개수가 모자라 CR을 돌려받았어요. 목록을 새로 불러옵니다.' : '이미 팔려서 CR을 돌려받았어요.'); sfx('error'); }
-    if (res !== 'retry') marketBrowse(); else if ($('#mkRoot')) renderMarket(true);
+    if (res !== 'retry') marketBrowse(); else if (isMkOpen()) renderMarket(true);
   },
   'storage-pick': el => { const n = el.dataset.name, side = el.dataset.side === 'stor' ? 'stor' : 'bag'; view.storSel = view.storSel && view.storSel.name === n && view.storSel.side === side ? null : { side, name: n }; openStorage(true); },
   'storage-put': el => {
@@ -2057,6 +2057,7 @@ $('#overlay').onclick = e => { if (e.target === $('#overlay')) closeModal(); };
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); if (e.key === 'Enter' && e.target && e.target.id === 'todoIn' && !e.isComposing) { e.preventDefault(); A['todo-add'](); } });
 /* ---------- 대원 간 거래 (상점가 '대원 간 상점' · 상단 아이콘으로 어디서든) ---------- */
 let _mkBusy = false;
+const isMkOpen = () => $('#overlay').classList.contains('open') && !!$('#mkRoot'); // 닫힌 창의 내용이 남아 있어도 열린 것으로 보지 않는다 (백그라운드 확인이 창을 다시 띄우지 않게)
 async function marketSync() { // 내가 올린 것·처리 중인 구매를 서버와 맞춘다 (비어 있으면 아무것도 보내지 않는다)
   if (!Cloud.enabled || !Cloud.user() || !state.created || _mkBusy) return;
   if (!state.market.sell.length && !state.market.buy.length) return;
@@ -2073,13 +2074,13 @@ async function marketSync() { // 내가 올린 것·처리 중인 구매를 서�
       for (const id of out.acks) { try { await Cloud.marketAck(id); } catch (x) { /* 다음에 다시 */ } }
     }
     renderBag(); renderProfile(); renderMailBadge();
-  } catch (e) { /* 서버 준비 전 */ } finally { _mkBusy = false; if ($('#mkRoot')) renderMarket(true); }
+  } catch (e) { /* 서버 준비 전 */ } finally { _mkBusy = false; if (isMkOpen()) renderMarket(true); }
 }
 async function marketBrowse() {
-  view.mkList = null; if ($('#mkRoot')) renderMarket(true);
+  view.mkList = null; if (isMkOpen()) renderMarket(true);
   try { const r = await Cloud.marketBrowse(view.mkQ || ''); view.mkList = (Array.isArray(r) ? r : []).slice(0, 40).map(x => ({ id: intIn(x && x.id, 1, 9e15, 0), seller: cleanText(x && x.seller, 12), item: x && x.item, qty: intIn(x && x.qty, 1, 99, 1), price: intIn(x && x.price, 1, MARKET_TOTAL_MAX, 1) })).filter(x => x.id && ITEMS[x.item]); }
   catch (e) { view.mkList = []; view.mkErr = true; }
-  if ($('#mkRoot')) renderMarket(true);
+  if (isMkOpen()) renderMarket(true);
 }
 function marketHtml() {
   const tab = ['사기', '팔기', '내 목록'].includes(view.mkTab) ? view.mkTab : '사기';
@@ -3127,5 +3128,5 @@ document.addEventListener('change', e => {
   const t = e.target;
   if (!t || t.id !== 'useQty') return;
   const name = t.dataset.item, g = $('#useGain'); if (!ITEMS[name] || !g) return;
-  g.innerHTML = `${icon('healing')} ${t.value}개 사용하면 <b>${esc(useGainText(name, +t.value))}</b> 회복`;
+  g.innerHTML = `${icon('healing')} ${t.value}개 사용하면 <b>${esc(useGainText(name, +t.value))}</b>`;
 });
