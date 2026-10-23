@@ -105,9 +105,10 @@ function renderBuffs(force) {
   renderStatus();
 }
 function masteryPageHtml() { // 스테이터스 3페이지: 숙련을 한 줄씩 (이름 · 레벨 · 진행 막대 · 숙련도). 보너스는 마우스를 올리면 보인다
-  return '<div class="mast-list">' + TAG_NAMES.map(t => {
+  const crafted = TAG_NAMES.map(t => masteryTitleOf(t, masteryLv(t))).filter(Boolean);
+  return (crafted.length ? `<div class="mast-title">${crafted.map(esc).join(' · ')}</div>` : '') + '<div class="mast-list">' + TAG_NAMES.map(t => {
     const m = masteryInfo(t), ic = (JOB_TAGS.find(x => x[0] === t) || [])[1] || 'star', max = m.lv >= MASTERY_MAX, pct = max ? 100 : Math.round(m.cur / m.need * 100);
-    return `<div class="mast-row" data-tip-title="${esc(t)} 숙련 Lv.${m.lv}${max ? ' (MAX)' : ''}" data-tip-desc="${esc(masteryText(t) + (max ? '' : `\n다음 레벨까지 ${m.need - m.cur}`))}">${icon(ic)}<b>${esc(t)}</b><em>Lv.${m.lv}</em><div class="bar"><span style="width:${pct}%"></span></div><span class="val">${max ? 'MAX' : `${m.cur}/${m.need}`}</span></div>`;
+    return `<div class="mast-row" data-tip-title="${esc(t)} 숙련 Lv.${m.lv}${max ? ' (MAX)' : ''}${masteryTitleOf(t, m.lv) ? ' · ' + esc(masteryTitleOf(t, m.lv)) : ''}" data-tip-desc="${esc(masteryText(t) + (max ? '' : `\n다음 레벨까지 ${m.need - m.cur}`))}">${icon(ic)}<b>${esc(t)}</b><em>Lv.${m.lv}</em><div class="bar"><span style="width:${pct}%"></span></div><span class="val">${max ? 'MAX' : `${m.cur}/${m.need}`}</span></div>`;
   }).join('') + '</div>';
 }
 function combatPageHtml() { // 스테이터스 2페이지: 1단 공격력/방어력 · 2단 이동속도 · 3단 모의전투 (1페이지와 같은 칸 크기)
@@ -282,6 +283,12 @@ const renderBag = () => { renderEquip(); renderInventory(); renderCraft(); rende
 function applyMapTransform() { $('#mapWorld').style.transform = state.dungeon ? (view.dpan.x || view.dpan.y || view.dzoom !== 1 ? `translate(${view.dpan.x}px,${view.dpan.y}px) scale(${view.dzoom})` : 'none') : `translate(${state.pan.x}px,${state.pan.y}px) scale(${state.zoom})`; }
 /* 재료 검색: 이름에 검색어가 들어 있는 재료를 얻을 수 있는 지형/구역을 찾는다 */
 const matTerrains = (z, q) => z.terrains.map((t, i) => [t, i]).filter(([t]) => [...t.gather, t.rare, ...t.monsters.map(m => m.name)].some(n => n && n.toLowerCase().includes(q))).map(([t, i]) => i); // 재료나 출몰 몬스터 이름으로 찾는다
+/* 지도 칸 설명: 같은 지형이라도 칸마다 나타나는 재료·몬스터는 다르므로, 칸 좌표를 주면 그 칸에 실제로 나타나는 것만 보여 준다 (검색·범례는 지형 전체) */
+function tileMats(z, t, x, y, seed) {
+  const gids = tileGatherIds(z, x, y, seed).map(id => ACTIONS[id] && ACTIONS[id].items && ACTIONS[id].items[0]).filter(Boolean);
+  const bm = ACTIONS[tileBattleId(z, t, x, y, seed)];
+  return `[채집] ${gids.length ? gids.join(' · ') : '없음'}${t.rare ? ` [희귀] ${t.rare}` : ''} [출몰] ${bm && bm.monster ? bm.monster.name : t.monster.name}`;
+}
 const terrainMats = t => `[채집] ${t.gather.join(' · ')}${t.rare ? ` [희귀] ${t.rare}` : ''} [출몰] ${[...new Set(t.monsters.map(m => m.name))].join(' · ')}`;
 const zoneMats = zid => { const z = DANGER_ZONES.find(x => x.id === zid); return z ? [...new Set(z.terrains.flatMap(t => [...t.gather, t.rare, ...t.monsters.map(m => m.name)].filter(Boolean)))] : []; };
 function renderMapSearch(hits) { // 검색 결과 안내
@@ -321,7 +328,7 @@ function renderDungeon() {
     const hl = ti >= 0 && mq && matTerrains(z, mq).includes(ti); if (hl) hlCount++;
     const unv = !me && !(state.visited[d.zone] || {})[`${x},${y}`]; // 보이기만 하고 밟아 본 적 없는 칸은 흑백
     const cls = `tile floor ${unv ? 'unvisited' : ''} ${hl ? 'hl' : ''} ${ti >= 0 ? 't' + ti : ''} ${ch === 'C' ? 'camp' : ''} ${ch === 'E' ? 'ev' : ''} ${evDone ? 'done' : ''} ${ch === 'S' ? 'start' : ''} ${me ? 'me' : ''} ${going ? 'going' : ''}`;
-    const tip = `data-tip-title="${esc(info.name)}" data-tip-desc="${esc(info.desc + (info.terrain ? ' ' + terrainMats(info.terrain) : ''))}"`;
+    const tip = `data-tip-title="${esc(info.name)}" data-tip-desc="${esc(info.desc + (info.terrain ? ' ' + tileMats(z, info.terrain, x, y, d.seed) : ''))}"`;
     return me ? `<div class="${cls}" ${tip}>${glyph}</div>` : `<button class="${cls} adj" data-act="tile" data-x="${x}" data-y="${y}" ${tip} aria-label="${esc(info.name)}">${glyph}</button>`;
   }).join('')).join('');
   const cols = Math.max(...z.map.map(r => r.length)), rows = z.map.length, st = $('.map-stage'), gap = 3;
@@ -587,10 +594,12 @@ function renderSituation() { // '상황' 탭: 접을 수 있는 두 칸 — 주�
   const head = (k, title, extra) => `<button class="sit-head" data-act="sit-toggle" data-k="${k}" aria-expanded="${!!so[k]}">${icon(so[k] ? 'expand_more' : 'chevron_right')}<b>${title}</b>${extra ? `<small>${extra}</small>` : ''}</button>`;
   const pm = PARTY.members.filter(m => m.name !== state.character.name);
   const nearP = pm.map(m => `<div class="nearby-row"><div class="round-avatar" data-user="${esc(m.name)}">${avatarOf(m.name)}</div><div class="grow"><strong data-user="${esc(m.name)}">${esc(m.name)}</strong><small>파티${m.leader ? ' · 파티장' : ''} · 주위 대원 · ${m.online ? '접속 중' : '오프라인'}</small></div><button data-act="ftrade-open" data-name="${esc(m.name)}">교환</button></div>`).join('');
-  const nearAll = NEARBY_PLAYERS.length + pm.length;
+  const pn = new Set(pm.map(m => m.name)), np = (view.nearby || []).filter(p => !pn.has(p.name));
+  const nearSrv = np.map(p => `<div class="nearby-row"><div class="round-avatar" data-user="${esc(p.name)}">${avatarOf(p.name)}</div><div class="grow"><strong data-user="${esc(p.name)}">${esc(p.name)}</strong><small>같은 칸 · 접속 중</small></div><button data-act="ftrade-open" data-name="${esc(p.name)}">교환</button></div>`).join('');
+  const nearAll = NEARBY_PLAYERS.length + pm.length + np.length;
   const partyBody = partyOn() ? (PARTY.id ? `<div class="party-list">${PARTY.members.map(m => `<div class="party-row"><span>${icon(m.leader ? 'workspace_premium' : 'person')}</span><b data-user="${esc(m.name)}">${esc(m.name)}</b>${m.leader ? '<em class="tag">파티장</em>' : ''}${partyLeader() && m.uid !== Cloud.userUid ? `<button data-act="party-kick" data-uid="${esc(m.uid)}" data-name="${esc(m.name)}" title="파티에서 내보냅니다">내보내기</button>` : ''}</div>`).join('')}</div><div class="party-foot"><small>${PARTY.members.length}/4명 · 파티원은 항상 주위 대원이에요</small><button data-act="party-leave">나가기</button></div>` : '<div class="empty">파티가 없습니다. 친구 창이나 대원 프로필에서 초대해 보세요. (2~4명)</div>')
     + (PARTY.invites.length ? `<div class="party-inv">${PARTY.invites.map(r => `<div class="party-row"><span>${icon('mail')}</span><b>${esc(r.name)}</b><small>의 파티 초대</small><button class="primary" data-act="party-answer" data-id="${r.id}" data-ok="1">수락</button><button data-act="party-answer" data-id="${r.id}" data-ok="0">거절</button></div>`).join('')}</div>` : '') : '<div class="empty">파티는 서버에 로그인하면 쓸 수 있어요.</div>';
-  const near = nearP + (NEARBY_PLAYERS.length ? '' : nearP ? '' : '<div class="empty">주위에 다른 대원이 없습니다.</div>') + NEARBY_PLAYERS.map(([n, s]) => `<div class="nearby-row"><div class="round-avatar">${icon('person')}</div><div class="grow"><strong>${esc(n)}</strong><small>${esc(LOCATIONS[state.location].name)} · ${esc(s)}</small></div><button data-act="player" data-player="${esc(n)}">정보</button><button data-act="trade-open" data-player="${esc(n)}">교환</button></div>`).join('');
+  const near = nearP + nearSrv + (NEARBY_PLAYERS.length ? '' : (nearP || nearSrv) ? '' : '<div class="empty">주위에 다른 대원이 없습니다.</div>') + NEARBY_PLAYERS.map(([n, s]) => `<div class="nearby-row"><div class="round-avatar">${icon('person')}</div><div class="grow"><strong>${esc(n)}</strong><small>${esc(LOCATIONS[state.location].name)} · ${esc(s)}</small></div><button data-act="player" data-player="${esc(n)}">정보</button><button data-act="trade-open" data-player="${esc(n)}">교환</button></div>`).join('');
   const doneN = state.todos.filter(t => t.done).length;
   const todo = `<div class="todo-add"><input id="todoIn" maxlength="${TODO_LEN}" placeholder="할 일을 적고 Enter" autocomplete="off"><button class="primary" data-act="todo-add">추가</button></div>` +
     (state.todos.map(t => `<div class="todo-row ${t.done ? 'done' : ''}"><button class="todo-check" data-act="todo-toggle" data-id="${t.id}" role="checkbox" aria-checked="${t.done}" aria-label="${esc(t.t)}">${icon(t.done ? 'check_box' : 'check_box_outline_blank')}</button><span class="todo-t">${esc(t.t)}</span><button class="mini" data-act="todo-del" data-id="${t.id}" aria-label="삭제" title="삭제">${icon('close')}</button></div>`).join('') || '<div class="empty">적어 둔 할 일이 없습니다.</div>') +
@@ -612,7 +621,7 @@ const CHAT_CH = { '월드': 'world', '길드': 'guild', '파티': 'party' }, CHA
   try {
     const c = JSON.parse(localStorage.getItem(CHAT_CACHE)); if (!c || c.u !== Cloud.user()) return;
     for (const tab of ['월드', '길드']) {
-      const rows = ((c[tab] || {}).rows || []).filter(r => Array.isArray(r) && Number.isFinite(r[3])).slice(-CHAT_KEEP).map(r => [cleanText(r[0], 12), cleanText(r[1], 200), /^[0-9a-f-]{36}$/i.test(r[2]) ? r[2] : '', r[3], Number.isFinite(r[4]) ? r[4] : 0]);
+      const rows = ((c[tab] || {}).rows || []).filter(r => Array.isArray(r) && Number.isFinite(r[3])).slice(-CHAT_KEEP).map(r => [cleanText(r[0], 12), cleanText(r[1], 200), /^[0-9a-f-]{36}$/i.test(r[2]) ? r[2] : '', r[3], Number.isFinite(r[4]) ? r[4] : 0, /^rank:[A-Z]$/.test(r[5] || '') ? r[5] : '']);
       view.chatSrv[tab] = rows; view.chatLast[tab] = rows.length ? rows[rows.length - 1][3] : 0;
     }
   } catch (e) { /* 저장된 대화 없음 */ }
@@ -667,7 +676,7 @@ async function chatPoll() { // 월드·길드 채팅을 서버에서 가져온�
       let rows; try { rows = await Cloud.chatFetch(CHAT_CH[tab], view.chatLast[tab]); } catch (e) { continue; }
       for (const r of rows) {
         const id = Number(r.id); if (!Number.isFinite(id) || id <= view.chatLast[tab]) continue;
-        view.chatLast[tab] = id; view.chatSrv[tab].push([cleanText(r.name, 12) || '?', cleanText(r.body, 200), /^[0-9a-f-]{36}$/i.test(r.uid) ? r.uid : '', id, Date.parse(r.at) || 0]); changed = true;
+        view.chatLast[tab] = id; view.chatSrv[tab].push([cleanText(r.name, 12) || '?', cleanText(r.body, 200), /^[0-9a-f-]{36}$/i.test(r.uid) ? r.uid : '', id, Date.parse(r.at) || 0, /^rank:[A-Z]$/.test(r.sys || '') ? r.sys : '']); changed = true;
         if (r.uid !== Cloud.userUid && state.chatTab !== tab && view.chatReady) { toast(`[${tab}] ${cleanText(r.name, 12)}: ${cleanText(r.body, 40)}`); }
       }
       view.chatSrv[tab] = view.chatSrv[tab].slice(-100);
@@ -700,6 +709,7 @@ function renderChat() {
   { const noti = tab === '알림'; $('#emojiBtn').classList.toggle('hidden', noti); $('#diceBtn').classList.toggle('hidden', noti); if (noti) setTray(false); } // 알림 탭에서는 이모티콘·주사위를 쓸 수 없다
   $('#chatFeed').innerHTML = (chatOnline() && CHAT_CH[state.chatTab] ? view.chatSrv[state.chatTab] : (state.chats[state.chatTab] || [])).map((row) => {
     const [n, m] = row, srv = chatOnline() && CHAT_CH[state.chatTab], uid = srv ? row[2] : '', at = srv ? row[4] : row[2], tm = fmtChatTime(at);
+    if (srv && row[5]) return `<div class="msg-sys" role="status">${icon('workspace_premium')}<span>${esc(m)}</span></div>`; // 승급 축하 같은 시스템 공지: 가운데 정렬
     const st = /^\[(.+)\]$/.exec(m), sticker = st && STICKERS.find(x => x[0] === st[1]);
     const body = sticker ? `<div class="bubble sticker-msg" title="${esc(sticker[0])}">${icon(sticker[1])}</div>` : `<div class="bubble">${esc(m)}</div>`;
     const mine = n === '나' || (!!uid && uid === Cloud.userUid), who = mine ? (state.character.name || '나') : n;
@@ -840,11 +850,22 @@ async function cloudRecover() {
 /* ---------- 설정 (소리는 한 묶음, 컴팩트) ---------- */
 const snd = (id, ic, label, on) => `<label class="switch snd-switch"><span>${icon(ic)} ${label}</span><input id="${id}" type="checkbox" role="switch" ${on ? 'checked' : ''}><i></i></label>`;
 const sw = (id, label, on, cls = '', dis = '') => `<label class="switch ${cls}"><span>${label}</span><input id="${id}" type="checkbox" role="switch" ${on ? 'checked' : ''} ${dis}><i></i></label>`;
+/* 설정 창의 값을 지금 바로 적용하고 저장한다. 채팅 탭이 모두 꺼지는 등 잘못된 값이면 false */
+function applySettingsNow() {
+  if (!$('#bgmOn')) return false;
+  const ctabs = Object.fromEntries(CHAT_TABS.map(k => [k, $('#ctab_' + k) ? $('#ctab_' + k).checked : true]));
+  if (!CHAT_TABS.some(k => ctabs[k])) { toast('채팅 탭은 최소 한 개는 켜 두어야 해요.'); sfx('error'); CHAT_TABS.forEach(k => { if ($('#ctab_' + k)) $('#ctab_' + k).checked = !!state.settings.chatTabs[k]; }); return false; }
+  state.settings = { chatTabs: ctabs, bgmOn: $('#bgmOn').checked, bgmVolume: +$('#bgmVolume').value, clickOn: $('#clickOn').checked, alertOn: $('#alertOn').checked, sfxVolume: +$('#sfxVolume').value,
+    notify: $('#notifyOn').checked, guildAlert: $('#guildAlertOn').checked, cursor: $('#cursorOn').checked, theme: $('#themeSelect').value, customBase: $('#customBase').value, customAccent: $('#customAccent').value, fontSize: $('#fontSize').value };
+  if (state.settings.notify && window.Notification && Notification.permission === 'default') { try { Notification.requestPermission(); } catch (e) { /* 알림 불가 */ } }
+  applyTheme(); applyBgm(); renderChat(); save();
+  return true;
+}
 function openSettings() {
   const st = state.settings;
   const opt = (v, l, cur) => `<option value="${v}" ${cur === v ? 'selected' : ''}>${l}</option>`;
   modal('환경 설정',
-    `<div class="setting-group"><h3>소리</h3>` +
+    `<p class="tiny settings-note">설정은 바꾸는 즉시 적용되고 저장돼요.</p><div class="setting-group"><h3>소리</h3>` +
     `<div class="snd-card">${snd('bgmOn', 'music_note', '배경음악', st.bgmOn)}<div class="snd-slider">${icon('volume_down')}<input id="bgmVolume" type="range" min="0" max="100" value="${st.bgmVolume}" aria-label="배경음악 크기"><b id="bgmValue">${st.bgmVolume}%</b></div></div>` +
     `<div class="snd-card"><div class="snd-pair">${snd('clickOn', 'ads_click', '클릭음', st.clickOn)}${snd('alertOn', 'notifications_active', '알림음', st.alertOn)}</div>` +
     `<div class="snd-slider">${icon('volume_down')}<input id="sfxVolume" type="range" min="0" max="100" value="${st.sfxVolume}" aria-label="효과음 크기"><b id="sfxValue">${st.sfxVolume}%</b></div></div></div>` +
@@ -856,7 +877,7 @@ function openSettings() {
     `<div class="setting-group"><h3>테마</h3><div class="srow theme"><select id="themeSelect">${opt('light', '라이트', st.theme)}${opt('dark', '다크', st.theme)}${opt('custom', '사용자 설정', st.theme)}</select>` +
     `<span id="customOpts" class="${st.theme === 'custom' ? '' : 'hidden'}"><select id="customBase">${opt('light', '라이트 기반', st.customBase)}${opt('dark', '다크 기반', st.customBase)}</select><input id="customAccent" type="color" value="${esc(st.customAccent)}" title="강조 색상"></span></div></div>` +
     (window.DEV ? `<details class="setting-group dev-fold" id="devFold"><summary>개발자</summary><div class="row-gap"><span class="tiny">개발자 도구가 켜져 있습니다.</span><button data-act="dev-open">개발자 도구 열기</button><button data-act="bug-list">버그 리포트 보기</button></div></details>` : ''),
-    ['<button data-act="close">취소</button>', '<button class="primary" data-act="settings-save">저장</button>'], true);
+    [btnClose], true);
 }
 
 /* ---------- 도감: 구역 / 아이템 / 몬스터 / 레시피 (서브 분류 칩) ---------- */
@@ -991,8 +1012,19 @@ async function partyDo(fn, okMsg) { // 파티 요청 공통 처리
   } catch (e) { toast('서버에 연결하지 못했어요. 서버에 supabase/friends.sql 최신본이 적용됐는지 확인하세요.'); sfx('error'); return false; }
   await partySync(true); return true;
 }
+/* A급 승급 축하: 승급이 서버 저장에 올라간 뒤 서버에 알려 월드 채팅에 공지가 올라가게 한다 (실패하면 60초마다 다시 시도) */
+async function announceRankA() {
+  if (state.flags.annoA !== 'pending' || !Cloud.enabled || !Cloud.user() || view.annoBusy) return;
+  view.annoBusy = true;
+  try {
+    flushSave(); const p = await cloudPushNow(); if (!(p && p.ok)) return;
+    const r = await Cloud.announceRank('A');
+    if (r && r.ok) { state.flags.annoA = 'done'; save(); toast('A급 승급을 월드 채팅에 알렸어요!'); chatPoll(); }
+  } catch (e) { /* 다음에 다시 */ } finally { view.annoBusy = false; }
+}
 async function friendPoll() { // 서버에서 친구 신청·메일·교환 소식을 가져온다
   if (!Cloud.enabled || !Cloud.user() || !state.created || _polling) return;
+  announceRankA();
   _polling = true;
   try {
     let changed = false, newMail = 0;
@@ -1057,14 +1089,13 @@ async function friendPoll() { // 서버에서 친구 신청·메일·교환 소�
     else if ($('#friendInbox')) $('#friendInbox').innerHTML = inboxHtml();
   } finally { _polling = false; }
 }
-if (Cloud.enabled) { setTimeout(friendPoll, 5000); setInterval(friendPoll, 60000); setTimeout(() => { syncMyAvatar(); chatPoll(); }, 1200); setInterval(() => { if (!document.hidden || (view.pollN = (view.pollN || 0) + 1) % 4 === 0) chatPoll(); }, 6000); } // 탭이 가려져 있으면 24초에 한 번만 가져온다
+if (Cloud.enabled) { setTimeout(nearbyPoll, 2000); setInterval(() => { if (!document.hidden) nearbyPoll(); }, 20000); setTimeout(ltPoll, 3000); setInterval(() => { if (!document.hidden) ltPoll(); }, 15000); setTimeout(friendPoll, 5000); setInterval(friendPoll, 60000); setTimeout(() => { syncMyAvatar(); chatPoll(); }, 1200); setInterval(() => { if (!document.hidden || (view.pollN = (view.pollN || 0) + 1) % 4 === 0) chatPoll(); }, 6000); } // 탭이 가려져 있으면 24초에 한 번만 가져온다
 function openFriends(noPoll) {
   Object.keys(view.avatars).forEach(k => { if (!view.avatars[k]) delete view.avatars[k]; }); // 못 찾았던 이름은 창을 열 때 다시 물어본다
   renderMailBadge();
   const on = Cloud.enabled && Cloud.user(), master = !!(state.guild && state.guild.master) && guildOnline();
   const list = state.friends.map(n => { const uid = (view.friendUid || {})[n]; return `<div class="nearby-row"><div class="round-avatar" data-user="${esc(n)}">${avatarOf(n)}</div><div class="grow"><strong data-user="${esc(n)}">${esc(n)}</strong><small>${esc((samplePlayer(n) || ['', '온라인'])[1])}</small></div><div class="row-btns">` +
     `<button data-act="friend-mail" data-name="${esc(n)}">메일</button>` +
-    (on ? `<button data-act="ftrade-open" data-name="${esc(n)}">교환</button>` : '') +
     (on ? `<button data-act="party-invite" data-uid="${esc(uid || '')}" data-name="${esc(n)}" ${uid && (!PARTY.id || partyLeader()) ? '' : 'disabled'} title="${!PARTY.id || partyLeader() ? '파티에 초대합니다 (2~4명)' : '파티장만 초대할 수 있어요'}">파티 초대</button>` : '') +
     `<button data-act="friend-guild-invite" data-name="${esc(n)}" ${master && uid ? '' : 'disabled'} title="${master ? '길드에 초대합니다' : '길드장만 초대할 수 있어요'}">길드 초대</button>` +
     `<button data-act="friend-remove" data-name="${esc(n)}">삭제</button></div></div>`; }).join('');
@@ -1273,7 +1304,7 @@ const A = {
       toast(`캠프 관리인이 물건을 받아 들고 한참을 들여다보더니, 뽑기권 ${r.tickets}장을 건넸습니다.`); addLog(`분실물을 전달하고 뽑기권 ${r.tickets}장을 받았습니다.`);
       if (r.gift) toast(`그리고 감사의 표시로 「${r.gift}」을(를) 받았습니다.`); awardTitles(); renderProfile(); renderInventory(); renderAction(); sfx('levelup');
     }
-    else if (a.kind === 'enhance') openEnhance(); else if (a.kind === 'dismantle') openDismantle(); else if (a.kind === 'promo') openPromo(); else if (a.kind === 'farm') openFarm(); else if (a.kind === 'pet') openPets(); else if (a.kind === 'subjob') { view.quitAsk = false; openJob(); }
+    else if (a.kind === 'enhance') openEnhance(); else if (a.kind === 'dismantle') openDismantle(); else if (a.kind === 'storage') { view.storSel = null; openStorage(); } else if (a.kind === 'promo') openPromo(); else if (a.kind === 'farm') openFarm(); else if (a.kind === 'pet') openPets(); else if (a.kind === 'subjob') { view.quitAsk = false; openJob(); }
     else if (a.kind === 'travel') { // 시간이 걸리지 않는 이동은 묻지 않고 바로 간다. 이동장치에서 지상으로 내려가는 1분짜리만 묻는다
       if (LOCATIONS[a.to].danger && state.location === '이동장치') askAction(el.dataset.choice); else doTravel(a.to);
     }
@@ -1654,7 +1685,18 @@ const A = {
     modal(shownName(name), `<div class="nearby-row"><div class="round-avatar">${icon(it.icon)}</div><div class="grow"><strong>${esc(shownName(name))}</strong><small>${it.slot ? esc(it.slot) + ' 장비' : esc(it.tab)} · 보유 ${countItem(name)}개</small></div></div><p class="detail-desc item-info">${itemInfoHtml(name)}</p>` +
       (it.use && !it.use.warp ? `<p class="use-gain" id="useGain">${icon('healing')} 사용하면 <b>${esc(useGainText(name, 1))}</b> 회복${/\+0(?!\d)/.test(useGainText(name, 1)) ? ' <small>(이미 가득 찬 수치는 오르지 않아요)</small>' : ''}</p>` : '') +
       ((it.mods || state.enchants[name]) ? `<div class="buffs">${[...(it.mods ? modText(it.mods) : []), ...(state.enchants[name] ? [`세공 · ${enchantText(state.enchants[name])}`] : [])].map(b => `<span class="buff">${esc(b)}</span>`).join('')}</div>` : ''),
-      [btnClose, ...(it.engrave ? [`<button class="primary" data-act="engrave-open" data-item="${esc(name)}">${icon('edit')} 이름 새기기</button>`] : []), ...(it.use ? [(it.use.warp || have < 2 ? '' : `<select id="useQty" data-item="${esc(name)}" aria-label="사용 개수" title="사용할 개수">${Array.from({ length: Math.min(have, MAX_BATCH) }, (_, k) => `<option value="${k + 1}">${k + 1}개</option>`).join('')}</select>`) + `<button class="primary" data-act="use" data-item="${esc(name)}">사용</button>`] : []), ...(canEquip ? [`<button class="primary" data-act="equip" data-item="${esc(name)}">장착</button>`] : [])], true);
+      [btnClose, `<button class="danger" data-act="drop-open" data-item="${esc(name)}">${icon('delete')} 버리기</button>`, ...(it.engrave ? [`<button class="primary" data-act="engrave-open" data-item="${esc(name)}">${icon('edit')} 이름 새기기</button>`] : []), ...(it.use ? [(it.use.warp || have < 2 ? '' : `<select id="useQty" data-item="${esc(name)}" aria-label="사용 개수" title="사용할 개수">${Array.from({ length: Math.min(have, MAX_BATCH) }, (_, k) => `<option value="${k + 1}">${k + 1}</option>`).join('')}</select>`) + `<button class="primary" data-act="use" data-item="${esc(name)}">사용</button>`] : []), ...(canEquip ? [`<button class="primary" data-act="equip" data-item="${esc(name)}">장착</button>`] : [])], true);
+  },
+  'drop-open': el => { // 버리기: 개수를 고르고 한 번 더 묻는다
+    const name = el.dataset.item, have = ITEMS[name] ? countItem(name) : 0; if (!have) { closeModal(); return; }
+    const opts = Array.from({ length: Math.min(have, 99) }, (_, k) => `<option value="${k + 1}">${k + 1}</option>`).join('') + (have > 99 ? `<option value="${have}">${have}</option>` : '');
+    modal('버리기', `<p class="detail-desc">「${esc(shownName(name))}」을(를) 버립니다. 버린 물건은 <b>되돌릴 수 없어요.</b> (보유 ${have}개)</p><div class="row-gap"><label class="tiny" for="dropQty">버릴 개수</label><select id="dropQty">${opts}</select></div>`,
+      ['<button data-act="close">취소</button>', `<button class="danger" data-act="drop-do" data-item="${esc(name)}">버리기</button>`], true);
+  },
+  'drop-do': el => {
+    const name = el.dataset.item, n = $('#dropQty') ? intIn($('#dropQty').value, 1, 9999, 1) : 1, r = discardItem(name, n);
+    if (typeof r === 'string') { toast(r); sfx('error'); closeModal(); return; }
+    closeModal(); renderBag(); renderBars(); renderProfile(); renderAction(); sfx('click'); toast(`${shownName(name)} ×${r.qty}을(를) 버렸습니다.`);
   },
   use: el => {
     const name = el.dataset.item;
@@ -1687,6 +1729,7 @@ const A = {
     if (r.promo) {
       const news = RECIPES.filter(rc => rc.rank === r.promo && !recipeKnown(rc)).map(rc => rc.out);
       renderCraft(); renderLeftTab();
+      if (r.promo === 'A') { state.flags.annoA = 'pending'; save(); announceRankA(); } // A급이 되면 월드 채팅에 축하 공지가 올라간다
       if (news.length) { addLog(`${r.promo}등급 승급! 단련으로 배울 수 있는 레시피 ${news.length}종 추가`); toast(`${r.promo}등급 승급! 단련으로 새 레시피 ${news.length}종을 배울 수 있게 되었습니다.`); }
     }
   },
@@ -1719,14 +1762,7 @@ const A = {
     if (Object.keys(next).some(k => next[k] !== c[k])) { Object.assign(c, next); state.profileEditAt = nowMs(); toast('프로필을 수정했습니다. 24시간 뒤에 다시 수정할 수 있어요.'); }
     view.profEdit = false; renderProfile(); save(); closeModal();
   },
-  'settings-save': () => {
-    const ctabs = Object.fromEntries(CHAT_TABS.map(k => [k, $('#ctab_' + k) ? $('#ctab_' + k).checked : true]));
-    if (!CHAT_TABS.some(k => ctabs[k])) { toast('채팅 탭은 최소 한 개는 켜 두어야 해요.'); sfx('error'); return; }
-    state.settings = { chatTabs: ctabs, bgmOn: $('#bgmOn').checked, bgmVolume: +$('#bgmVolume').value, clickOn: $('#clickOn').checked, alertOn: $('#alertOn').checked, sfxVolume: +$('#sfxVolume').value,
-      notify: $('#notifyOn').checked, guildAlert: $('#guildAlertOn').checked, cursor: $('#cursorOn').checked, theme: $('#themeSelect').value, customBase: $('#customBase').value, customAccent: $('#customAccent').value, fontSize: $('#fontSize').value };
-    if (state.settings.notify && window.Notification && Notification.permission === 'default') { try { Notification.requestPermission(); } catch (e) { /* 알림 불가 */ } }
-    applyTheme(); applyBgm(); renderChat(); save(); closeModal(); toast('설정을 저장했습니다.');
-  },
+  'settings-save': () => { if (applySettingsNow()) { closeModal(); toast('설정을 저장했습니다.'); } }, // 예전 저장 버튼(지금은 바꾸는 즉시 저장되므로 창에는 없다)
 
   /* 메일 / 친구 / 길드 / 도감 */
   'trade-open': el => openTrade(el.dataset.player),
@@ -1735,6 +1771,18 @@ const A = {
     if (err) { toast(err); sfx('error'); return; }
     renderBag(); sfx('ok'); toast(`교환했습니다. 오늘 남은 교환 ${tradesLeft()}회`); addLog(`${el.dataset.player}님과 물건을 교환했습니다.`);
     openTrade(el.dataset.player);
+  },
+  'storage-pick': el => { const n = el.dataset.name, side = el.dataset.side === 'stor' ? 'stor' : 'bag'; view.storSel = view.storSel && view.storSel.name === n && view.storSel.side === side ? null : { side, name: n }; openStorage(true); },
+  'storage-put': el => {
+    const n = el.dataset.name, err = ITEMS[n] ? storeItem(n, el.dataset.qty) : '알 수 없는 아이템입니다.';
+    if (err) { toast(err); sfx('error'); openStorage(true); return; }
+    renderBag(); renderInventory(); renderProfile(); renderAction(); sfx('ok'); openStorage(true);
+  },
+  'storage-take': el => {
+    const n = el.dataset.name, r = ITEMS[n] ? takeStored(n, el.dataset.qty) : '알 수 없는 아이템입니다.';
+    if (typeof r === 'string') { toast(r); sfx('error'); openStorage(true); return; }
+    if (r.got < intIn(el.dataset.qty, 1, STORAGE_STACK, 1)) toast('가방이 가득 차 일부만 꺼냈습니다.');
+    renderBag(); renderInventory(); renderProfile(); renderAction(); sfx('ok'); openStorage(true);
   },
   'enh-tab': el => { view.enhTab = el.dataset.tab; openEnhance(); },
   'nick-open': el => {
@@ -1835,26 +1883,16 @@ const A = {
   'ftrade-open': el => {
     const pm = PARTY.members.find(m => m.name === el.dataset.name);
     if (pm && !pm.online) { toast(`${pm.name} 대원이 접속 중이 아니라 교환할 수 없어요. 교환은 상대가 접속해 있을 때만 가능해요.`); sfx('error'); return; }
-    openFriendTrade(el.dataset.name);
+    if (!pm && !(view.nearby || []).some(p => p.name === el.dataset.name)) { toast('교환은 파티원이나 같은 칸에 있는 대원과만 할 수 있어요.'); sfx('error'); return; }
+    liveTradeStart(el.dataset.name);
   },
-  'ftrade-send': async el => {
-    const name = el.dataset.name, uid = (view.friendUid || {})[name] || (view.partyUid || {})[name], give = $('#ftGive').value, want = $('#ftWant').value.trim();
-    const gq = intIn($('#ftGiveQty').value, 1, 99, 0), wq = intIn($('#ftWantQty').value, 1, 99, 0);
-    if (!uid) { toast('친구 정보를 서버에서 가져오는 중이에요. 잠시 뒤 다시 시도해 주세요.'); friendPoll(); return; }
-    if (!tradesLeft()) { toast(`오늘은 교환 제안을 모두 보냈습니다. (하루 ${TRADE_DAILY}회)`); sfx('error'); return; }
-    if (!ITEMS[give] || !gq || !ITEMS[want] || !wq || want === MAIL_SHIP_ITEM || give === MAIL_SHIP_ITEM) { toast('교환할 물건과 수량을 확인하세요. (받을 물건은 목록에서 고르세요)'); sfx('error'); return; }
-    if (countItem(give) < gq) { toast(`${give}이(가) 모자랍니다.`); sfx('error'); return; }
-    el.disabled = true; removeItem(give, gq); // 제안하는 동안 물건을 맡긴다
-    try {
-      const r = await Cloud.proposeTrade(uid, [[give, gq]], [[want, wq]]);
-      if (!r || !r.ok) throw new Error(r && r.msg);
-      state.trades = { day: todayKey(), n: (state.trades.day === todayKey() ? state.trades.n : 0) + 1 }; save();
-      renderBag(); sfx('ok'); toast(`${name} 대원에게 교환을 제안했어요. 물건은 맡겨 두며, 거절·취소되면 메일로 돌아와요.`); friendPoll(); openFriends(true);
-    } catch (e) {
-      addItem(give, gq); renderBag(); el.disabled = false; sfx('error');
-      toast({ limit: '대기 중인 제안이 너무 많아요. (최대 5건)', busy: '상대에게 쌓인 제안이 너무 많아요.', not_friend: '서버에서 친구로 확인되지 않아요.', offline: '상대가 접속 중이 아니에요. 교환은 상대가 접속해 있을 때만 할 수 있어요.' }[e && e.message] || '제안하지 못했어요. 서버에 friends.sql 을 실행했는지 확인해 주세요.');
-    }
-  },
+  'lt-plus': el => ltEdit(el.dataset.name, intIn(el.dataset.qty, 1, 99, 1)),
+  'lt-minus': el => ltEdit(el.dataset.name, -intIn(el.dataset.qty, 1, 99, 1)),
+  'lt-confirm': () => ltConfirm(),
+  'lt-cr': () => ltSetCr(intIn(($('#ltCr') || {}).value, 0, TRADE_CR_MAX, 0)),
+  'lt-cancel': () => ltCancel(),
+  'lt-answer': el => ltAnswer(el.dataset.accept === '1'),
+  'lt-hide': () => { closeModal(); },
   'ftrade-accept': async el => {
     const t = (view.tIn || []).find(x => x.id === +el.dataset.id); if (!t) return;
     if (t.want.some(([n, q]) => countItem(n) < q)) { toast('요청받은 물건이 모자라요.'); sfx('error'); return; }
@@ -1988,6 +2026,15 @@ function equipChange(slot, name, doneText) {
 $('#closeModal').onclick = closeModal;
 $('#overlay').onclick = e => { if (e.target === $('#overlay')) closeModal(); };
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); if (e.key === 'Enter' && e.target && e.target.id === 'todoIn' && !e.isComposing) { e.preventDefault(); A['todo-add'](); } });
+function openTradeHub() { // 유저 간 거래 창: 어디에서든 파티원과, 같은 칸의 대원과 교환대를 연다
+  const on = Cloud.enabled && Cloud.user();
+  if (!on) { modal('유저 간 거래', '<p class="detail-desc">서버에 로그인해야 다른 대원과 거래할 수 있어요.</p>', [btnClose], true); return; }
+  const seen = new Set(), rows = [];
+  const add = (n, tag) => { if (!n || n === state.character.name || seen.has(n)) return; seen.add(n); rows.push(`<div class="nearby-row"><div class="round-avatar" data-user="${esc(n)}">${avatarOf(n)}</div><div class="grow"><strong data-user="${esc(n)}">${esc(n)}</strong><small>${tag}</small></div><button data-act="ftrade-open" data-name="${esc(n)}">교환</button></div>`); };
+  PARTY.members.forEach(m => add(m.name, '파티')); (view.nearby || []).forEach(p => add(p.name, '같은 칸'));
+  modal('유저 간 거래', `<p class="tiny">파티원과는 어디에서든, 그 밖의 대원과는 같은 칸에 있을 때 교환할 수 있어요. 상대가 접속 중이어야 하고 하루 ${TRADE_DAILY}회까지입니다. CR 은 한쪽만, 받는 물건 값어치의 ${TRADE_CR_RATE}배(최대 ${TRADE_CR_MAX} CR)까지 낼 수 있어요.</p>${rows.join('') || '<div class="empty">거래할 수 있는 대원이 없어요. 같은 칸에 있거나 파티를 맺은 대원만 나타납니다.</div>'}`, [btnClose], true);
+}
+if ($('#tradeHubBtn')) $('#tradeHubBtn').onclick = openTradeHub;
 $$('[data-board]').forEach(b => { b.onclick = () => openBoard(b.dataset.board); });
 $$('[data-system]').forEach(b => { b.onclick = () => openSystem(b.dataset.system); });
 $('#settingsBtn').onclick = openSettings;
@@ -2000,6 +2047,8 @@ document.addEventListener('input', e => {
   if (e.target.id === 'bgmVolume') { $('#bgmValue').textContent = e.target.value + '%'; setBgmVolume(+e.target.value); }
   if (e.target.id === 'sfxVolume') $('#sfxValue').textContent = e.target.value + '%';
 });
+const SETTING_IDS = ['bgmOn', 'bgmVolume', 'clickOn', 'alertOn', 'sfxVolume', 'notifyOn', 'guildAlertOn', 'cursorOn', 'themeSelect', 'customBase', 'customAccent', 'fontSize', ...CHAT_TABS.map(k => 'ctab_' + k)];
+document.addEventListener('change', e => { if (SETTING_IDS.includes(e.target.id) && e.target.closest('#modalBody')) applySettingsNow(); }); // 설정은 바꾸는 즉시 저장
 document.addEventListener('change', e => {
   if (e.target.id === 'themeSelect') $('#customOpts').classList.toggle('hidden', e.target.value !== 'custom');
   if (['themeSelect', 'customBase', 'customAccent', 'cursorOn', 'fontSize'].includes(e.target.id)) previewTheme();
@@ -2344,13 +2393,170 @@ function mockStart() {
     }
   }, 650);
 }
-function openFriendTrade(name) {
-  const mine = ['소모품', '재료', '장비'].flatMap(t => state.inventory[t]).map(s => s.n).filter(n => n !== MAIL_SHIP_ITEM), uniq = [...new Set(mine)];
-  const all = Object.keys(ITEMS).filter(n => n !== MAIL_SHIP_ITEM);
-  const body = `<p class="tiny">${esc(name)} 대원에게 교환을 제안합니다. 상대가 접속해 있을 때만 보낼 수 있어요. 내가 줄 물건은 상대가 답할 때까지 맡겨 두고, 거절·취소·3일 만료 시 메일로 돌아와요. 하루 ${TRADE_DAILY}회까지 · 오늘 남은 횟수 <b>${tradesLeft()}회</b>. 장착 중인 장비는 줄 수 없어요.</p>` +
-    (uniq.length ? `<div class="srow fontrow trade-row"><span>내가 줄 물건</span><select id="ftGive">${uniq.map(n => `<option value="${esc(n)}">${esc(n)} (${countItem(n)})</option>`).join('')}</select><input id="ftGiveQty" type="number" min="1" max="99" value="1" style="width:64px"></div>` +
-      `<div class="srow fontrow trade-row"><span>받고 싶은 물건</span><input id="ftWant" list="ftItems" placeholder="아이템 이름" autocomplete="off"><input id="ftWantQty" type="number" min="1" max="99" value="1" style="width:64px"></div><datalist id="ftItems">${all.map(n => `<option value="${esc(n)}">`).join('')}</datalist>` : '<div class="empty">줄 수 있는 물건이 없습니다.</div>');
-  modal(`${name} 대원과 교환`, body, ['<button data-act="close">닫기</button>', `<button class="primary" data-act="ftrade-send" data-name="${esc(name)}" ${uniq.length && tradesLeft() ? '' : 'disabled'}>제안 보내기</button>`], true);
+/* ---------- 실시간 교환 (교환대) ---------- */
+let _ltBusy = false;
+const isLtOpen = () => $('#overlay').classList.contains('open') && !!$('#ltRoot'); // 닫힌 창의 내용이 남아 있어도 열린 것으로 보지 않는다
+const sameList = (a, b) => a.length === b.length && a.every(([n, q]) => (b.find(r => r[0] === n) || [0, 0])[1] === q);
+let _nbBusy = false;
+async function nearbyPoll() { // 같은 칸에 접속 중인 대원 (10초마다). 내 위치도 서버에 알린다
+  if (!Cloud.enabled || !Cloud.user() || !state.created || _nbBusy) return;
+  _nbBusy = true;
+  try {
+    const r = await Cloud.nearbyPlayers(locKey()), list = (Array.isArray(r) ? r : []).slice(0, 20).map(p => ({ uid: String(p && p.uid || '').slice(0, 40), name: cleanText(p && p.name, 12) })).filter(p => p.uid && p.name);
+    const key = JSON.stringify(list); if (key !== view.nbKey) { view.nbKey = key; view.nearby = list; if (state.side === '상황' && $('#sideView') && !$('#todoIn:focus')) renderSituation(); }
+  } catch (e) { /* 서버 준비 전 */ } finally { _nbBusy = false; }
+}
+async function ltPoll() { // 서버에서 내 교환 상태를 가져와 맞춘다 (평소 5초, 교환창이 열려 있으면 2초)
+  if (!Cloud.enabled || !Cloud.user() || !state.created || _ltBusy) return;
+  _ltBusy = true;
+  try { await ltApply(await Cloud.liveTradeView()); } catch (e) { /* 서버 준비 전 */ } finally { _ltBusy = false; }
+}
+async function ltApply(v) {
+  view.lt = v && typeof v === 'object' ? { ...v, name: cleanText(v.name, 12) || '?', mine: cleanItemList(v.mine, 5), their: cleanItemList(v.their, 5) } : null;
+  v = view.lt;
+  if (!v) { if (releaseStaleBench(0)) { renderBag(); toast('교환 기록이 없어 올려 둔 물건을 돌려받았어요.'); } if (isLtOpen()) closeModal(); return; }
+  if (state.bench && state.bench.id !== v.id && releaseStaleBench(v.id)) renderBag();
+  if (v.status === 'done' || v.status === 'cancelled') { await ltFinish(v); return; }
+  if (v.status === 'invited') {
+    if (v.from_me) { if (isLtOpen()) renderLive(); return; }
+    if (!$('#overlay').classList.contains('open') && view.ltAsk !== v.id) { view.ltAsk = v.id; sfx('ok'); ltAskModal(v); }
+    else if (view.ltAsk !== v.id && view.ltToast !== v.id) { view.ltToast = v.id; toast(`${v.name} 대원이 교환을 신청했어요.`); }
+    return;
+  }
+  // 교환대가 열린 상태: 내 기록이 서버 목록과 다르면(올리다 끊긴 경우) 서버에 다시 보낸다
+  if (state.bench && state.bench.id === v.id && (!sameList(state.bench.items, v.mine) || benchCr() !== intIn(v.mine_cr, 0, TRADE_CR_MAX, 0)) && !view.ltAct) {
+    try { const r = await Cloud.liveTradeSet(v.id, state.bench.items, benchCr()); if (r && r.view) { view.lt = { ...r.view, name: v.name, mine: cleanItemList(r.view.mine, 5), their: cleanItemList(r.view.their, 5) }; v = view.lt; } } catch (e) { /* 다음에 다시 */ }
+  }
+  if (isLtOpen()) renderLive();
+  else if (!$('#overlay').classList.contains('open')) openLive();
+  else if (view.ltToast !== v.id) { view.ltToast = v.id; toast(`${v.name} 대원과의 교환이 진행 중이에요. (친구 창의 교환 버튼으로 다시 열 수 있어요)`); }
+}
+async function ltFinish(v) {
+  const r = settleLive(v);
+  if (r) {
+    renderBag(); renderProfile(); renderMailBadge();
+    if (r.done) { addLog(`${r.name} 대원과 물건을 교환했습니다.`); sfx('levelup'); toast((r.got.length ? `${r.name} 대원과 교환이 성사됐어요! 받은 물건은 메일함에서 수령하세요.` : `${r.name} 대원과 교환이 성사됐어요.`) + (r.gotCr ? ` (+${r.gotCr} CR)` : '')); }
+    else { sfx('error'); toast(r.back.length ? '교환이 취소됐어요. 올려 둔 물건을 돌려받았어요.' : `${r.name} 대원과의 교환이 이루어지지 않았어요.`); }
+  }
+  try { await Cloud.liveTradeAck(v.id); } catch (e) { /* 다음에 다시 */ }
+  view.lt = null; if (isLtOpen() || view.ltAsk === v.id) { view.ltAsk = 0; closeModal(); }
+}
+function ltAskModal(v) {
+  modal('교환 신청', `<p class="detail-desc"><b>${esc(v.name)}</b> 대원이 교환을 신청했어요. 수락하면 서로 교환대에 물건을 올리고, 둘 다 '교환'을 누르면 바뀝니다. (3분 안에 답하세요 · 오늘 남은 횟수 ${tradesLeft()}/${TRADE_DAILY})</p>`,
+    ['<button data-act="lt-answer" data-accept="0">거절</button>', `<button class="primary" data-act="lt-answer" data-accept="1" ${tradesLeft() ? '' : 'disabled'}>수락</button>`], true);
+}
+async function ltAnswer(accept) {
+  const v = view.lt; if (!v || v.status !== 'invited' || v.from_me || view.ltAct) return;
+  if (accept && !tradesLeft()) { toast(`오늘은 교환을 모두 했습니다. (하루 ${TRADE_DAILY}회)`); sfx('error'); return; }
+  view.ltAct = true;
+  try {
+    const r = await Cloud.liveTradeAnswer(v.id, accept); closeModal(); view.ltAsk = 0;
+    if (r && r.view) await ltApply(r.view); else { toast('이미 처리된 신청이에요.'); await ltPoll(); }
+  } catch (e) { toast('처리하지 못했어요. 잠시 뒤 다시 시도해 주세요.'); sfx('error'); } finally { view.ltAct = false; }
+}
+async function liveTradeStart(name) {
+  const v0 = view.lt;
+  if (v0 && (v0.status === 'open' || v0.status === 'invited')) { if (v0.status === 'open') openLive(); else toast('이미 교환을 신청해 두었어요. 상대의 답을 기다려 주세요.'); return; }
+  const uid = (view.partyUid || {})[name] || ((view.nearby || []).find(p => p.name === name) || {}).uid;
+  if (!uid) { toast('상대 정보를 서버에서 가져오는 중이에요. 잠시 뒤 다시 시도해 주세요.'); friendPoll(); return; }
+  if (!tradesLeft()) { toast(`오늘은 교환을 모두 했습니다. (하루 ${TRADE_DAILY}회)`); sfx('error'); return; }
+  try {
+    const r = await Cloud.liveTradeInvite(uid); if (!r || !r.ok) throw new Error(r && r.msg);
+    toast(`${name} 대원에게 교환을 신청했어요.`); sfx('ok'); await ltPoll(); if (view.lt && !isLtOpen()) openLive();
+  } catch (e) {
+    sfx('error'); toast({ not_near: '상대가 같은 칸에 없어요. 교환은 파티원이나 같은 칸의 대원과만 할 수 있어요.', offline: '상대가 접속 중이 아니에요. 교환은 상대가 접속해 있을 때만 할 수 있어요.', busy: '상대가 다른 교환 중이에요.', busy_me: '아직 끝나지 않은 교환이 있어요. 잠시 뒤 다시 시도해 주세요.', bad: '교환을 신청할 수 없는 상대예요.' }[e && e.message] || '교환을 신청하지 못했어요.');
+  }
+}
+async function ltEdit(name, delta) { // 교환대에 올리기(+) / 내리기(−)
+  const v = view.lt; if (!v || v.status !== 'open' || view.ltAct || !ITEMS[name]) return;
+  view.ltAct = true;
+  try {
+    if (delta > 0) { // 내 기기에서 먼저 빼고 서버에 알린다 (끊기면 다음 확인 때 다시 보낸다)
+      const r = benchRaise(v.id, name, delta); if (typeof r === 'string') { toast(r); sfx('error'); return; }
+      renderBag(); sfx('click');
+      const res = await Cloud.liveTradeSet(v.id, r, benchCr()); if (res && res.view) await ltApply(res.view);
+    } else { // 서버가 받아들인 뒤에 돌려받는다
+      const have = benchQty(name), m = Math.min(-delta, have); if (!m) return;
+      const err = benchLowerOk(name, m); if (err) { toast(err); sfx('error'); return; }
+      const next = benchNext(name, -m), res = await Cloud.liveTradeSet(v.id, next, benchCr());
+      if (res && res.ok) { benchLower(name, m, next); renderBag(); sfx('click'); }
+      if (res && res.view) await ltApply(res.view);
+    }
+  } catch (e) { toast('서버와 연결하지 못했어요. 잠시 뒤 다시 시도해 주세요.'); sfx('error'); }
+  finally { view.ltAct = false; if (isLtOpen()) renderLive(true); }
+}
+async function ltSetCr(amount) { // 교환대에 올리는 내 CR (올릴 때는 지갑에서 먼저, 내릴 때는 서버가 받은 뒤에 돌려받는다)
+  const v = view.lt; if (!v || v.status !== 'open' || view.ltAct) return;
+  const err = benchCrOk(amount, v.their, intIn(v.their_cr, 0, TRADE_CR_MAX, 0)); if (err) { toast(err); sfx('error'); return; }
+  const d = amount - benchCr(); if (!d) return;
+  view.ltAct = true;
+  try {
+    if (d > 0) {
+      const e2 = benchCrSet(v.id, amount); if (e2) { toast(e2); sfx('error'); return; }
+      renderProfile(); sfx('click');
+      const res = await Cloud.liveTradeSet(v.id, benchList(), amount); if (res && res.view) await ltApply(res.view);
+    } else {
+      const res = await Cloud.liveTradeSet(v.id, benchList(), amount);
+      if (res && res.ok) { benchCrSet(v.id, amount); renderProfile(); sfx('click'); }
+      if (res && res.view) await ltApply(res.view);
+    }
+  } catch (e) { toast('서버와 연결하지 못했어요. 잠시 뒤 다시 시도해 주세요.'); sfx('error'); }
+  finally { view.ltAct = false; if (isLtOpen()) renderLive(true); }
+}
+async function ltConfirm() {
+  const v = view.lt; if (!v || v.status !== 'open' || view.ltAct) return;
+  { const e = benchCrOk(benchCr(), v.their, intIn(v.their_cr, 0, TRADE_CR_MAX, 0)); if (e) { toast(e); sfx('error'); return; } }
+  if (!sameList(benchList(), v.mine) || benchCr() !== intIn(v.mine_cr, 0, TRADE_CR_MAX, 0)) { toast('올린 물건을 서버에 맞추는 중이에요. 잠시 뒤 다시 눌러 주세요.'); ltPoll(); return; }
+  view.ltAct = true;
+  try {
+    const r = await Cloud.liveTradeConfirm(v.id, v.ver);
+    if (r && r.view) await ltApply(r.view);
+    if (r && r.ok) { if (view.lt && view.lt.status === 'open') toast('교환을 눌렀어요. 상대도 누르면 바로 바뀝니다.'); }
+    else { sfx('error'); toast({ changed: '교환대가 바뀌었어요. 다시 확인하고 눌러 주세요.', empty: '교환대에 올린 물건이 없어요.', both_cr: 'CR 은 한쪽만 낼 수 있어요.', moved: '상대와 같은 칸이 아니게 되어 교환이 취소됐어요.', closed: '교환이 이미 끝났어요.' }[r && r.msg] || '처리하지 못했어요.'); }
+  } catch (e) { toast('서버와 연결하지 못했어요. 잠시 뒤 다시 시도해 주세요.'); sfx('error'); }
+  finally { view.ltAct = false; if (isLtOpen()) renderLive(true); }
+}
+async function ltCancel() {
+  const v = view.lt; if (!v || view.ltAct || (v.status !== 'open' && v.status !== 'invited')) return;
+  view.ltAct = true;
+  try { const r = await Cloud.liveTradeCancel(v.id); if (r && r.view) await ltApply(r.view); else await ltPoll(); }
+  catch (e) { toast('서버와 연결하지 못했어요. 잠시 뒤 다시 시도해 주세요.'); sfx('error'); }
+  finally { view.ltAct = false; }
+}
+function liveHtml(v) {
+  if (v.status === 'invited') return `<div id="ltRoot" class="lt-wait"><p class="detail-desc"><b>${esc(v.name)}</b> 대원이 수락하기를 기다리는 중이에요… (3분 안에 답이 없으면 자동으로 끝나요)</p></div>`;
+  const mine = benchList(), their = v.their, bagNames = {};
+  Object.values(state.inventory).flat().forEach(s => { if (s.n !== MAIL_SHIP_ITEM) bagNames[s.n] = (bagNames[s.n] || 0) + s.q; });
+  const col = (title, list, own, ok) => `<div class="lt-col"><div class="lt-head"><b>${esc(title)}</b>${ok ? '<span class="lt-ok">교환 확인 ✔</span>' : ''}</div>` +
+    (list.map(([n, q]) => `<div class="lt-item">${icon(ITEMS[n].icon)}<span>${esc(shownName(n))} ×${q}</span>${own ? `<button data-act="lt-minus" data-name="${esc(n)}" data-qty="1">−1</button><button data-act="lt-minus" data-name="${esc(n)}" data-qty="${q}">내리기</button>` : ''}</div>`).join('') || '<div class="lt-empty">비어 있음</div>') + '</div>';
+  const pick = Object.keys(bagNames).sort((a, b) => ITEMS[a].tab.localeCompare(ITEMS[b].tab) || a.localeCompare(b)).map(n => {
+    const full = benchQty(n) >= 99 || (!benchQty(n) && mine.length >= 5);
+    return `<div class="lt-item">${icon(ITEMS[n].icon)}<span>${esc(shownName(n))} ×${bagNames[n]}</span><button data-act="lt-plus" data-name="${esc(n)}" data-qty="1" ${full ? 'disabled' : ''}>+1</button>${bagNames[n] > 1 ? `<button data-act="lt-plus" data-name="${esc(n)}" data-qty="${Math.min(bagNames[n], 99 - benchQty(n))}" ${full ? 'disabled' : ''}>전부</button>` : ''}</div>`;
+  }).join('') || '<div class="lt-empty">올릴 소지품이 없어요.</div>';
+  return `<div id="ltRoot"><p class="tiny">서로 물건을 올린 뒤 <b>둘 다 '교환'</b>을 누르면 바뀝니다. 누른 뒤 누구든 물건을 바꾸면 확인이 풀려요. 올린 물건은 내 소지품에서 빠져 있고, 취소하면 돌아옵니다. (15분 동안 아무 변화가 없으면 자동 취소)</p>` +
+    `<div class="lt-grid">${col('내 교환대', mine, true, v.my_ok)}${col(`${v.name}의 교환대`, their, false, v.their_ok)}</div>` +
+    `<div class="lt-cr"><label for="ltCr">내가 내는 CR</label><input id="ltCr" type="number" min="0" max="${TRADE_CR_MAX}" value="${benchCr()}" inputmode="numeric"><button data-act="lt-cr">올리기</button><small class="tiny">${v.their_cr ? `${esc(v.name)}이(가) ${intIn(v.their_cr, 0, TRADE_CR_MAX, 0)} CR 을 올렸어요` : `받는 물건 값어치의 ${TRADE_CR_RATE}배까지 (지금 최대 ${tradeCrLimit(v.their)} CR) · 보유 ${state.money} CR`}</small></div>` +
+    `<div class="choice-label">내 소지품에서 올리기 <small class="tiny">— 종류 5개 · 종류마다 99개까지</small></div><div class="lt-pick">${pick}</div></div>`;
+}
+function liveButtons(v) {
+  const b = ['<button data-act="lt-hide">창 닫기</button>', '<button class="danger" data-act="lt-cancel">교환 취소</button>'];
+  if (v.status === 'open') { const can = (benchList().length + v.their.length + benchCr() + intIn(v.their_cr, 0, TRADE_CR_MAX, 0)) > 0; b.push(`<button class="primary" data-act="lt-confirm" ${v.my_ok || !can ? 'disabled' : ''}>${v.my_ok ? '확인함 · 상대를 기다리는 중' : '교환'}</button>`); }
+  return b;
+}
+function openLive() {
+  const v = view.lt; if (!v) return;
+  modal(`${v.name} 대원과 교환`, liveHtml(v), liveButtons(v), true);
+  view.ltKey = '';
+  if (!view.ltTimer) view.ltTimer = setInterval(() => { if (!isLtOpen()) { clearInterval(view.ltTimer); view.ltTimer = 0; return; } ltPoll(); }, 2000);
+}
+function renderLive(force) { // 바뀐 것이 있을 때만 다시 그린다 (스크롤 위치 유지)
+  const v = view.lt; if (!v || !isLtOpen()) return;
+  const key = JSON.stringify([v.status, v.ver, v.my_ok, v.their_ok, v.their, benchList(), benchCr(), v.their_cr, state.money, usedSlots()]);
+  if (!force && key === view.ltKey) return;
+  view.ltKey = key;
+  const sc = $('#modalBody').scrollTop;
+  modal(`${v.name} 대원과 교환`, liveHtml(v), liveButtons(v), true);
+  $('#modalBody').scrollTop = sc;
 }
 /* 되돌릴 수 없는 일을 하기 전에 "정말로 할지" 묻는 작은 창. 취소하면 back()으로 원래 창으로 돌아간다 */
 function askConfirm(title, msg, okLabel, act, data, back) {
@@ -2388,6 +2594,26 @@ function openDismantle(keepScroll) {
       `<button class="danger" data-act="dismantle-ask" data-name="${esc(n)}">분해</button></div>`;
   }).join('') || '<div class="empty">분해할 장비가 없습니다. 소지품에 쓰지 않는 장비가 있어야 해요. (착용 중인 장비는 분해할 수 없습니다)</div>';
   modal('분해', `<p class="tiny">소지품의 장비를 분해하면 재료와 약간의 CR을 얻습니다. 분해한 장비는 되돌릴 수 없어요. 보유 CR ${state.money}</p>` + rows, [btnClose], true);
+  $('#modalBody').scrollTop = st0;
+}
+function openStorage(keepScroll) { // 개인실 창고: 소지품 격자와 창고 격자를 한 화면에서 보고, 칸을 눌러 고른 뒤 옮긴다 (세이브에 이름→수량만 저장)
+  const st0 = keepScroll === true && $('#modalBody') ? $('#modalBody').scrollTop : 0;
+  const bag = {}; Object.values(state.inventory).flat().forEach(s => { bag[s.n] = (bag[s.n] || 0) + s.q; });
+  const bagNames = Object.keys(bag).filter(n => ITEMS[n]).sort((x, y) => ITEMS[x].tab.localeCompare(ITEMS[y].tab) || x.localeCompare(y));
+  const stor = storageList();
+  let sel = view.storSel; // { side: 'bag' | 'stor', name }
+  if (!sel || !ITEMS[sel.name] || (sel.side === 'bag' ? !bag[sel.name] : !state.storage[sel.name])) sel = view.storSel = null;
+  const cell = (side, n, q) => `<button class="slot clickable filled ${sel && sel.side === side && sel.name === n ? 'selected' : ''}" data-act="storage-pick" data-side="${side}" data-name="${esc(n)}" data-tip-title="${esc(shownName(n))} ×${q}" data-tip-desc="${esc(itemTip(n))}" aria-label="${esc(n)}">${icon(ITEMS[n].icon)}<span class="qty">${q}</span></button>`;
+  const grid = (cells, min) => { const c = cells.slice(); while (c.length < min) c.push('<div class="slot" aria-label="빈 칸"></div>'); return `<div class="inv-grid stor-grid">${c.join('')}</div>`; };
+  const btns = (act, n, max) => [1, 10].filter(q => q < max).map(q => `<button data-act="${act}" data-name="${esc(n)}" data-qty="${q}">${q}</button>`).join('') + `<button data-act="${act}" data-name="${esc(n)}" data-qty="${max}">${max > 1 ? '전부' : '1'}</button>`;
+  let bar = '<p class="tiny stor-hint">옮길 물건의 칸을 눌러 고르세요. 소지품에서 고르면 창고로, 창고에서 고르면 소지품으로 옮깁니다.</p>';
+  if (sel) {
+    const n = sel.name, put = sel.side === 'bag', max = put ? Math.min(bag[n], STORAGE_STACK) : state.storage[n];
+    bar = `<div class="stor-bar"><span class="grow">${icon(ITEMS[n].icon)} <b>${esc(shownName(n))}</b> <span class="tiny">${put ? `소지품 ${bag[n]}개${state.storage[n] ? ` · 창고 ${state.storage[n]}개` : ''} → 창고로` : `창고 ${state.storage[n]}개 → 소지품으로`}</span></span><span class="stor-btns">${btns(put ? 'storage-put' : 'storage-take', n, max)}</span></div>`;
+  }
+  modal('개인실 창고', `<p class="tiny">창고 <b>${storageKinds()} / ${STORAGE_KINDS}</b>종 · 가방 ${usedSlots()} / ${bagCapacity()} · 한 종류에 ${STORAGE_STACK}개까지. 창고에 둔 물건은 소지품이 아니라서 소지 효과(반지 등)가 없어요.</p>` +
+    `<div class="choice-label">소지품</div>${grid(bagNames.map(n => cell('bag', n, bag[n])), 18)}${bar}` +
+    `<div class="choice-label">창고 <small class="tiny">${storageKinds()} / ${STORAGE_KINDS}종</small></div>${grid(stor.map(([n, q]) => cell('stor', n, q)), 18)}`, [btnClose], true);
   $('#modalBody').scrollTop = st0;
 }
 function jobPanelHtml(side) { // 서브잡 납품 화면 (창과 오른쪽 '서브잡' 탭이 함께 쓴다. 탭에서는 그만두기가 없다)

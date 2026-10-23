@@ -37,6 +37,32 @@ def api(route):
     if '/rpc/trade_inbox' in u: return route.fulfill(headers=h, body=json.dumps(server['tb']))
     if '/rpc/answer_trade' in u: server['tans'].append([body.get('p_id'), body.get('p_accept')]); server['tb']['incoming'] = []; return route.fulfill(headers=h, body=json.dumps({'ok': True, 'name': '하늘', 'give': [['목재', 3]], 'want': [['약초', 2]]}))
     if '/rpc/ack_trade' in u: server['tack'].append(body.get('p_id')); server['tb']['results'] = []; return route.fulfill(headers=h, body='null')
+    if '/rpc/live_trade_' in u:
+        op = u.split('/rpc/live_trade_')[1].split('?')[0]; lv = server.get('ltview'); server.setdefault('ltcalls', []).append([op, body])
+        ok = lambda extra=None: route.fulfill(headers=h, body=json.dumps(dict({'ok': True, 'view': lv}, **(extra or {}))))
+        if op == 'view': return route.fulfill(headers=h, body=json.dumps(lv))
+        if op == 'invite':
+            if server.get('off'): return route.fulfill(headers=h, body=json.dumps({'ok': False, 'msg': 'offline'}))
+            server['ltview'] = {'id': 50, 'status': 'invited', 'ver': 0, 'from_me': True, 'name': '라온', 'mine': [], 'their': [], 'my_ok': False, 'their_ok': False}
+            return route.fulfill(headers=h, body=json.dumps({'ok': True, 'id': 50}))
+        if op == 'answer':
+            if lv and lv['status'] == 'invited': lv['status'] = 'open' if body.get('p_accept') else 'cancelled'; lv['ver'] += 1; return ok()
+            return route.fulfill(headers=h, body=json.dumps({'ok': False}))
+        if op == 'set':
+            if server.get('setfail'): return route.fulfill(status=500, headers=h, body=json.dumps({'message': 'boom'}))
+            if lv and lv['status'] == 'open': lv['mine'] = body.get('p_items'); lv['mine_cr'] = body.get('p_cr', 0); lv['ver'] += 1; lv['my_ok'] = lv['their_ok'] = False; return ok()
+            return route.fulfill(headers=h, body=json.dumps({'ok': False, 'msg': 'closed', 'view': lv}))
+        if op == 'confirm':
+            if not lv or lv['status'] != 'open': return route.fulfill(headers=h, body=json.dumps({'ok': False, 'msg': 'closed', 'view': lv}))
+            if body.get('p_ver') != lv['ver']: return route.fulfill(headers=h, body=json.dumps({'ok': False, 'msg': 'changed', 'view': lv}))
+            lv['my_ok'] = True
+            if lv['their_ok']: lv['status'] = 'done'; lv['ver'] += 1
+            return ok()
+        if op == 'cancel':
+            if lv and lv['status'] in ('invited', 'open'): lv['status'] = 'cancelled'; lv['ver'] += 1; return ok()
+            return route.fulfill(headers=h, body=json.dumps({'ok': False, 'view': lv}))
+        if op == 'ack': server['ltview'] = None; return route.fulfill(headers=h, body='null')
+    if '/rpc/nearby_players' in u: server.setdefault('nbcalls', []).append(body.get('p_loc')); return route.fulfill(headers=h, body=json.dumps(server.get('nearby', [])))
     if '/rpc/party_info' in u: return route.fulfill(headers=h, body=json.dumps(server['party']))
     if '/rpc/party_invite' in u: server['pcalls'].append(['invite', body]); return route.fulfill(headers=h, body=json.dumps({'ok': True}))
     if '/rpc/party_answer' in u: server['pcalls'].append(['answer', body]); server['party']['incoming'] = []; return route.fulfill(headers=h, body=json.dumps({'ok': True, 'joined': bool(body.get('p_accept'))}))
@@ -51,6 +77,7 @@ def api(route):
     if '/rpc/guild_answer' in u: server['gcalls'].append(['answer', body]); server['ginfo']['incoming'] = []; return route.fulfill(headers=h, body=json.dumps({'ok': True, 'joined': True}))
     if '/rpc/guild_rename' in u: server['gcalls'].append(['rename', body]); (server['ginfo'].get('guild') or {}).update({'name': body.get('p_name')}); return route.fulfill(headers=h, body=json.dumps({'ok': True}))
     if '/rpc/guild_leave' in u: server['gcalls'].append(['leave', body]); server['ginfo']['guild'] = None; return route.fulfill(headers=h, body='null')
+    if '/rpc/announce_rank' in u: server.setdefault('anno', []).append(body.get('p_rank')); return route.fulfill(headers=h, body=json.dumps({'ok': not server.get('annofail'), 'msg': 'not_yet'}))
     if '/rpc/chat_fetch' in u: return route.fulfill(headers=h, body=json.dumps([m for m in server['chat'] if m['id'] > body.get('p_after', 0)]))
     if '/rpc/get_profile' in u:
         return route.fulfill(headers=h, body=json.dumps({'uid': '33333333-3333-3333-3333-333333333333', 'name': body.get('p_name'), 'title': '신입 능력자', 'rank': 'E', 'level': '7', 'age': '24', 'keywords': '과묵,정찰', 'ability': '그림자 이동', 'abilityDesc': '그림자 사이를 건넌다', 'online': True, 'guild': '별무리'}) if body.get('p_name') == '하늘' else 'null')
@@ -116,8 +143,10 @@ with sync_playwright() as p:
     # 받은 신청 → 수락해야 친구
     server['incoming'] = [{'id': 7, 'name': '하늘'}]
     pg.evaluate("openFriends()")
-    try: pg.wait_for_function("(()=>{if(document.querySelector('#friendInbox [data-act=friend-accept]'))return true;friendPoll().then(()=>openFriends());return false})()", timeout=8000, polling=500)
-    except Exception: pass
+    for _ in range(12):  # 다른 폴링이 돌고 있으면 friendPoll 이 바로 끝나므로, 신청이 목록에 들어올 때까지 다시 시도한다
+        pg.evaluate("friendPoll()"); pg.wait_for_timeout(450)
+        if pg.evaluate("!!(view.inbox && view.inbox.some(r => r.name === '하늘'))"): break
+    pg.evaluate("openFriends()"); pg.wait_for_timeout(200)
     pg.wait_for_timeout(100)
     check('incoming_request_listed', pg.locator('#friendInbox [data-act="friend-accept"]').count() == 1 and '하늘' in pg.inner_text('#friendInbox') and not pg.evaluate("state.friends.includes('하늘')"))
     check('friend_icon_dot_on_request', pg.locator('[data-system="친구"].has-dot').count() == 1)
@@ -152,8 +181,6 @@ with sync_playwright() as p:
     pg.evaluate("friendPoll()"); pg.wait_for_timeout(600)
     check('mail_received_and_filtered', pg.evaluate("state.mail.length") == 1 and pg.evaluate("state.mail[0].items") == [['목재', 2]] and server['mack'] == [5], pg.evaluate("state.mail"))
     pg.evaluate("addItem('약초',5);removeItem('목재',countItem('목재'));addItem('목재',4);state.trades={day:'',n:0}")
-    pg.evaluate("openFriendTrade('하늘')"); pg.select_option('#ftGive', '목재'); pg.fill('#ftGiveQty', '3'); pg.fill('#ftWant', '약초'); pg.fill('#ftWantQty', '2'); pg.click('[data-act="ftrade-send"]'); pg.wait_for_timeout(600)
-    check('trade_proposed_items_escrowed', server['props'] and server['props'][0]['p_give'] == [['목재', 3]] and server['props'][0]['p_want'] == [['약초', 2]] and pg.evaluate("countItem('목재')") == 1 and pg.evaluate("state.trades.n") == 1, server['props'])
     server['tb'] = {'incoming': [{'id': 21, 'name': '하늘', 'give': [['목재', 3]], 'want': [['약초', 2]]}], 'sent': [], 'results': []}
     pg.evaluate("openFriends()"); pg.wait_for_timeout(500)
     pg.click('[data-act="ftrade-accept"]'); pg.wait_for_timeout(600)
@@ -209,6 +236,18 @@ with sync_playwright() as p:
     check('chat_survives_reload', pg.evaluate("state.chatTab") == '월드' and '안녕하세요' in pg.inner_text('#chatFeed') and '새 메시지' in pg.inner_text('#chatFeed'), pg.inner_text('#chatFeed')[:200])
     server['chat'] = saved_chat; pg.wait_for_timeout(1800)
     check('chat_reload_no_duplicates', pg.locator('#chatFeed .msg').count() == 3, pg.locator('#chatFeed .msg').count())
+    server['chat'].append({'id': 4, 'name': '미나', 'body': '미나님이 A급으로 승급하셨습니다. 축하합니다!', 'uid': '11111111-1111-1111-1111-111111111111', 'at': '2026-10-21T09:02:00Z', 'sys': 'rank:A'})
+    server['chat'].append({'id': 5, 'name': '해커', 'body': '해커님이 S급으로 승급하셨습니다.', 'uid': '22222222-2222-2222-2222-222222222222', 'at': '2026-10-21T09:03:00Z', 'sys': '<script>'})
+    pg.evaluate("chatPoll()"); pg.wait_for_timeout(700)
+    check('rank_announcement_rendered_centered', pg.locator('#chatFeed .msg-sys').count() == 1 and 'A급으로 승급' in pg.inner_text('#chatFeed .msg-sys') and pg.evaluate("getComputedStyle(document.querySelector('#chatFeed .msg-sys')).justifyContent") == 'center' and pg.locator('#chatFeed .msg').count() == 4, pg.locator('#chatFeed .msg-sys').count())
+    check('fake_sys_flag_ignored', pg.evaluate("view.chatSrv['월드'].filter(r=>r[5]).length") == 1)
+    pg.evaluate("state.flags.annoA='pending';announceRankA()"); pg.wait_for_timeout(900)
+    check('rank_announce_calls_server_once_done', server.get('anno') == ['A'] and pg.evaluate("state.flags.annoA") == 'done', server.get('anno'))
+    pg.evaluate("announceRankA()"); pg.wait_for_timeout(300)
+    check('rank_announce_not_repeated', server.get('anno') == ['A'])
+    server['annofail'] = True; pg.evaluate("state.flags.annoA='pending';announceRankA()"); pg.wait_for_timeout(700)
+    check('rank_announce_failure_stays_pending', pg.evaluate("state.flags.annoA") == 'pending'); server['annofail'] = False
+    pg.evaluate("state.flags.annoA='done'")
     pg.evaluate("view.chatAt=0")
     pg.evaluate("sendChat('반가워요')"); pg.wait_for_timeout(600)
     check('chat_send_goes_to_server', server['chatsent'] and server['chatsent'][-1] == {'p_channel': 'world', 'p_body': '반가워요'}, server['chatsent'])
@@ -246,19 +285,116 @@ with sync_playwright() as p:
     pg.evaluate("PARTY.members.find(m=>m.name==='라온').online=false"); pg.evaluate("A['ftrade-open']({dataset:{name:'라온'}})"); pg.wait_for_timeout(200)
     check('trade_blocked_when_party_member_offline', pg.locator('#ftGive').count() == 0)
     pg.evaluate("PARTY.members.find(m=>m.name==='라온').online=true")
-    pg.evaluate("openFriendTrade('라온')"); pg.wait_for_timeout(300)
-    pg.evaluate("document.querySelector('#ftWant').value='목재'; document.querySelector('#ftGiveQty').value=1")
-    has_give = pg.evaluate("document.querySelectorAll('#ftGive option').length") > 0
-    if has_give:
-        pg.evaluate("A['ftrade-send']({dataset:{name:'라온'}, disabled:false})"); pg.wait_for_timeout(500)
-        check('party_trade_uses_party_uid', server['props'] and server['props'][-1].get('p_to') == '66666666-6666-6666-6666-666666666666', server['props'][-1:])
-        server['off'] = True
-        pg.evaluate("openFriendTrade('라온')"); pg.wait_for_timeout(300)
-        pg.evaluate("document.querySelector('#ftWant').value='목재'; document.querySelector('#ftGiveQty').value=1")
-        g1 = pg.evaluate("document.querySelector('#ftGive').value"); c1 = pg.evaluate("n=>countItem(n)", g1)
-        pg.evaluate("A['ftrade-send']({dataset:{name:'라온'}, disabled:false})"); pg.wait_for_timeout(500)
-        check('trade_offline_server_reject_refunds', pg.evaluate("n=>countItem(n)", g1) == c1 and '접속' in pg.inner_text('#toasts, .toast, body'), [c1, pg.evaluate("n=>countItem(n)", g1)])
-        server['off'] = False
+    # ---------- 실시간 교환 ----------
+    LT = lambda: [c[0] for c in server.get('ltcalls', [])]
+    pg.evaluate("state.trades={day:'',n:0};state.mail=[];state.bench=null;state.ltSeen=[];view.lt=null;removeItem('목재',countItem('목재'));addItem('목재',6);removeItem('약초',countItem('약초'));addItem('약초',1)")
+    server['off'] = True; server['ltcalls'] = []; server['ltview'] = None
+    pg.evaluate("A['ftrade-open']({dataset:{name:'라온'}})"); pg.wait_for_timeout(500)
+    check('live_trade_offline_rejected_no_window', not pg.evaluate("isLtOpen()") and 'invite' in LT() and pg.evaluate("countItem('목재')") == 6)
+    server['off'] = False
+    pg.evaluate("A['ftrade-open']({dataset:{name:'라온'}})"); pg.wait_for_timeout(700)
+    check('live_trade_invite_uses_party_uid', ['invite', {'p_to': '66666666-6666-6666-6666-666666666666'}] in server['ltcalls'], server['ltcalls'])
+    check('live_trade_waiting_window', pg.locator('#ltRoot.lt-wait').count() == 1 and pg.locator('[data-act="lt-cancel"]').count() == 1, pg.inner_text('#modalBody')[:100])
+    server['ltview']['status'] = 'open'; server['ltview']['ver'] += 1
+    pg.evaluate("ltPoll()"); pg.wait_for_timeout(500)
+    check('live_trade_bench_opens_on_accept', pg.locator('.lt-grid .lt-col').count() == 2 and pg.locator('[data-act="lt-confirm"]').count() == 1 and pg.locator('[data-act="lt-confirm"][disabled]').count() == 1)
+    pg.click('[data-act="lt-plus"][data-name="목재"][data-qty="1"]'); pg.wait_for_timeout(500)
+    check('live_trade_put_item_deducts_and_syncs', pg.evaluate("countItem('목재')") == 5 and server['ltview']['mine'] == [['목재', 1]] and pg.evaluate("state.bench.items") == [['목재', 1]], [pg.evaluate("countItem('목재')"), server['ltview']['mine']])
+    pg.click('[data-act="lt-plus"][data-name="목재"][data-qty="5"]'); pg.wait_for_timeout(500)
+    check('live_trade_put_all', pg.evaluate("countItem('목재')") == 0 and server['ltview']['mine'] == [['목재', 6]])
+    pg.click('[data-act="lt-minus"][data-name="목재"][data-qty="1"]'); pg.wait_for_timeout(500)
+    check('live_trade_take_back_after_server_ok', pg.evaluate("countItem('목재')") == 1 and server['ltview']['mine'] == [['목재', 5]] and pg.evaluate("state.bench.items") == [['목재', 5]])
+    server['setfail'] = True
+    pg.click('[data-act="lt-plus"][data-name="목재"][data-qty="1"]'); pg.wait_for_timeout(500)
+    check('live_trade_offline_put_keeps_local_record', pg.evaluate("countItem('목재')") == 0 and pg.evaluate("state.bench.items") == [['목재', 6]] and server['ltview']['mine'] == [['목재', 5]])
+    pg.click('[data-act="lt-minus"][data-name="목재"][data-qty="1"]'); pg.wait_for_timeout(500)
+    check('live_trade_take_back_blocked_when_server_fails', pg.evaluate("countItem('목재')") == 0 and pg.evaluate("state.bench.items") == [['목재', 6]])
+    server['setfail'] = False
+    pg.evaluate("ltPoll()"); pg.wait_for_timeout(600)
+    check('live_trade_poll_resends_local_record', server['ltview']['mine'] == [['목재', 6]])
+    server['ltview']['their'] = [['약초', 2], ['없는템', 1], ['운송장치', 1]]; server['ltview']['ver'] += 1; server['ltview']['their_ok'] = True
+    pg.evaluate("ltPoll()"); pg.wait_for_timeout(500)
+    check('live_trade_shows_partner_items_cleaned', '약초' in pg.inner_text('.lt-grid') and '없는템' not in pg.inner_text('.lt-grid') and '운송장치' not in pg.inner_text('.lt-grid') and '교환 확인' in pg.inner_text('.lt-grid'))
+    pg.click('[data-act="lt-confirm"]'); pg.wait_for_timeout(600)
+    check('live_trade_completes_when_both_confirm', 'confirm' in LT() and pg.evaluate("state.bench") is None and pg.evaluate("state.trades.n") == 1 and not pg.evaluate("isLtOpen()") and 'ack' in LT(), [LT(), pg.evaluate("state.bench")])
+    check('live_trade_partner_items_arrive_by_mail', pg.evaluate("state.mail.some(m=>m.sid==='lt50'&&JSON.stringify(m.items)===JSON.stringify([['약초',2]]))") and pg.evaluate("countItem('목재')") == 0, pg.evaluate("state.mail"))
+    n0 = pg.evaluate("state.mail.length")
+    pg.evaluate("ltFinish({id:50,status:'done',name:'라온',mine:[['목재',6]],their:[['약초',2]]})"); pg.wait_for_timeout(300)
+    check('live_trade_settle_is_idempotent', pg.evaluate("state.mail.length") == n0 and pg.evaluate("state.trades.n") == 1 and pg.evaluate("countItem('목재')") == 0)
+    # 취소: 올려 둔 물건이 전부 돌아온다
+    pg.evaluate("addItem('목재',4)"); server['ltcalls'] = []; server['ltview'] = None
+    pg.evaluate("A['ftrade-open']({dataset:{name:'라온'}})"); pg.wait_for_timeout(600)
+    server['ltview']['id'] = 51; server['ltview']['status'] = 'open'; server['ltview']['ver'] += 1
+    pg.evaluate("ltPoll()"); pg.wait_for_timeout(500)
+    pg.evaluate("state.bench={id:50,items:[]}"); pg.evaluate("state.bench=null")
+    pg.click('[data-act="lt-plus"][data-name="목재"][data-qty="4"]'); pg.wait_for_timeout(500)
+    server['ltview']['status'] = 'cancelled'
+    pg.evaluate("ltPoll()"); pg.wait_for_timeout(600)
+    check('live_trade_cancel_returns_items', pg.evaluate("countItem('목재')") == 4 and pg.evaluate("state.bench") is None and not pg.evaluate("isLtOpen()") and pg.evaluate("state.trades.n") == 1, pg.evaluate("[countItem('목재'),state.bench]"))
+    # 성사됐지만 서버에 올라가지 못한 몫은 돌려받는다
+    pg.evaluate("state.bench={id:52,items:[['목재',3]]};removeItem('목재',3)")
+    pg.evaluate("ltFinish({id:52,status:'done',name:'라온',mine:[['목재',1]],their:[]})"); pg.wait_for_timeout(300)
+    check('live_trade_done_refunds_unsynced_part', pg.evaluate("countItem('목재')") == 3 and pg.evaluate("state.bench") is None, pg.evaluate("countItem('목재')"))
+    # 받는 쪽: 신청이 오면 수락 창이 뜬다
+    pg.evaluate("closeModal();view.lt=null;view.ltAsk=0"); server['ltcalls'] = []
+    server['ltview'] = {'id': 60, 'status': 'invited', 'ver': 0, 'from_me': False, 'name': '라온', 'mine': [], 'their': [], 'my_ok': False, 'their_ok': False}
+    pg.evaluate("ltPoll()"); pg.wait_for_timeout(500)
+    check('live_trade_incoming_invite_prompt', pg.locator('[data-act="lt-answer"][data-accept="1"]').count() == 1, pg.inner_text('#modalBody')[:100])
+    pg.click('[data-act="lt-answer"][data-accept="1"]'); pg.wait_for_timeout(700)
+    check('live_trade_accept_opens_bench', ['answer', {'p_id': 60, 'p_accept': True}] in server['ltcalls'] and pg.locator('.lt-grid').count() == 1, server['ltcalls'])
+    pg.evaluate("ltCancel()"); pg.wait_for_timeout(700)
+    check('live_trade_cancel_button_closes', 'cancel' in LT() and not pg.evaluate("isLtOpen()") and 'ack' in LT())
+    # ---------- 같은 칸 제한 + CR 거래 ----------
+    server['nearby'] = [{'uid': '77777777-7777-7777-7777-777777777777', 'name': '미나'}, {'uid': 'x', 'name': ''}]
+    pg.evaluate("nearbyPoll()"); pg.wait_for_timeout(500)
+    check('nearby_poll_sends_location_and_lists', len(server.get('nbcalls', [])) >= 1 and pg.evaluate("view.nearby.map(p=>p.name)") == ['미나'], server.get('nbcalls'))
+    pg.evaluate("state.side='상황';renderSituation()")
+    check('nearby_listed_with_trade_button', pg.locator('#sideView [data-act="ftrade-open"][data-name="미나"]').count() == 1)
+    pg.evaluate("view.lt=null"); server['ltcalls'] = []
+    pg.evaluate("A['ftrade-open']({dataset:{name:'멀리있는사람'}})"); pg.wait_for_timeout(300)
+    check('trade_blocked_when_not_nearby_or_party', 'invite' not in LT())
+    pg.evaluate("openTradeHub()")
+    check('trade_hub_lists_party_nearby_friends', pg.locator('#modalBody [data-act="ftrade-open"]').count() >= 2 and pg.locator('#tradeHubBtn').count() == 1 and '미나' in pg.inner_text('#modalBody'))
+    pg.evaluate("closeModal()")
+    check('loc_key_private_room_empty', pg.evaluate("(state.location='개인실',locKey())") == '' and pg.evaluate("(state.location='본부',locKey())") == '본부')
+    # CR
+    check('cr_limit_needs_items', pg.evaluate("benchCrOk(100,[],0)") is not None and pg.evaluate("benchCrOk(0,[],0)") is None)
+    check('cr_limit_follows_shop_value', pg.evaluate("benchCrOk(Math.floor(tradeValueOf([['목재',2]])*TRADE_CR_RATE),[['목재',2]],0)") is None and pg.evaluate("benchCrOk(Math.floor(tradeValueOf([['목재',2]])*TRADE_CR_RATE)+1,[['목재',2]],0)") is not None)
+    check('cr_one_side_only', pg.evaluate("benchCrOk(1,[['목재',2]],5)") is not None)
+    pg.evaluate("state.trades={day:'',n:0};state.bench=null;state.ltSeen=[];state.money=500;view.lt=null;state.mail=[]"); server['ltview'] = None; server['ltcalls'] = []
+    pg.evaluate("A['ftrade-open']({dataset:{name:'라온'}})"); pg.wait_for_timeout(600)
+    server['ltview']['status'] = 'open'; server['ltview']['ver'] += 1; server['ltview']['their'] = [['약초', 4]]
+    pg.evaluate("ltPoll()"); pg.wait_for_timeout(500)
+    lim = pg.evaluate("tradeCrLimit([['약초',4]])")
+    check('cr_ui_present', pg.locator('#ltCr').count() == 1 and lim > 0, lim)
+    pg.evaluate(f"ltSetCr({lim+1})"); pg.wait_for_timeout(300)
+    check('cr_over_limit_rejected', pg.evaluate("state.money") == 500 and pg.evaluate("benchCr()") == 0)
+    pg.evaluate(f"ltSetCr({lim})"); pg.wait_for_timeout(500)
+    check('cr_raise_deducts_and_syncs', pg.evaluate("state.money") == 500 - lim and server['ltview'].get('mine_cr') == lim and ['set', {'p_id': 50, 'p_items': [], 'p_cr': lim}] in server['ltcalls'], server['ltcalls'][-2:])
+    pg.evaluate("ltSetCr(1)"); pg.wait_for_timeout(500)
+    check('cr_lower_refunds_after_server', pg.evaluate("state.money") == 499 and server['ltview'].get('mine_cr') == 1)
+    server['ltview']['their_ok'] = True; pg.evaluate("ltPoll()"); pg.wait_for_timeout(300)
+    server['ltview']['their_cr'] = 0
+    pg.evaluate("ltConfirm()"); pg.wait_for_timeout(700)
+    check('cr_trade_done_keeps_paid_cr', pg.evaluate("state.bench") is None and pg.evaluate("state.money") == 499 and pg.evaluate("state.mail.some(m=>m.sid==='lt50')"), pg.evaluate("state.money"))
+    # 받는 쪽: CR 이 들어온다
+    pg.evaluate("state.bench=null;view.lt=null;state.money=100"); server['ltview'] = None
+    pg.evaluate("settleLive({id:77,status:'done',name:'라온',mine:[],their:[],their_cr:250,mine_cr:0})")
+    check('cr_received_on_done_once', pg.evaluate("state.money") == 350)
+    pg.evaluate("settleLive({id:77,status:'done',name:'라온',mine:[],their:[],their_cr:250,mine_cr:0})")
+    check('cr_received_not_duplicated', pg.evaluate("state.money") == 350)
+    pg.evaluate("state.bench={id:78,items:[],cr:200};state.money=0")
+    pg.evaluate("settleLive({id:78,status:'cancelled',name:'라온',mine:[],their:[]})")
+    check('cr_cancel_refunds', pg.evaluate("state.money") == 200 and pg.evaluate("state.bench") is None)
+    pg.evaluate("state.bench={id:79,items:[],cr:300};state.money=0")
+    pg.evaluate("settleLive({id:79,status:'done',name:'라온',mine:[],their:[['약초',1]],mine_cr:100,their_cr:0})")
+    check('cr_done_refunds_unsynced_excess', pg.evaluate("state.money") == 200, pg.evaluate("state.money"))
+    pg.evaluate("state.money=500")
+    pg.evaluate("hardenState(state)")
+    pg.evaluate("state.trades={day:todayKey(),n:TRADE_DAILY};view.lt=null"); server['ltcalls'] = []
+    pg.evaluate("A['ftrade-open']({dataset:{name:'라온'}})"); pg.wait_for_timeout(400)
+    check('live_trade_daily_limit_blocks_invite', 'invite' not in LT())
+    pg.evaluate("state.trades={day:'',n:0}")
     pg.evaluate("closeModal()")
     pg.evaluate("state.chatTab='파티';renderChat()"); pg.evaluate("view.chatAt=0"); pg.evaluate("sendChat('파티 인사')"); pg.wait_for_timeout(500)
     check('party_chat_uses_party_channel', server['chatsent'][-1] == {'p_channel': 'party', 'p_body': '파티 인사'}, server['chatsent'][-1:])

@@ -60,6 +60,8 @@ function hardenState(s) {
   c.allowFriend = c.allowFriend !== false; c.allowGuild = c.allowGuild !== false;
   s.unlockSeen = Object.fromEntries(Object.entries(s.unlockSeen && typeof s.unlockSeen === 'object' ? s.unlockSeen : {}).filter(([k, v]) => typeof k === 'string' && k.length < 30 && v === true));
   s.profileEditAt = intIn(s.profileEditAt, 0, 4e12, 0);
+  { const b = s.bench, items = b && typeof b === 'object' ? cleanItemList(b.items, 5) : []; const cr = b && typeof b === 'object' ? intIn(b.cr, 0, TRADE_CR_MAX, 0) : 0; s.bench = (items.length || cr) && Number.isFinite(+b.id) && +b.id > 0 ? { id: intIn(b.id, 1, 9e15, 1), items, cr } : null; s.ltSeen = (Array.isArray(s.ltSeen) ? s.ltSeen : []).map(x => intIn(x, 1, 9e15, 0)).filter(Boolean).slice(-20); }
+  { const st = {}; let kinds = 0; if (s.storage && typeof s.storage === 'object') Object.keys(s.storage).forEach(n => { const q = intIn(s.storage[n], 0, STORAGE_STACK, 0); if (ITEMS[n] && q > 0 && kinds < STORAGE_KINDS) { st[n] = q; kinds++; } }); s.storage = st; }
   { const lz = s.leisure && typeof s.leisure === 'object' ? s.leisure : {}; s.leisure = { day: intIn(lz.day, -1, 1e7, -1), id: LEISURE_IDS.includes(lz.id) ? lz.id : '' }; }
   s.deaths = intIn(s.deaths, 0, 99999, 0);
   s.tickets = intIn(s.tickets, 0, 9999, 0); s.questCount = intIn(s.questCount, 0, 999999, 0); s.actMs = Number.isFinite(s.actMs) ? clamp(s.actMs, 0, 1e12) : 0;
@@ -70,7 +72,7 @@ function hardenState(s) {
   s.reinforce = Object.fromEntries(Object.entries(s.reinforce && typeof s.reinforce === 'object' ? s.reinforce : {}).filter(([k]) => ITEMS[k] && ITEMS[k].slot === '무기').map(([k, v]) => [k, intIn(v, 0, REINFORCE_RANKS.length - 1, 0)]).filter(([, v]) => v > 0));
   s.nicks = Object.fromEntries(Object.entries(s.nicks && typeof s.nicks === 'object' ? s.nicks : {}).filter(([k, v]) => ITEMS[k] && ITEMS[k].slot === '무기' && s.reinforce[k] >= REINFORCE_RANKS.length - 1 && typeof v === 'string').map(([k, v]) => [k, cleanText(v, NICK_MAX)]).filter(([, v]) => v));
   s.fishBest = Object.fromEntries(Object.entries(s.fishBest && typeof s.fishBest === 'object' ? s.fishBest : {}).filter(([k, v]) => FISH_SIZE[k] && Number.isFinite(v) && v > 0).map(([k, v]) => [k, Math.min(300, Math.round(v * 10) / 10)]));
-  s.flags = { ...(s.flags && typeof s.flags === 'object' ? s.flags : {}), lostFound: !!(s.flags && s.flags.lostFound) };
+  s.flags = { ...(s.flags && typeof s.flags === 'object' ? s.flags : {}), lostFound: !!(s.flags && s.flags.lostFound), annoA: s.flags && (s.flags.annoA === 'pending' || s.flags.annoA === 'done') ? s.flags.annoA : '' };
   if (s.dungeon) s.dungeon.tf = Object.fromEntries(Object.entries(s.dungeon.tf && typeof s.dungeon.tf === 'object' ? s.dungeon.tf : {}).filter(([k, v]) => /^-?\d{1,3},-?\d{1,3}$/.test(k) && Number.isFinite(v)).map(([k, v]) => [k, intIn(v, 0, TAME_FAIL_MAX, 0)]));
   const v = s.vitals, mb = maxBonus(s.equipment, s.enchants);
   v.hpMax = 100 + mb.hp; v.spMax = 100 + mb.sp; v.hp = intIn(v.hp, 1, v.hpMax, v.hpMax); v.sp = intIn(v.sp, 0, v.spMax, v.spMax); v.exp = intIn(v.exp, 0, 999999, 0);
@@ -275,6 +277,18 @@ function dismantleYield(name) { // { mats:[[이름,수량]], cr } 또는 null(�
   }
   return { mats: Object.entries(bag).filter(([n]) => ITEMS[n]), cr: Math.max(2, Math.round((it.sell || 10) * DISMANTLE_CR)) };
 }
+function discardItem(name, qty = 1) { // 소지품 버리기: 성공하면 { qty }, 실패하면 사유 문자열 (착용 중인 장비는 소지품이 아니라서 버려지지 않는다)
+  if (!state.created) return '먼저 캐릭터를 만드세요.';
+  if (!ITEMS[name]) return '알 수 없는 아이템입니다.';
+  const have = countItem(name); if (have < 1) return '소지품에 그 물건이 없습니다.';
+  qty = Math.min(intIn(qty, 1, 9999, 1), have);
+  removeItem(name, qty);
+  if (ITEMS[name].tab === '장비' && !state.inventory['장비'].some(s => s.n === name) && !Object.values(state.equipment).includes(name) && !(state.storage[name] > 0)) { // 마지막 한 개면 그 이름의 강화·세공·이름도 함께 사라진다
+    delete state.enchants[name]; delete state.reinforce[name]; delete state.nicks[name]; delete state.engraves[name];
+  }
+  syncMax(); save();
+  return { qty };
+}
 const dismantlable = () => { const seen = {}; state.inventory['장비'].forEach(s => { if (dismantleYield(s.n)) seen[s.n] = (seen[s.n] || 0) + 1; }); return Object.entries(seen); };
 function dismantleItem(name, qty = 1) { // 성공하면 { mats, cr, qty }, 실패하면 사유 문자열
   if (!state.created) return '먼저 캐릭터를 만드세요.';
@@ -323,6 +337,110 @@ function masteryText(tag) { // 마우스를 올렸을 때 보이는 보너스 �
   return `${tag} 음식·약의 회복량 +${p(b.heal)} (레벨당 +1%)`;
 }
 /* 투두리스트 (상황 탭): 직접 쓰고 체크하고 지운다 ---------- */
+/* ---------- 실시간 교환 (교환대) ----------
+   올린 물건은 내 기기에서 먼저 빼 두고(state.bench) 서버에는 올린 목록만 둔다. 늘릴 때는 '내 기기에서 빼기 → 서버 반영', 줄일 때는 '서버 반영 → 돌려받기' 순서라
+   어느 순간에도 서버 목록 ⊆ 내 기록이 되어 물건이 복사되거나 사라지지 않는다. 마감(성사/취소) 때 settleLive 가 한 번에 정리한다. */
+const benchList = () => (state.bench ? state.bench.items : []);
+const benchCr = () => (state.bench ? state.bench.cr || 0 : 0);
+const benchQty = n => (benchList().find(r => r[0] === n) || [0, 0])[1];
+function benchNext(name, delta) { // 이름의 수량을 delta 만큼 바꾼 새 목록 (불가능하면 null)
+  const cur = benchList().map(r => r.slice()), r = cur.find(x => x[0] === name), q = (r ? r[1] : 0) + delta;
+  if (q < 0 || q > 99 || !ITEMS[name] || name === MAIL_SHIP_ITEM) return null;
+  if (!r) { if (cur.length >= 5) return null; if (q > 0) cur.push([name, q]); return cur; }
+  if (q === 0) return cur.filter(x => x[0] !== name);
+  r[1] = q; return cur;
+}
+function benchRaise(id, name, n) { // 소지품에서 빼서 교환대 기록에 올린다. 성공하면 새 목록, 아니면 사유 문자열
+  const next = benchNext(name, n); if (!next) return '교환대에는 물건을 5종류까지, 한 종류에 99개까지 올릴 수 있어요.';
+  if (state.bench && state.bench.id !== id) return '이미 다른 교환 기록이 남아 있어요.';
+  if (countItem(name) < n) return `${name}이(가) 모자랍니다.`;
+  removeItem(name, n); state.bench = { id, items: next, cr: state.bench ? state.bench.cr : 0 }; save(); return next;
+}
+function benchLowerOk(name, n) { // 줄일 때 돌려받을 자리가 있는지 (있으면 null, 없으면 사유)
+  const free = (STACK_MAX * (bagCapacity() - usedSlots())) + (state.inventory[ITEMS[name].tab] || []).filter(s => s.n === name).reduce((a, s) => a + Math.max(0, STACK_MAX - s.q), 0);
+  return ITEMS[name].tab === '장비' ? (usedSlots() + n <= bagCapacity() ? null : '가방에 자리가 없어요.') : (free >= n ? null : '가방에 자리가 없어요.');
+}
+function benchLower(name, n, next) { // 서버가 줄인 목록을 받아들였을 때: 돌려받고 기록을 맞춘다
+  addItem(name, n); const cr = state.bench.cr || 0; state.bench = next.length || cr ? { id: state.bench.id, items: next, cr } : null; save();
+}
+/* CR 거래: 한쪽만 낼 수 있고, 받는 물건의 상점 값어치(tradeValue)의 TRADE_CR_RATE배까지 + 한 번에 TRADE_CR_MAX 까지.
+   값어치 = 상점에서 파는 가장 싼 값, 상점에 없으면 판매가의 2배. (CR 은 클라이언트 기준이라 규칙도 클라이언트에서 막는다) */
+function tradeValue(name) {
+  let best = 0;
+  Object.keys(SHOPS).forEach(p => shopRows(p).forEach(r => { if (r[0] === name && (!best || r[1] < best)) best = r[1]; }));
+  return best || (sellPrice(name) * 2);
+}
+const tradeValueOf = list => list.reduce((a, [n, q]) => a + tradeValue(n) * q, 0);
+const tradeCrLimit = theirItems => Math.min(TRADE_CR_MAX, Math.floor(tradeValueOf(theirItems) * TRADE_CR_RATE));
+function benchCrOk(amount, theirItems, theirCr) { // 내가 amount CR 을 내도 되는가 (되면 null, 아니면 사유)
+  if (!Number.isInteger(amount) || amount < 0) return 'CR 금액을 확인하세요.';
+  if (!amount) return null;
+  if (theirCr > 0) return '상대가 이미 CR 을 올렸어요. CR 은 한쪽만 낼 수 있어요.';
+  const lim = tradeCrLimit(theirItems);
+  if (!lim) return '상대의 물건이 없으면 CR 을 낼 수 없어요. (선물 금지)';
+  if (amount > lim) return `받는 물건의 값어치에 비해 너무 많아요. (최대 ${lim} CR)`;
+  return null;
+}
+function benchCrSet(id, amount) { // 내 CR 을 올릴 때 먼저 내 지갑에서 뺀다. 성공하면 null, 실패하면 사유
+  const cur = benchCr(), d = amount - cur;
+  if (d > 0 && state.money < d) return 'CR이 부족합니다.';
+  if (state.bench && state.bench.id !== id) return '이미 다른 교환 기록이 남아 있어요.';
+  state.money -= d; state.bench = { id, items: benchList().map(r => r.slice()), cr: amount };
+  if (!state.bench.items.length && !amount) state.bench = null;
+  save(); return null;
+}
+const listDiff = (a, b) => a.map(([n, q]) => [n, q - (b.find(r => r[0] === n) || [0, 0])[1]]).filter(r => r[1] > 0); // a 에서 b 를 뺀 몫
+function settleLive(v) { // 마감된 교환(done/cancelled)을 정리한다. → { done, name, got, back } (이미 정리한 번호면 null)
+  const id = intIn(v && v.id, 1, 9e15, 0), name = cleanText(v && v.name, 12) || '?';
+  if (!id || state.ltSeen.includes(id)) return null;
+  const done = v.status === 'done', b = state.bench && state.bench.id === id ? state.bench : null;
+  let back = [];
+  if (b && !done) state.money += b.cr || 0; // 취소면 낸 CR 을 돌려받는다
+  if (done) state.money += intIn(v.their_cr, 0, TRADE_CR_MAX, 0) + (b ? Math.max(0, (b.cr || 0) - intIn(v.mine_cr, 0, TRADE_CR_MAX, 0)) : 0); // 성사면 받는 CR (낸 CR 은 이미 빠져 있다)
+  if (b) back = done ? listDiff(b.items, cleanItemList(v.mine, 5)) : b.items.map(r => r.slice()); // 성사됐으면 서버에 못 올라간 몫만, 취소면 전부
+  const left = [];
+  back.forEach(([n, q]) => { const g = addItem(n, q); if (g < q) left.push([n, q - g]); });
+  if (left.length) receiveServerMail(`교환 · ${name}`.slice(0, 12), '교환 물건 반환', '가방에 자리가 없어 못 돌려받은 물건입니다. 수령하세요.', left, 'lb' + id);
+  const got = done ? cleanItemList(v.their, 5) : [];
+  if (done) {
+    if (got.length) receiveServerMail(`교환 · ${name}`.slice(0, 12), '교환 성사', `${name} 대원과의 교환이 성사됐어요. 받은 물건을 수령하세요.`, got, 'lt' + id);
+    state.trades = { day: todayKey(), n: (state.trades.day === todayKey() ? state.trades.n : 0) + 1 };
+  }
+  if (b) state.bench = null;
+  state.ltSeen.push(id); state.ltSeen = state.ltSeen.slice(-20); save();
+  return { done, name, got, back, gotCr: done ? intIn(v.their_cr, 0, TRADE_CR_MAX, 0) : 0 };
+}
+function releaseStaleBench(activeId) { // 서버에 없는 교환의 기록이 남아 있으면 물건을 전부 돌려받는다
+  if (!state.bench || state.bench.id === activeId) return null;
+  const r = settleLive({ id: state.bench.id, status: 'cancelled', name: '?', mine: [], their: [] });
+  if (!r) { state.bench = null; save(); }
+  return r;
+}
+
+/* ---------- 개인실 창고 (세이브 안의 이름→수량 표라 서버에 따로 부담이 없다) ---------- */
+const storageKinds = () => Object.keys(state.storage).length;
+const storageList = () => Object.entries(state.storage).filter(([n, q]) => ITEMS[n] && q > 0).sort((a, b) => ITEMS[a[0]].tab.localeCompare(ITEMS[b[0]].tab) || a[0].localeCompare(b[0]));
+function storeItem(name, qty) { // 소지품 → 창고. 성공하면 null, 실패하면 사유
+  if (state.location !== '개인실') return '창고는 개인실에서만 쓸 수 있습니다.';
+  const it = ITEMS[name]; if (!it) return '알 수 없는 아이템입니다.';
+  qty = intIn(qty, 1, STORAGE_STACK, 0);
+  const have = countItem(name); if (!qty || have < 1) return '맡길 물건이 소지품에 없습니다.';
+  qty = Math.min(qty, have);
+  const cur = state.storage[name] || 0;
+  if (!cur && storageKinds() >= STORAGE_KINDS) return `창고에는 서로 다른 아이템을 ${STORAGE_KINDS}종까지만 둘 수 있습니다.`;
+  if (cur >= STORAGE_STACK) return `「${name}」은(는) 창고에 ${STORAGE_STACK}개까지만 둘 수 있습니다.`;
+  qty = Math.min(qty, STORAGE_STACK - cur);
+  const took = removeItem(name, qty); if (!took) return '맡길 물건이 소지품에 없습니다.';
+  state.storage[name] = cur + took; save(); return null;
+}
+function takeStored(name, qty) { // 창고 → 소지품. 성공하면 { got }, 실패하면 사유 문자열 (가방이 모자라면 담을 수 있는 만큼만)
+  if (state.location !== '개인실') return '창고는 개인실에서만 쓸 수 있습니다.';
+  const cur = state.storage[name] | 0; if (!ITEMS[name] || cur < 1) return '창고에 그 물건이 없습니다.';
+  qty = Math.min(intIn(qty, 1, STORAGE_STACK, 0), cur); if (!qty) return '꺼낼 수량이 잘못되었습니다.';
+  const got = addItem(name, qty); if (!got) return '가방에 자리가 없습니다.';
+  if (cur - got > 0) state.storage[name] = cur - got; else delete state.storage[name];
+  save(); return { got };
+}
 function addTodo(text) {
   const t = cleanText(text, TODO_LEN);
   if (!t) return '내용을 입력하세요.';
@@ -1408,6 +1526,10 @@ function chooseWeapon(name) {
 
 /* ---------- 임무 ---------- */
 /* 지금 있는 장소: 지상 구역의 안전 캠프(타일 C)면 구역 이름, 공중이면 그 장소 이름. 아니면 null */
+function locKey() { // 서버에 알리는 '내 위치': 같은 값이면 같은 칸. 개인실은 비공개('')
+  if (state.dungeon) return `${state.dungeon.zone}:${state.dungeon.x},${state.dungeon.y}`.slice(0, 40);
+  return state.location === '개인실' ? '' : String(state.location || '').slice(0, 40);
+}
 function placeKey() {
   if (state.dungeon) { const z = zoneOf(state.dungeon.zone); return tileOf(z, state.dungeon.x, state.dungeon.y) === 'C' ? z.id : null; }
   return state.location;

@@ -217,3 +217,13 @@ STUB_ICONS=1 python3 tests/smoke.py   # 아이콘 폰트를 못 받는 환경(�
 - 종합 상가 장비/무기 행에 `착용 위치 · 슬롯` 태그(`.slot-tag`)와 안내문(`.slot-hint`).
 - 새 레시피 `NEW_RECIPES3`(data.js, 쓰이는 곳 없던 재료 14종 소진: 요리 5·약 3·장비 6). 약은 `MEDICINES.add`. 테스트 `unused_materials_now_have_recipes`/`new_recipes_valid`.
 - 펫 사료(`PET_FOOD`): 길들이기 성공 확률 +`TAME_FOOD_BONUS`(8%p, `tameChance(bait)`, 결과 계산은 `act.bait`), 간식 친밀도 ×`FOOD_BOND_MULT`(1.5, `feedGain`). 먹이 선택 표시도 `feedGain`.
+- **RP템 규칙**: RP템(`tags:['RP']`)은 모두 소지만으로 스탯이 붙는다(`hold`). 우정/결혼반지 행운, 노트북 지능, 헝겊인형 의지, 기타 케이스·소중한 사람의 사진 감각(각 +1, 종류마다 1번). 새 RP템도 반드시 `hold`를 넣는다(테스트 `every_rp_item_has_hold_stat`).
+- 지도 칸 툴팁(`tileMats`)은 그 칸에 실제로 나타나는 재료·몬스터만 보여 준다(지형 전체 목록은 검색·범례용 `terrainMats`).
+
+## 2026-10-23 (3) 창고 · 칭호 · 실시간 교환 · CR 거래 · A 승급
+- 창고 `state.storage`(이름→수량, `STORAGE_KINDS`=60/`STORAGE_STACK`=999, 개인실에서만, `storeItem/takeStored`). 소지품 버리기 `discardItem`.
+- 숙련 10/20/30 칭호 `MASTERY_RANKS`/`masteryTitleOf`(TITLE_DEFS 33개). 아이템에 도장 찍는 방식이 아니라 칭호.
+- 실시간 교환: `state.bench={id,items,cr}`가 맡긴 물건의 기준(늘릴 땐 내 쪽에서 먼저 빼고 서버, 줄일 땐 서버 먼저). `settleLive`가 `state.ltSeen`으로 멱등 정산. 서버 `live_trades`/`live_trade_*`, 상대 물건은 메일(sid `lt<id>`)로 지급.
+- 상대 조건(`_lt_near`): 같은 파티(어디서든)/같은 `presence.loc`(둘 다 90초 안 접속). 위치 `locKey()`(던전 `zone:x,y`, 개인실 ''), `nearbyPoll()` 10초마다 `nearby_players` RPC → `view.nearby`(상황 탭 목록). 상단 `#tradeHubBtn`(openTradeHub).
+- CR 거래: 한쪽만(`both_cr` 거절), 한도 `tradeCrLimit`=받는 물건 `tradeValue`(상점 최저 구매가, 없으면 판매가×2)×`TRADE_CR_RATE`(1.5), 최대 `TRADE_CR_MAX`(3000). 규칙은 클라이언트 기준(세이브가 클라이언트 권한). `TRADE_DAILY`=3. `friends.sql` 전체 재실행 필요.
+- A급 승급 `promo_a`(`PROMO_ORDER`에 A), 승급하면 `announce_rank` RPC → 채팅 `sys='rank:A'` 줄(가운데 정렬 `.msg-sys`). 설정은 `applySettingsNow`로 즉시 적용(저장 버튼 없음).

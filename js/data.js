@@ -10,6 +10,7 @@ const DEFAULT_LOCATION = '본부';
 const BASE_BAG_CAPACITY = 24;  // 기본 가방 칸 수 (장비/소모품/재료 합계)
 const PAGE_SIZE = 24;          // 인벤토리 한 페이지 칸 수
 const STACK_MAX = 99;
+const STORAGE_KINDS = 60, STORAGE_STACK = 999; // 개인실 창고: 서로 다른 아이템 60종까지, 종류마다 999개까지 (이름→수량만 저장해 세이브가 가볍다. 저장 검증이 불러올 때 쓰므로 data.js)
 const CYCLE_SEC = [360, 360];  // 전투 1회 소요 시간(초): 6분 고정
 const GATHER_SEC = 300;        // 채집·채굴·낚시 1회 소요 시간(초): 5분 고정
 const MULTI_OPTIONS = [{ label: '1회', sec: 0 }, { label: '30분', sec: 1800 }, { label: '1시간', sec: 3600 }, { label: '4시간', sec: 14400 }, { label: '직접 입력', sec: -1, custom: true }]; // 다중행동 (마지막 항목은 분 단위로 직접 적는다)
@@ -72,6 +73,7 @@ defItems('장비', [
   ['원정 배낭', 'backpack', 'D등급 승급 보상이다. 장착하면 인벤토리 수용량이 40칸으로 늘어난다.', { slot: '가방', capacity: 40 }],
   ['개척 배낭', 'backpack', 'C등급 승급 보상이다. 장착하면 인벤토리 수용량이 44칸으로 늘어난다.', { slot: '가방', capacity: 44 }],
   ['정예 배낭', 'backpack', 'B등급 승급 보상이다. 장착하면 인벤토리 수용량이 52칸으로 늘어난다.', { slot: '가방', capacity: 52 }],
+  ['선봉 배낭', 'backpack', 'A등급 승급 보상이다. 장착하면 인벤토리 수용량이 60칸으로 늘어난다.', { slot: '가방', capacity: 60 }],
   ['플라즈마 블레이드', 'swords', '등급 B · 공격력 +12. 고온 플라즈마 날을 형성하는 근접 무기다.', { slot: '무기', atk: 12 }],
   ['이끼 위장 망토', 'checkroom', '제1구역 캠프의 특산 장비다. 숲에 녹아드는 위장 망토다.', { slot: '목', mods: { agi: 2 } }],
   ['해무 고글', 'visibility', '제2구역 캠프의 특산 장비다. 안개 낀 해안에서도 시야가 또렷하다.', { slot: '얼굴', mods: { sen: 3 } }],
@@ -368,6 +370,7 @@ ACTIONS['농장'] = { kind: 'farm', icon: 'yard', label: '농장', title: '농�
 ACTIONS['펫 돌보기'] = { kind: 'pet', icon: 'pets', label: '펫 돌보기', title: '펫 돌보기', action: '지상에서 길들인 펫에게 먹이를 주고 함께 갈 펫을 고릅니다.' };
 ACTIONS['서브잡 가입'] = { kind: 'subjob', icon: 'work', label: '서브잡', title: '서브잡', action: '나만의 서브잡을 만들고 하루 한 번 납품해 레벨을 올립니다.' };
 ACTIONS['단련'] = { kind: 'train', icon: 'fitness_center', label: '단련', title: '단련', action: '개인실에서 25분 동안 단련하며 새 제작 레시피를 익힙니다. 배울 수 있는 레시피는 등급이 오를수록 늘어납니다.', sec: TRAIN_SEC, cost: { sp: 10 } };
+ACTIONS['창고'] = { kind: 'storage', icon: 'inventory_2', label: '창고', title: '창고', action: `개인실 창고에 물건을 맡기고 찾습니다. 서로 다른 아이템 ${STORAGE_KINDS}종까지, 한 종류에 ${STORAGE_STACK}개까지 보관할 수 있습니다. 창고에 둔 물건은 소지품이 아니라서 소지 효과가 없습니다.` };
 ACTIONS['분해'] = { kind: 'dismantle', icon: 'recycling', label: '분해', title: '분해', action: '소지품의 쓰지 않는 장비(가방 포함)를 분해해 재료와 약간의 CR로 바꿉니다. 착용 중인 장비는 분해할 수 없습니다.' };
 ACTIONS['휴식'] = { kind: 'rest', icon: 'bed', label: '휴식', title: '휴식', action: '개인실에서 쉬며 HP와 기력을 조금 회복합니다. (30분)', sec: 1800, cost: { sp: 0 } };
 ACTIONS['잠자기'] = { kind: 'rest', icon: 'bedtime', label: '잠자기', title: '잠자기', action: '개인실에서 깊이 잠들어 HP와 기력을 모두 회복합니다. (6시간)', sec: 21600, cost: { sp: 0 }, full: true };
@@ -424,7 +427,7 @@ Object.entries(LEISURE).forEach(([id, l]) => {
 
 const SAFE_ZONES = [
   { id: '본부', icon: 'domain', meta: '행정 · 작전 거점', x: 50, y: 42, desc: '임무 수주와 승급 시험을 받을 수 있는 도시 본부입니다. CR을 내고 장비를 강화하거나, 쓰지 않는 장비를 분해할 수도 있습니다.', items: ['임무 수주', '승급', '장비 강화', '분해', '작전 예측 내기'] },
-  { id: '개인실', icon: 'bed', meta: '휴식 · 단련 · 농장', x: 22, y: 20, desc: '나만의 공간입니다. 휴식하고, 단련으로 새 레시피를 익히고, 농장을 가꾸고, 펫을 돌볼 수 있습니다.', items: ['농장', '펫 돌보기', '단련', '휴식', '잠자기'] },
+  { id: '개인실', icon: 'bed', meta: '휴식 · 단련 · 농장 · 창고', x: 22, y: 20, desc: '나만의 공간입니다. 휴식하고, 단련으로 새 레시피를 익히고, 농장을 가꾸고, 펫을 돌볼 수 있습니다.', items: ['농장', '펫 돌보기', '창고', '단련', '휴식', '잠자기'] },
   { id: '이동장치', icon: 'transfer_within_a_station', meta: '지상 이동 · 구역 선택', x: 50, y: 74, desc: '지상으로 내려가는 이동 장치입니다. 가고 싶은 구역을 고르면 바로 이동합니다.', items: ['이동 제1구역', '이동 제2구역', '이동 제3구역', '이동 제4구역', '이동 제5구역', '이동 제6구역'] },
   { id: '상점가', icon: 'storefront', meta: '상점 · 서브잡 · 뽑기', x: 78, y: 20, desc: '보급품 상점과 종합 상가, 서브잡 가입, 뽑기 기계, 뒷골목 도박판이 모여 있는 상업 구역입니다.', items: ['보급품 상점', '종합 상가', '서브잡 가입', '뽑기', '뒷골목 카드 한 판'] },
   { id: '여가구역', icon: 'celebration', meta: '배팅장 · 게임센터 · 도서관 · 사우나 · 영화관 · 사진관', x: 80, y: 62, desc: '일에 지친 대원들이 숨을 돌리는 여가 시설 구역입니다. 하루에 한 곳에서 기분 전환 버프를 받을 수 있고, 다른 곳도 구경하며 시간을 보낼 수 있습니다.', items: LEISURE_IDS },
@@ -835,9 +838,11 @@ QUESTS.push(
   { id: 'promo_c', promo: 'C', lv: 10, kind: '메인', title: '승급 시험 · C등급', desc: '제4구역(협곡)의 급류 수달 3마리·석상 골렘 2마리·동굴 거미 2마리를 처치하고, 구리 광석 6개와 수정 원석 4개를 납품한다.',
     need: { type: 'multi', parts: [{ type: 'kill', monster: '급류 수달', qty: 3 }, { type: 'kill', monster: '석상 골렘', qty: 2 }, { type: 'kill', monster: '동굴 거미', qty: 2 }, { type: 'item', name: '구리 광석', qty: 6, consume: true }, { type: 'item', name: '수정 원석', qty: 4, consume: true }] }, reward: { exp: 350, money: 900, items: [['고급 응급 키트', 3], ['개척 배낭', 1]] } },
   { id: 'promo_b', promo: 'B', lv: 15, kind: '메인', title: '승급 시험 · B등급', desc: '제5구역(설원)의 빙하 곰 2마리·서리 정령 2마리·설원 늑대 3마리를 처치하고, 서리 결정 8개와 설산 약초 6개를 납품한다.',
-    need: { type: 'multi', parts: [{ type: 'kill', monster: '빙하 곰', qty: 2 }, { type: 'kill', monster: '서리 정령', qty: 2 }, { type: 'kill', monster: '설원 늑대', qty: 3 }, { type: 'item', name: '서리 결정', qty: 8, consume: true }, { type: 'item', name: '설산 약초', qty: 6, consume: true }] }, reward: { exp: 800, money: 2200, items: [['고급 응급 키트', 4], ['에너지 젤', 3], ['정예 배낭', 1]] } }
+    need: { type: 'multi', parts: [{ type: 'kill', monster: '빙하 곰', qty: 2 }, { type: 'kill', monster: '서리 정령', qty: 2 }, { type: 'kill', monster: '설원 늑대', qty: 3 }, { type: 'item', name: '서리 결정', qty: 8, consume: true }, { type: 'item', name: '설산 약초', qty: 6, consume: true }] }, reward: { exp: 800, money: 2200, items: [['고급 응급 키트', 4], ['에너지 젤', 3], ['정예 배낭', 1]] } },
+  { id: 'promo_a', promo: 'A', lv: 20, kind: '메인', title: '승급 시험 · A등급', desc: '제6구역(정글)의 정글 재규어 3마리·덩굴 괴수 2마리·아나콘다 2마리·맹독 두꺼비 2마리를 처치하고, 코코넛 4개·아로와나 3마리·파인애플 6개를 납품한다.',
+    need: { type: 'multi', parts: [{ type: 'kill', monster: '정글 재규어', qty: 3 }, { type: 'kill', monster: '덩굴 괴수', qty: 2 }, { type: 'kill', monster: '아나콘다', qty: 2 }, { type: 'kill', monster: '맹독 두꺼비', qty: 2 }, { type: 'item', name: '코코넛', qty: 4, consume: true }, { type: 'item', name: '아로와나', qty: 3, consume: true }, { type: 'item', name: '파인애플', qty: 6, consume: true }] }, reward: { exp: 1800, money: 5000, items: [['고급 응급 키트', 5], ['에너지 젤', 5], ['선봉 배낭', 1]] } }
 );
-const PROMO_ORDER = ['F', 'E', 'D', 'C', 'B']; // 지금은 B등급까지만 승급할 수 있다
+const PROMO_ORDER = ['F', 'E', 'D', 'C', 'B', 'A']; // 지금은 A등급까지 승급할 수 있다
 const BOARD_RESET_HOUR = 4; // 수주 임무는 수주한 다음 한국 시간 오전 4시에 리셋된다
 const BOARD_MAX_ACTIVE = 7;
 /* 친구 / 메일. 다른 대원은 서버 연결 후에 나타난다 (그 전에는 친구를 만들 수 없다) */
@@ -889,6 +894,13 @@ SHOPS['보급품 상점'].sections['음식'].push(['군용 컵라면', 22]);
 SHOPS['종합 상가'].sections['장비'].push(['아이스크림 소드', 450]);
 SHOPS['종합 상가'].sections['재료'].push(['초콜릿', 12]);
 SHOPS['종합 상가'].sections['RP템'].push(['노트북', 1500]);
+/* RP템은 모두 소지만으로 스탯이 붙는다(hold). 새 RP템을 만들 때도 hold 를 꼭 넣는다 */
+defItems('재료', [
+  ['헝겊인형', 'toys', '사랑하는 누군가의 모습을 본떠 만든 헝겊 인형이다. 삐뚤빼뚤한 바느질이 오히려 정겹다. 착용하지 않고 가지고만 있어도 마음이 단단해진다.', { hold: { wil: 1 }, sell: 120, tags: ['RP'] }],
+  ['기타 케이스', 'music_note', '낡고 묵직한 기타 케이스다. 어쩌면 안에는 기타가 아니라 샷건이 들어 있을지도 모른다. 착용하지 않고 가지고만 있어도 감각이 날카로워진다.', { hold: { sen: 1 }, sell: 150, tags: ['RP'] }],
+  ['소중한 사람의 사진', 'photo', '늘 지니고 다니는 행운의 부적이다. 모서리가 닳도록 꺼내 본 사진 한 장이 감각을 일깨운다. 착용하지 않고 가지고만 있어도 정신이 또렷해진다.', { hold: { sen: 1 }, sell: 100, tags: ['RP'] }]
+]);
+SHOPS['종합 상가'].sections['RP템'].push(['헝겊인형', 1200], ['기타 케이스', 1800], ['소중한 사람의 사진', 1000]);
 [ // 새 레시피: 맨 뒤에 붙인다 (제작 번호가 바뀌지 않게)
   { out: '오징어구이', mats: { '오징어': 1, '소금': 1 }, sec: 60, rank: 'E' }, { out: '피라냐튀김', mats: { '피라냐': 2, '소금': 1 }, sec: 80, rank: 'E' },
   { out: '초코바나나', mats: { '바나나': 1, '초콜릿': 1 }, sec: 50 }, { out: '이스터에그', mats: { '알': 2, '설탕': 1 }, sec: 70 }
@@ -1023,6 +1035,7 @@ const TITLE_DEFS = [
   ['숙련 대원', '승급 시험을 통과해 D등급이 된다', () => 'DCBAS'.includes(state.character.rank)],
   ['정예 대원', '승급 시험을 통과해 C등급이 된다', () => 'CBAS'.includes(state.character.rank)],
   ['상급 대원', '승급 시험을 통과해 B등급이 된다', () => 'BAS'.includes(state.character.rank)],
+  ['에이스 대원', '승급 시험을 통과해 A등급이 된다', () => 'AS'.includes(state.character.rank)],
   ['새싹 농부', '농장에서 작물을 수확해 도감에 등록한다', () => Object.keys(CROPS).some(n => state.codex.items[n])],
   ['길들이는 자', '지상에서 펫을 길들인다', () => state.pets.length > 0],
   ['동물 친구', '펫을 3종 이상 모은다', () => state.pets.length >= 3],
@@ -1030,9 +1043,15 @@ const TITLE_DEFS = [
   ['시간 가는 줄 모르는', '행동에 쓴 시간이 모두 합쳐 24시간을 넘는다', () => (state.actMs || 0) >= 24 * 3600 * 1000],
   ...Object.entries(LIT_TITLES).map(([zid, nm]) => [`${nm}을 밝힌 자`, `${zid}의 지도를 끝까지 모두 밝힌다`, () => zoneFullyLit(zid)])
 ];
+/* 숙련(세부 스테이터스) 호칭: 레벨 10 초보 · 20 숙련 · 30 레전드 + 직업 이름. 칭호로도 얻는다 */
+const MASTERY_JOB = { '요리': '요리사', '목공': '목수', '재봉': '재봉사', '대장': '대장장이', '가죽공예': '가죽공예가', '보석공예': '보석공예가', '약학': '약사', '농사': '농부', '채집': '채집가', '채굴': '광부', '낚시': '낚시꾼' };
+const MASTERY_RANKS = [[30, '레전드'], [20, '숙련'], [10, '초보']];
+const masteryTitleOf = (tag, lv) => { const r = MASTERY_RANKS.find(([n]) => lv >= n); return r && MASTERY_JOB[tag] ? `${r[1]} ${MASTERY_JOB[tag]}` : ''; };
+Object.entries(MASTERY_JOB).forEach(([tag, job]) => MASTERY_RANKS.slice().reverse().forEach(([n, nm]) => TITLE_DEFS.push([`${nm} ${job}`, `${tag} 숙련 레벨 ${n}에 도달한다`, () => masteryLv(tag) >= n])));
 const TITLES = TITLE_DEFS.map(t => t[0]);
 const TODO_MAX = 30, TODO_LEN = 40; // 투두리스트: 최대 30개, 한 줄 40자 (저장 검증이 불러올 때 쓰므로 data.js에 둔다)
-const TRADE_DAILY = 3; // 주위 대원과의 물건 교환은 하루 3회
+const TRADE_DAILY = 3; // 교환은 하루 3회
+const TRADE_CR_RATE = 1.5, TRADE_CR_MAX = 3000; // CR 거래: 받는 물건 값어치의 1.5배까지, 한 번에 3000 CR 까지
 const NEARBY_PLAYERS = []; // 같은 장소의 다른 대원 [이름, 상태, 내놓은 물건 [[아이템, 수량], ...]]. 서버 연결 후 채워진다 (지금은 비어 있음)
 
 const POSTS = {
@@ -1043,6 +1062,13 @@ const POSTS = {
 · 무기 3종 추가: 채찍·빗자루·요요 (종합 상가). 빗자루는 하늘을 날 수 있다는 소문이 있습니다.
 · 프로필 이능력 아래에서 주 스탯(+2)과 부 스탯(+1)을 고를 수 있습니다. 캐릭터 생성과 프로필 수정에서 바꿀 수 있습니다.
 · 설정에 '채팅창 탭' 켜기/끄기가 생겼습니다. (월드 끄기 등)
+· 개인실 '창고': 물건을 따로 보관합니다(60종·종류마다 999개, 세이브 안에 저장되어 서버에 부담이 없습니다).
+· 숙련(요리·목공·재봉 등) 10/20/30레벨이 되면 '초보/숙련/레전드 ○○' 칭호를 얻습니다. 숙련 화면에서 확인할 수 있어요.
+· RP템 추가: 헝겊인형(의지+1)·기타 케이스(감각+1)·소중한 사람의 사진(감각+1). 앞으로 RP템은 가지고만 있어도 스탯이 붙습니다.
+· 교환이 실시간 교환대로 바뀌었습니다. 신청을 수락하면 서로 물건을 올리고, 둘 다 '교환'을 누르면 성사됩니다. 파티원과는 어디에서든, 그 밖의 대원과는 같은 칸에서 할 수 있고 상단 '유저 간 거래' 아이콘에서 시작합니다. (하루 3회)
+· 대원 간 CR 거래: 한쪽만 낼 수 있고, 받는 물건의 상점 값어치 1.5배(최대 3000 CR)까지 낼 수 있습니다.
+· 소지품 버리기, A급 승급 시험(통과하면 월드 채팅에 중앙 축하 공지), 환경설정은 저장 버튼 없이 바로 적용됩니다.
+· 소모품 사용 개수 칸을 작게 줄였습니다.
 · 새 레시피 14종: 쓰이는 곳이 없던 재료(석재·광물 코어·조개껍데기·갯벌 조개·점토·화강암·사암·고산 약초·협곡 허브·설산 약초·해풍 콩·협곡 보리·설원 순무·정글 카사바)로 조개탕·해풍 콩죽·보리빵·순무 조림·카사바 칩·진정 허브 달임·고산 약초 달임·설산 회복제·조개 귀걸이·점토 구슬 팔찌·코어 반지·사암 목걸이·화강암 흉갑·화강암 망치를 만들 수 있습니다. (개인실 단련으로 익힙니다)
 · 펫 사료: 길들일 때 먹이로 쓰면 성공 확률이 조금(+8%p) 오르고, 간식으로 주면 친밀도가 작물보다 1.5배 오릅니다.
 · 소모품 사용 개수를 드롭다운으로 고르고 회복량이 보입니다. 알림 탭에서는 이모티콘·주사위를 쓸 수 없고, 종합 상가 장비에 착용 위치가 표시됩니다.
@@ -1209,6 +1235,7 @@ function createDefaultState() {
     pending: null,      // 완료됐지만 결과 확인 전인 행동 {id, result}
     settings: { bgmOn: true, bgmVolume: BGM_DEFAULT_VOLUME, sfxVolume: 65, clickOn: true, alertOn: true, notify: true, guildAlert: true, chatTabs: { 월드: true, 길드: true, 파티: true, 알림: true }, cursor: true, fontSize: 'm', theme: 'light', customBase: 'light', customAccent: '#197da1' },
     unlockSeen: {}, // 이미 알려 준 개방 알림 { 키: true }
+    storage: {}, // 개인실 창고: { 아이템 이름: 수량 }
     leisure: { day: -1, id: '' }, // 여가구역: 오늘 받은 버프 (day = todayIndex, id = 장소)
     profileEditAt: 0, // 마지막 프로필 수정 시각 (0=아직 수정 안 함). 첫 수정 뒤에는 24시간 간격
     layout: { left: 292, right: 315, statusH: 0, mapH: 0 },
@@ -1217,6 +1244,7 @@ function createDefaultState() {
     flags: { chatted: false, entered: false, lostFound: false },
     dungeon: null,      // 미궁 안이면 { zone, x, y, seen: {'x,y': 1}, done: [이벤트 인덱스] }
     eventAt: {},  // 이벤트를 치른 시각 { '구역:번호': ms } — EVENT_RESET_MS가 지나면 다시 생긴다
+    bench: null, ltSeen: [], // 실시간 교환: 교환대에 올려 둔 내 물건 { id: 교환 번호, items: [[이름, 수량]] } / 마감 처리한 교환 번호(중복 방지)
     trades: { day: '', n: 0 }, // 주위 대원과 물건을 교환한 날짜와 횟수 (하루 TRADE_DAILY회)
     reinforce: {}, // 무기 강화 { 무기 이름: 랭크 번호(1=E … 5=A) }
     nicks: {},    // A랭까지 강화한 무기에 붙인 이름 { 무기 이름: 별명 }
