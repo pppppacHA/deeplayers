@@ -186,7 +186,11 @@ declare me uuid := auth.uid(); my_name text; to_name text;
 begin
   if me is null then raise exception 'no_auth'; end if;
   select friend_name into to_name from public.friendships where user_id = me and friend_uid = p_to;
+  if to_name is null and p_to <> me and exists (select 1 from public.party_members a join public.party_members b on a.party_id = b.party_id where a.user_id = me and b.user_id = p_to) then
+    select coalesce(nullif(data->'character'->>'name', ''), '?') into to_name from public.saves where user_id = p_to; -- 같은 파티원은 친구가 아니어도 교환할 수 있다
+  end if;
   if to_name is null then return jsonb_build_object('ok', false, 'msg', 'not_friend'); end if;
+  if not public.is_online(p_to) then return jsonb_build_object('ok', false, 'msg', 'offline'); end if; -- 상대가 접속 중일 때만 교환할 수 있다
   if jsonb_typeof(p_give) <> 'array' or jsonb_typeof(p_want) <> 'array' or jsonb_array_length(p_give) not between 1 and 3 or jsonb_array_length(p_want) not between 1 and 3 then return jsonb_build_object('ok', false, 'msg', 'bad'); end if;
   if (select count(*) from public.trades where from_uid = me and status = 'pending') >= 5 then return jsonb_build_object('ok', false, 'msg', 'limit'); end if;
   if (select count(*) from public.trades where to_uid = p_to and status = 'pending') >= 10 then return jsonb_build_object('ok', false, 'msg', 'busy'); end if;
@@ -441,6 +445,7 @@ create or replace function public.chat_channel(p_ch text) returns text
 language sql security definer set search_path = public as $$
   select case when p_ch = 'world' then 'world'
               when p_ch = 'guild' then (select 'g' || guild_id::text from public.guild_members where user_id = auth.uid())
+              when p_ch = 'party' then (select 'p' || party_id::text from public.party_members where user_id = auth.uid())
               else null end;
 $$;
 
@@ -465,6 +470,7 @@ language plpgsql security definer set search_path = public as $$
 declare ch text;
 begin
   if auth.uid() is null then raise exception 'no_auth'; end if;
+  perform public.touch_presence();
   ch := public.chat_channel(p_channel);
   if ch is null then return '[]'::jsonb; end if;
   return coalesce((select jsonb_agg(x order by x.id) from (
@@ -489,6 +495,8 @@ language sql security definer set search_path = public as $$
       'keywords', s.data->'character'->>'keywords',
       'ability', s.data->'character'->>'ability',
       'abilityDesc', s.data->'character'->>'abilityDesc',
+      'mainStat', s.data->'character'->>'mainStat',
+      'subStat', s.data->'character'->>'subStat',
       'equipment', coalesce(s.data->'equipment', '{}'::jsonb),
       'allowFriend', coalesce(s.data->'character'->>'allowFriend', 'true'),
       'online', (s.updated_at > now() - interval '30 minutes'),
@@ -515,3 +523,151 @@ begin
 end $$;
 revoke all on function public.guild_rename(text) from public, anon;
 grant execute on function public.guild_rename(text) to authenticated;
+
+
+-- ===== 파티 (2~4인) =====
+-- 초대 → 상대 수락. 파티장만 초대할 수 있고, 파티원 사이에는 파티 채팅과 교환(주위 대원 취급)이 열린다.
+-- 파티장이 나가면 다음 사람이 파티장이 되고, 혼자 남으면 파티가 사라진다.
+create table if not exists public.parties (
+  id         bigint generated always as identity primary key,
+  leader_uid uuid not null references auth.users(id) on delete cascade,
+  created_at timestamptz not null default now()
+);
+create table if not exists public.party_members (
+  user_id   uuid primary key references auth.users(id) on delete cascade,
+  party_id  bigint not null references public.parties(id) on delete cascade,
+  joined_at timestamptz not null default now()
+);
+create index if not exists party_members_p on public.party_members(party_id);
+create table if not exists public.party_reqs (
+  id         bigint generated always as identity primary key,
+  party_id   bigint not null references public.parties(id) on delete cascade,
+  from_uid   uuid not null references auth.users(id) on delete cascade,
+  to_uid     uuid not null references auth.users(id) on delete cascade,
+  from_name  text not null,
+  created_at timestamptz not null default now()
+);
+create unique index if not exists party_reqs_uniq on public.party_reqs(party_id, to_uid);
+create index if not exists party_reqs_to on public.party_reqs(to_uid);
+alter table public.parties enable row level security;
+alter table public.party_members enable row level security;
+alter table public.party_reqs enable row level security;
+
+-- 내 파티 + 나에게 온 초대 (오래된 초대는 1일 뒤 정리)
+create or replace function public.party_info() returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare me uuid := auth.uid(); pid bigint; leader uuid;
+begin
+  if me is null then raise exception 'no_auth'; end if;
+  perform public.touch_presence(); -- 접속 신호 (채팅·파티 확인이 주기적으로 부른다)
+  delete from public.party_reqs where created_at < now() - interval '1 day';
+  select m.party_id, p.leader_uid into pid, leader from public.party_members m join public.parties p on p.id = m.party_id where m.user_id = me;
+  return jsonb_build_object(
+    'party', case when pid is null then null else jsonb_build_object('id', pid, 'leader', leader = me,
+      'members', coalesce((select jsonb_agg(jsonb_build_object('uid', m.user_id, 'name', coalesce(s.data->'character'->>'name', '?'), 'leader', m.user_id = leader, 'online', public.is_online(m.user_id)) order by (m.user_id = leader) desc, m.joined_at)
+        from public.party_members m left join public.saves s on s.user_id = m.user_id where m.party_id = pid), '[]'::jsonb)) end,
+    'incoming', coalesce((select jsonb_agg(jsonb_build_object('id', r.id, 'name', r.from_name) order by r.id) from public.party_reqs r where r.to_uid = me), '[]'::jsonb));
+end $$;
+
+create or replace function public.party_invite(p_to uuid) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare me uuid := auth.uid(); pid bigint; my_name text;
+begin
+  if me is null then raise exception 'no_auth'; end if;
+  if p_to is null or p_to = me then return jsonb_build_object('ok', false, 'msg', 'bad'); end if;
+  if not exists (select 1 from public.saves where user_id = p_to) then return jsonb_build_object('ok', false, 'msg', 'not_found'); end if;
+  if exists (select 1 from public.party_members where user_id = p_to) then return jsonb_build_object('ok', false, 'msg', 'target_in_party'); end if;
+  select party_id into pid from public.party_members where user_id = me;
+  if pid is not null then
+    if not exists (select 1 from public.parties where id = pid and leader_uid = me) then return jsonb_build_object('ok', false, 'msg', 'not_leader'); end if;
+    if (select count(*) from public.party_members where party_id = pid) >= 4 then return jsonb_build_object('ok', false, 'msg', 'full'); end if;
+  end if;
+  if (select count(*) from public.party_reqs where from_uid = me) >= 6 then return jsonb_build_object('ok', false, 'msg', 'limit'); end if;
+  if (select count(*) from public.party_reqs where to_uid = p_to) >= 10 then return jsonb_build_object('ok', false, 'msg', 'busy'); end if;
+  if pid is null then -- 파티가 없으면 이때 만든다
+    insert into public.parties(leader_uid) values (me) returning id into pid;
+    insert into public.party_members(user_id, party_id) values (me, pid);
+  end if;
+  select coalesce(nullif(data->'character'->>'name', ''), '?') into my_name from public.saves where user_id = me;
+  insert into public.party_reqs(party_id, from_uid, to_uid, from_name) values (pid, me, p_to, coalesce(my_name, '?')) on conflict do nothing;
+  return jsonb_build_object('ok', true);
+end $$;
+
+create or replace function public.party_answer(p_id bigint, p_accept boolean) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare me uuid := auth.uid(); r public.party_reqs;
+begin
+  if me is null then raise exception 'no_auth'; end if;
+  select * into r from public.party_reqs where id = p_id and to_uid = me;
+  if r.id is null then return jsonb_build_object('ok', false, 'msg', 'gone'); end if;
+  delete from public.party_reqs where id = r.id;
+  if not p_accept then
+    if not exists (select 1 from public.party_reqs where party_id = r.party_id) and (select count(*) from public.party_members where party_id = r.party_id) < 2 then delete from public.parties where id = r.party_id; end if;
+    return jsonb_build_object('ok', true, 'joined', false);
+  end if;
+  if exists (select 1 from public.party_members where user_id = me) then return jsonb_build_object('ok', false, 'msg', 'in_party'); end if;
+  if not exists (select 1 from public.parties where id = r.party_id) then return jsonb_build_object('ok', false, 'msg', 'gone'); end if;
+  if (select count(*) from public.party_members where party_id = r.party_id) >= 4 then return jsonb_build_object('ok', false, 'msg', 'full'); end if;
+  insert into public.party_members(user_id, party_id) values (me, r.party_id);
+  delete from public.party_reqs where to_uid = me;
+  return jsonb_build_object('ok', true, 'joined', true);
+end $$;
+
+-- 파티에서 나간다. 파티장이면 가장 먼저 들어온 사람이 파티장, 혼자 남으면 해산
+create or replace function public.party_leave() returns void
+language plpgsql security definer set search_path = public as $$
+declare me uuid := auth.uid(); pid bigint; nxt uuid;
+begin
+  if me is null then raise exception 'no_auth'; end if;
+  select party_id into pid from public.party_members where user_id = me;
+  delete from public.party_reqs where from_uid = me or to_uid = me;
+  if pid is null then return; end if;
+  delete from public.party_members where user_id = me;
+  if (select count(*) from public.party_members where party_id = pid) < 2 then
+    delete from public.parties where id = pid; -- 남은 한 명도 함께 나가게 된다 (party_members가 연쇄 삭제)
+  elsif exists (select 1 from public.parties where id = pid and leader_uid = me) then
+    select user_id into nxt from public.party_members where party_id = pid order by joined_at limit 1;
+    update public.parties set leader_uid = nxt where id = pid;
+  end if;
+end $$;
+
+-- 파티장이 파티원을 내보낸다
+create or replace function public.party_kick(p_uid uuid) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare me uuid := auth.uid(); pid bigint;
+begin
+  if me is null then raise exception 'no_auth'; end if;
+  select p.id into pid from public.parties p where p.leader_uid = me;
+  if pid is null then return jsonb_build_object('ok', false, 'msg', 'not_leader'); end if;
+  if p_uid = me or not exists (select 1 from public.party_members where user_id = p_uid and party_id = pid) then return jsonb_build_object('ok', false, 'msg', 'gone'); end if;
+  delete from public.party_members where user_id = p_uid;
+  if (select count(*) from public.party_members where party_id = pid) < 2 then delete from public.parties where id = pid; end if;
+  return jsonb_build_object('ok', true);
+end $$;
+
+revoke all on function public.party_info() from public, anon;
+revoke all on function public.party_invite(uuid) from public, anon;
+revoke all on function public.party_answer(bigint, boolean) from public, anon;
+revoke all on function public.party_leave() from public, anon;
+revoke all on function public.party_kick(uuid) from public, anon;
+grant execute on function public.party_info(), public.party_invite(uuid), public.party_answer(bigint, boolean), public.party_leave(), public.party_kick(uuid) to authenticated;
+
+-- ===== 접속 신호 (교환은 상대가 접속 중일 때만) =====
+-- 클라이언트가 채팅/파티를 확인할 때마다 갱신된다. 90초 안에 신호가 있으면 접속 중으로 본다.
+create table if not exists public.presence (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  seen_at timestamptz not null default now()
+);
+alter table public.presence enable row level security;
+create or replace function public.touch_presence() returns void
+language sql security definer set search_path = public as $$
+  insert into public.presence(user_id, seen_at) select auth.uid(), now() where auth.uid() is not null
+  on conflict (user_id) do update set seen_at = now();
+$$;
+create or replace function public.is_online(p_uid uuid) returns boolean
+language sql stable security definer set search_path = public as $$
+  select coalesce((select seen_at > now() - interval '90 seconds' from public.presence where user_id = p_uid), false);
+$$;
+revoke all on function public.touch_presence() from public, anon;
+revoke all on function public.is_online(uuid) from public, anon, authenticated;
+grant execute on function public.touch_presence() to authenticated;

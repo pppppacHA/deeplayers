@@ -202,3 +202,11 @@ STUB_ICONS=1 python3 tests/smoke.py   # 아이콘 폰트를 못 받는 환경(�
 - 헤더: `seasonOf`(KST 날짜 기준 계절·일차), `altitude`(상공 ≈8,4xx m / 지상 `ZONE_ALT`+칸별 편차), 날씨는 `todayWeather`. 표시만 바뀌고 게임 효과는 날씨만 기존대로.
 - 임무: 본부 비일일 임무는 `once`(완수하면 게시판에서 사라지고 4시 리셋 안 됨), 일일 의뢰 12종 중 `dailyQuestIds()` 5개/일, `BOARD_MAX_ACTIVE`=7. 구역 캠프 임무는 예전처럼 반복.
 - 단련 레시피는 처음부터 `pick(pool)` 무작위(순서 아님) — 테스트 `train_picks_are_random_not_in_order`.
+
+## 2026-10-23 파티 · 여가구역 · 무기 · 주/부 스탯
+- **파티**(서버 기준, `supabase/friends.sql` 전체 재실행 필요): 표 `parties/party_members/party_reqs`, RPC `party_info/invite/answer/leave/kick`. 2~4명, 파티장만 초대(파티가 없으면 첫 초대 때 만들어짐), 파티장이 나가면 먼저 들어온 사람이 승계, 2명 미만이면 해산. `chat_channel('party')`='p<번호>', `propose_trade`는 같은 파티원도 허용. 클라이언트: 전역 `PARTY={id,members,invites}`(core.js, 저장 안 함), `partySync()`(채팅 폴링 20초마다 + friendPoll), 초대는 친구 창·프로필 창의 '파티 초대', 상황 탭 '파티' 칸(수락/거절/내보내기/나가기), 파티원은 상황→주위 대원에 항상 나타나 교환(`ftrade-open`; uid는 `view.partyUid`) 가능, 채팅 탭 '파티'(`CHAT_CH['파티']`).
+- **채팅 탭 설정**: `settings.chatTabs`{월드,길드,파티,알림}. 설정의 '채팅창 탭' 스위치(최소 1개), 끈 탭은 숨김·폴링·알림 제외(`chatTabOn`).
+- **여가구역**(안전지대, `LEISURE`, kind `leisure`): 6곳 중 하루(오전 4시 기준 `todayIndex`) 한 번 확인창을 거쳐 버프 '여가 · 장소'(해당 스탯 +2, 8시간 `BUFFS[..].ms`). 받은 뒤에는 확인 없이 분위기 묘사만(버프 교체 불가). 파티에 있으면 70% 확률로 파티원 이름이 들어간 묘사(2/3/4인용 따로, `p2/p3/p4`). `state.leisure={day,id}`.
+- **무기**: 채찍·빗자루·요요(종합 상가). **장비 묘사**: `WEAPON_LINES`·`SLOT_LINES`(이동 t/전투 b/채집 g/조사 i)를 `equipLine(kind, r)`가 아이템 전용 문장과 섞어 쓰고 `fixJosa`로 조사를 맞춘다. 채집 로그 20%, 조사 30%.
+- **이능력 주/부 스탯**: `character.mainStat(+2)/subStat(+1)`(`MAIN_STAT_BONUS/SUB_STAT_BONUS`), 캐릭터 생성 2단계·프로필 수정(24시간 간격 공유)에서 선택, `gearMods`에 반영. 서버 `get_profile`에도 포함.
+- **교환은 상대가 접속 중일 때만**: 서버 `presence`(`touch_presence()`를 `chat_fetch`/`party_info`가 부름, 90초 안 신호면 접속 중, `is_online`). `propose_trade`가 오프라인이면 `offline`으로 거절(맡긴 물건은 되돌림), 파티원은 `party_info`의 `online`으로 상황 탭에 '접속 중/오프라인' 표시, 오프라인이면 교환 창이 열리지 않음.

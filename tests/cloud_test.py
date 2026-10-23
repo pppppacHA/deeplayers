@@ -12,7 +12,7 @@ def rect(pg, sel):
 def check(n, c, info=None):
     print(('ok  ' if c else 'FAIL'), n, '' if c else info)
     if not c: fails.append(n)
-server = {'backups': [], 'bdata': {}, 'bnow': 0, 'chat': [], 'chatsent': [], 'avatars': {}, 'avq': [], 'setav': [], 'rev': 0, 'data': None, 'pushes': [], 'sent': [], 'incoming': [], 'results': [], 'answers': [], 'acks': [], 'friends': [], 'mails': [], 'inmail': [], 'mack': [], 'props': [], 'tb': {'incoming': [], 'sent': [], 'results': []}, 'tans': [], 'tack': [], 'gcalls': [], 'ginfo': {'guild': None, 'incoming': [], 'sent': []}}
+server = {'party': {'party': None, 'incoming': []}, 'pcalls': [], 'backups': [], 'bdata': {}, 'bnow': 0, 'chat': [], 'chatsent': [], 'avatars': {}, 'avq': [], 'setav': [], 'rev': 0, 'data': None, 'pushes': [], 'sent': [], 'incoming': [], 'results': [], 'answers': [], 'acks': [], 'friends': [], 'mails': [], 'inmail': [], 'mack': [], 'props': [], 'tb': {'incoming': [], 'sent': [], 'results': []}, 'tans': [], 'tack': [], 'gcalls': [], 'ginfo': {'guild': None, 'incoming': [], 'sent': []}}
 pg_name = ['테스터']
 def api(route):
     req = route.request; u = req.url; h = {'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'content-type': 'application/json'}
@@ -30,10 +30,18 @@ def api(route):
     if '/rpc/send_mail' in u: server['mails'].append(body); return route.fulfill(headers=h, body=json.dumps({'ok': True}))
     if '/rpc/fetch_mail' in u: return route.fulfill(headers=h, body=json.dumps(server['inmail']))
     if '/rpc/ack_mail' in u: server['mack'].extend(body.get('p_ids', [])); server['inmail'] = []; return route.fulfill(headers=h, body='null')
-    if '/rpc/propose_trade' in u: server['props'].append(body); return route.fulfill(headers=h, body=json.dumps({'ok': True}))
+    if '/rpc/propose_trade' in u:
+        server['props'].append(body)
+        if server.get('off'): return route.fulfill(headers=h, body=json.dumps({'ok': False, 'msg': 'offline'}))
+        return route.fulfill(headers=h, body=json.dumps({'ok': True}))
     if '/rpc/trade_inbox' in u: return route.fulfill(headers=h, body=json.dumps(server['tb']))
     if '/rpc/answer_trade' in u: server['tans'].append([body.get('p_id'), body.get('p_accept')]); server['tb']['incoming'] = []; return route.fulfill(headers=h, body=json.dumps({'ok': True, 'name': '하늘', 'give': [['목재', 3]], 'want': [['약초', 2]]}))
     if '/rpc/ack_trade' in u: server['tack'].append(body.get('p_id')); server['tb']['results'] = []; return route.fulfill(headers=h, body='null')
+    if '/rpc/party_info' in u: return route.fulfill(headers=h, body=json.dumps(server['party']))
+    if '/rpc/party_invite' in u: server['pcalls'].append(['invite', body]); return route.fulfill(headers=h, body=json.dumps({'ok': True}))
+    if '/rpc/party_answer' in u: server['pcalls'].append(['answer', body]); server['party']['incoming'] = []; return route.fulfill(headers=h, body=json.dumps({'ok': True, 'joined': bool(body.get('p_accept'))}))
+    if '/rpc/party_leave' in u: server['pcalls'].append(['leave', body]); server['party']['party'] = None; return route.fulfill(headers=h, body='null')
+    if '/rpc/party_kick' in u: server['pcalls'].append(['kick', body]); return route.fulfill(headers=h, body=json.dumps({'ok': True}))
     if '/rpc/guild_info' in u: return route.fulfill(headers=h, body=json.dumps(server['ginfo']))
     if '/rpc/guild_create' in u: server['gcalls'].append(['create', body]); server['ginfo']['guild'] = {'id': 1, 'name': body['p_name'], 'master': True, 'members': [{'uid': 'me', 'name': pg_name[0], 'master': True}]}; return route.fulfill(headers=h, body=json.dumps({'ok': True}))
     if '/rpc/guild_search' in u: return route.fulfill(headers=h, body=json.dumps([{'id': 4, 'name': '별빛길드', 'count': 3, 'master': '하늘'}]))
@@ -206,6 +214,57 @@ with sync_playwright() as p:
     pg.evaluate("sendChat('길드 인사')"); pg.wait_for_timeout(500)
     check('guild_chat_uses_guild_channel', server['chatsent'][-1] == {'p_channel': 'guild', 'p_body': '길드 인사'}, server['chatsent'])
     pg.evaluate("state.chatTab='월드';renderChat()")
+    # ---- 파티 ----
+    UID_ME = pg.evaluate("Cloud.userUid"); UID_A = '55555555-5555-5555-5555-555555555555'
+    server['party'] = {'party': None, 'incoming': [{'id': 7, 'name': '라온'}]}
+    pg.evaluate("partySync()"); pg.wait_for_timeout(500)
+    pg.evaluate("state.side='상황';renderSide()")
+    check('party_invite_listed', pg.locator('[data-act="party-answer"][data-ok="1"]').count() == 1 and pg.evaluate("PARTY.id") == 0, pg.inner_text('#sideView')[:200])
+    server['party'] = {'party': {'id': 3, 'leader': False, 'members': [{'uid': '66666666-6666-6666-6666-666666666666', 'name': '라온', 'leader': True, 'online': True}, {'uid': UID_ME, 'name': pg.evaluate("state.character.name"), 'leader': False}]}, 'incoming': []}
+    pg.click('[data-act="party-answer"][data-ok="1"]'); pg.wait_for_timeout(700)
+    check('party_accept_calls_server', ['answer', {'p_id': 7, 'p_accept': True}] in server['pcalls'] and pg.evaluate("PARTY.id") == 3, server['pcalls'])
+    check('party_member_is_nearby_with_trade', pg.locator('[data-act="ftrade-open"][data-name="라온"]').count() == 1 and pg.evaluate("partyOthers()") == ['라온'], pg.inner_text('#sideView')[:300])
+    check('party_non_leader_cannot_kick', pg.locator('[data-act="party-kick"]').count() == 0)
+    pg.evaluate("PARTY.members.find(m=>m.name==='라온').online=false"); pg.evaluate("A['ftrade-open']({dataset:{name:'라온'}})"); pg.wait_for_timeout(200)
+    check('trade_blocked_when_party_member_offline', pg.locator('#ftGive').count() == 0)
+    pg.evaluate("PARTY.members.find(m=>m.name==='라온').online=true")
+    pg.evaluate("openFriendTrade('라온')"); pg.wait_for_timeout(300)
+    pg.evaluate("document.querySelector('#ftWant').value='목재'; document.querySelector('#ftGiveQty').value=1")
+    has_give = pg.evaluate("document.querySelectorAll('#ftGive option').length") > 0
+    if has_give:
+        pg.evaluate("A['ftrade-send']({dataset:{name:'라온'}, disabled:false})"); pg.wait_for_timeout(500)
+        check('party_trade_uses_party_uid', server['props'] and server['props'][-1].get('p_to') == '66666666-6666-6666-6666-666666666666', server['props'][-1:])
+        server['off'] = True
+        pg.evaluate("openFriendTrade('라온')"); pg.wait_for_timeout(300)
+        pg.evaluate("document.querySelector('#ftWant').value='목재'; document.querySelector('#ftGiveQty').value=1")
+        g1 = pg.evaluate("document.querySelector('#ftGive').value"); c1 = pg.evaluate("n=>countItem(n)", g1)
+        pg.evaluate("A['ftrade-send']({dataset:{name:'라온'}, disabled:false})"); pg.wait_for_timeout(500)
+        check('trade_offline_server_reject_refunds', pg.evaluate("n=>countItem(n)", g1) == c1 and '접속' in pg.inner_text('#toasts, .toast, body'), [c1, pg.evaluate("n=>countItem(n)", g1)])
+        server['off'] = False
+    pg.evaluate("closeModal()")
+    pg.evaluate("state.chatTab='파티';renderChat()"); pg.evaluate("view.chatAt=0"); pg.evaluate("sendChat('파티 인사')"); pg.wait_for_timeout(500)
+    check('party_chat_uses_party_channel', server['chatsent'][-1] == {'p_channel': 'party', 'p_body': '파티 인사'}, server['chatsent'][-1:])
+    pg.evaluate("A['party-leave-do']()"); pg.wait_for_timeout(600)
+    check('party_leave_calls_server', ['leave', {}] in server['pcalls'] and pg.evaluate("PARTY.id") == 0, server['pcalls'])
+    pg.evaluate("view.chatAt=0"); pg.evaluate("sendChat('혼자')"); 
+    check('party_chat_blocked_without_party', server['chatsent'][-1] == {'p_channel': 'party', 'p_body': '파티 인사'})
+    pg.evaluate("state.chatTab='월드';renderChat()")
+    pg.evaluate("openFriends()"); pg.wait_for_timeout(600)
+    check('friend_window_has_party_invite_button', pg.locator('[data-act="party-invite"]').count() >= 1, pg.inner_text('#modalBody')[:200])
+    pg.evaluate("document.querySelector('[data-act=\"party-invite\"]:not([disabled])') && document.querySelector('[data-act=\"party-invite\"]:not([disabled])').click()"); pg.wait_for_timeout(600)
+    check('party_invite_sent_to_friend_uid', any(c[0] == 'invite' and c[1].get('p_to') for c in server['pcalls']), server['pcalls'])
+    pg.evaluate("closeModal()")
+    # 설정: 채팅 탭 끄기
+    pg.evaluate("openSettings()")
+    check('settings_has_chat_tab_switches', pg.locator('#ctab_월드').count() == 1 and pg.locator('#ctab_파티').count() == 1)
+    pg.evaluate("document.querySelector('#ctab_월드').checked=false"); pg.evaluate("A['settings-save']()"); pg.wait_for_timeout(300)
+    check('chat_tab_off_hides_button', pg.evaluate("getComputedStyle(document.querySelector('[data-chat=\"월드\"]')).display") == 'none' and pg.evaluate("state.chatTab") != '월드', pg.evaluate("state.chatTab"))
+    pg.evaluate("openSettings()")
+    for k in ['월드','길드','파티','알림']: pg.evaluate("k=>{document.querySelector('#ctab_'+k).checked=false}", k)
+    pg.evaluate("A['settings-save']()"); pg.wait_for_timeout(200)
+    check('chat_tabs_cannot_all_be_off', pg.evaluate("Object.values(state.settings.chatTabs).some(Boolean)"))
+    pg.evaluate("closeModal()")
+    pg.evaluate("state.settings.chatTabs['월드']=true; renderChat()")
     pg.evaluate("(p=>{localStorage.setItem(AVATAR_KEY,p)})(arguments[0])") if False else pg.evaluate("p=>localStorage.setItem(AVATAR_KEY,p)", PNG)
     pg.evaluate("syncMyAvatar()"); pg.wait_for_timeout(700)
     check('my_avatar_uploaded_small', server['setav'] and server['setav'][-1].startswith('data:image/') and len(server['setav'][-1]) < 20000, [str(x)[:40] for x in server['setav']])

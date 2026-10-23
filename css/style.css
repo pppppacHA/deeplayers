@@ -1092,3 +1092,19 @@ textarea#mailBody{width:100%;min-height:80px;resize:vertical}
 .mast-row em{font-style:normal;color:var(--accent-2);font-variant-numeric:tabular-nums}
 .mast-row .bar{height:5px}
 .mast-row .val{text-align:right;color:var(--muted);font-variant-numeric:tabular-nums}
+
+/* 이능력 주·부 스탯 / 여가 */
+.ab-sel{display:flex;gap:6px;flex:1;min-width:0;justify-content:flex-end}
+.ab-sel select{flex:1;min-width:0;max-width:110px}
+.ab-stats{display:flex;gap:5px;margin-top:6px;flex-wrap:wrap}
+.ab-chip{font-size:11px;padding:2px 8px;border-radius:999px;background:var(--accent-soft,rgba(25,125,161,.12));color:var(--accent);font-weight:700;line-height:1.5}
+.ab-chip.main{background:var(--accent);color:#fff}
+.party-list,.party-inv{display:flex;flex-direction:column;gap:4px}
+.party-inv{margin-top:6px;padding-top:6px;border-top:1px dashed var(--line,rgba(128,128,128,.3))}
+.party-row{display:flex;align-items:center;gap:6px;font-size:12px;min-width:0}
+.party-row b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer}
+.party-row small{color:var(--muted,#888);flex:1;min-width:0}
+.party-row button{margin-left:auto;padding:2px 8px;font-size:11px}
+.party-row button+button{margin-left:0}
+.party-foot{display:flex;align-items:center;justify-content:space-between;margin-top:6px;font-size:11px;color:var(--muted,#888)}
+.party-foot button{padding:2px 8px;font-size:11px}

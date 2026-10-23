@@ -123,7 +123,7 @@ with sync_playwright() as p:
     check('create_random_stats_uses_all_12', text(pg, '#ctPool') == '0' and ev(pg, "STAT_DEFS.reduce((a,d)=>a+cf.stats[d.key],0)")== 12 and ev(pg, "STAT_DEFS.every(d=>cf.stats[d.key]>=0&&cf.stats[d.key]<=STAT_CAP)"))
     pg.click('#ctReset'); pg.wait_for_timeout(40)
     check('create_stat_reset_button', text(pg, '#ctPool') == '12' and ev(pg, "STAT_DEFS.every(d=>cf.stats[d.key]===0)"))
-    check('create_only_name_and_ability_required', '필수' in text(pg, '#tutCreateBody') and ev(pg, "document.querySelectorAll('#tutCreateBody .req').length")== 1 and ev(pg, "document.querySelectorAll('#tutCreateBody .opt').length")== 1)
+    check('create_only_name_and_ability_required', '필수' in text(pg, '#tutCreateBody') and ev(pg, "document.querySelectorAll('#tutCreateBody .req').length")== 1 and ev(pg, "document.querySelectorAll('#tutCreateBody .opt').length")== 2)
     pg.click('#ctDone'); pg.wait_for_timeout(60)
     check('create_requires_ability_name', pg.locator('#ctAbility').count() == 1 and not ev(pg, "state.created") and '이능력 이름' in text(pg, '#toast'))
     pg.fill('#ctAbility', '그림자 이동'); pg.fill('#ctAbilityDesc', '그림자 사이를 건너뛰는 능력.\n롤플용 설정.')
@@ -185,8 +185,8 @@ with sync_playwright() as p:
     check('title', pg.title() == '공중도시 DEEP LAYER')
     check('default_theme_light', ev(pg, "document.body.dataset.theme") == 'light')
     check('start_location_hq', text(pg, '#mapLocation') == '본부')
-    check('map_4_nodes_gate_merged', pg.locator('.map-node').count() == 4 and pg.locator('.map-node.danger').count() == 0)
-    check('map_3_links', pg.locator('.node-line').count() == 3)
+    check('map_4_nodes_gate_merged', pg.locator('.map-node').count() == 5 and pg.locator('.map-node.danger').count() == 0)
+    check('map_3_links', pg.locator('.node-line').count() == 4)
     check('map_desc_below_name', rect(pg, '#mapDescription')['y'] >= rect(pg, '#mapLocation')['b'] - 1)
     check('map_header_meta_right', rect(pg, '#mapMeta')['r'] > rect(pg, '#mapHead')['r'] - 40 and '공중' in text(pg, '#mapMeta'), text(pg, '#mapMeta'))
     check('no_tactical_map_title', 'TACTICAL' not in text(pg, '.map-panel'))
@@ -506,7 +506,7 @@ with sync_playwright() as p:
     pg.click('#choices button:has-text("종합 상가")'); pg.wait_for_timeout(80)
     check('mall_tabs_5', '종합 상가' in text(pg, '#modalTitle') and ev(pg, "[...document.querySelectorAll('.shop-tabs button')].map(b=>b.textContent)")== ['무기', '장비', '재료', '농사', 'RP템', '판매'] and text(pg, '.shop-tabs button.active') == '무기')
     check('shop_equipment_shows_effect', pg.locator('.shop-row').count() == ev(pg, "shopSections('종합 상가')['무기'].length") and pg.locator('.shop-row').count() >= 3 and pg.locator('.shop-row .item-info .it-l1').count() == pg.locator('.shop-row').count() and ev(pg, "[...document.querySelectorAll('.shop-row .it-l1')].every(e=>e.textContent.trim().length>0)"))
-    check('mall_weapon_gear_split', ev(pg, "(()=>{const s=shopSections('종합 상가');return s['무기'].every(([n])=>ITEMS[n].slot==='무기')&&s['장비'].every(([n])=>ITEMS[n].tab==='장비'&&ITEMS[n].slot!=='무기')&&s['무기'].length+s['장비'].length===16&&s['무기'].some(([n])=>n==='아이스크림 소드')})()") is True)
+    check('mall_weapon_gear_split', ev(pg, "(()=>{const s=shopSections('종합 상가');return s['무기'].every(([n])=>ITEMS[n].slot==='무기')&&s['장비'].every(([n])=>ITEMS[n].tab==='장비'&&ITEMS[n].slot!=='무기')&&s['무기'].length+s['장비'].length===19&&s['무기'].some(([n])=>n==='아이스크림 소드')})()") is True)
     pg.click('.shop-tabs button:has-text("장비")'); pg.wait_for_timeout(50)
     check('mall_gear_tab_rows', pg.locator('.shop-row').count() == ev(pg, "shopSections('종합 상가')['장비'].length") and text(pg, '.shop-tabs button.active') == '장비')
     for tb, cnt in [('재료', 10), ('농사', 3), ('RP템', 3)]:
@@ -609,7 +609,7 @@ with sync_playwright() as p:
     ev(pg, "view.dpan={x:0,y:0};view.noClickUntil=0;applyMapTransform()")
     check('gate_labels_no_suffix', '으)로' not in ev(pg, "['제1구역','제2구역','제3구역'].map(z=>ACTIONS['이동 '+z].label).join('')"))
     ev(pg, "(()=>{state.dungeon=null;state.location='제1구역';resetPhase();renderMapHead();renderMap();renderAction();renderSide()})()") # 예전 저장처럼 구역 화면에 서 있는 상태
-    check('zone_node_shown_only_there', pg.locator('.map-node.danger.current').count() == 1 and pg.locator('.map-node').count() == 5)
+    check('zone_node_shown_only_there', pg.locator('.map-node.danger.current').count() == 1 and pg.locator('.map-node').count() == 6)
     check('no_timed_travel_in_code', ev(pg, "typeof TRAVEL_SEC")== 'undefined' and ev(pg, "typeof isTimedTravel")== 'undefined')
     check('map_tone_forest', ev(pg, "document.querySelector('.map-panel').dataset.tone")== 'forest')
     ev(pg, "state.vitals.sp=3;renderBars()"); pg.click('#choices button:has-text("이동장치로 귀환")'); pg.wait_for_timeout(100)
@@ -896,7 +896,7 @@ with sync_playwright() as p:
     # 아래 친구/길드/메일 규칙 테스트용 임시 대원 (실제 데이터가 아니라 테스트에서만 넣는다)
     ev(pg, "NEARBY_PLAYERS.push(['정비병 유나','온라인'],['탐색자 렌','온라인'],['기술관 세아','자리 비움'])")
     # ---------- 채팅 탭 (월드 · 길드 · 알림) / 길드 ----------
-    check('chat_tabs_world_guild_notice', ev(pg, "[...document.querySelectorAll('[data-chat]')].map(b=>b.textContent)")== ['월드', '길드', '알림'] and ev(pg, "state.chatTab")== '월드' and ev(pg, "Object.keys(state.chats).join()")== '월드,길드,알림' and ev(pg, "typeof state.party")== 'undefined')
+    check('chat_tabs_world_guild_notice', ev(pg, "[...document.querySelectorAll('[data-chat]')].map(b=>b.textContent)")== ['월드', '길드', '파티', '알림'] and ev(pg, "state.chatTab")== '월드' and ev(pg, "Object.keys(state.chats).join()")== '월드,길드,파티,알림' and ev(pg, "typeof state.party")== 'undefined')
     check('guild_bar_hidden_on_world', pg.locator('#guildBar').is_hidden() and pg.locator('#chatForm').is_visible())
     pg.click('[data-chat="알림"]'); pg.wait_for_timeout(60)
     check('notice_tab_read_only', pg.locator('#chatForm').is_hidden() and pg.locator('#noticeNote').is_visible() and pg.locator('#chatFeed .msg').count() == ev(pg, "NOTICE_FEED().length") and '점검 일정' in text(pg, '#chatFeed') and '업데이트 · ' not in text(pg, '#chatFeed'))
@@ -1030,7 +1030,7 @@ with sync_playwright() as p:
     # ---------- 설정 모달 (컴팩트) ----------
     pg.click('#settingsBtn'); pg.wait_for_timeout(80)
     h = rect(pg, '#modal')['h']
-    check('settings_compact', h < 800 and ev(pg, "[...document.querySelectorAll('#modalBody h3')].map(e=>e.textContent)") in (['소리', '표시', '튜토리얼', '알림', '테마'], ['저장', '소리', '표시', '튜토리얼', '알림', '테마'], ['소리', '표시', '튜토리얼', '알림', '테마', '저장'], ['소리', '표시', '저장', '튜토리얼', '알림', '테마'], ['소리', '표시', '튜토리얼', '저장', '알림', '테마'], ['소리', '표시', '튜토리얼', '알림', '저장', '테마']), h)
+    check('settings_compact', h < 800 and ev(pg, "[...document.querySelectorAll('#modalBody h3')].map(e=>e.textContent).filter(t=>t!=='저장').join()") == '소리,표시,튜토리얼,채팅창 탭,알림,테마', h)
     tr_, md_ = rect(pg, '[data-act="tutorial-replay"]'), rect(pg, '#modalBody')
     check('tutorial_replay_button_left', tr_['x'] < md_['x'] + 60, [tr_, md_])
     check('local_save_load_buttons', pg.locator('[data-act="local-save"]').count() == 1 and pg.locator('[data-act="local-load"]').count() == 1)
@@ -1782,7 +1782,7 @@ with sync_playwright() as p:
       const e0=addTodo('   '),e1=addTodo('물 마시기');toggleTodo(1);addTodo('가죽 모으기');const a=state.todos.length===2&&state.todos[0].done&&!e1&&!!e0;
       for(let i=0;i<40;i++)addTodo('x'+i);const cap=state.todos.length===TODO_MAX&&!!addTodo('넘침');
       const cl=clearDoneTodos(),rm=removeTodo(state.todos[0].id);
-      state.side='상황';renderSide();const sec=document.querySelectorAll('#sideView .sit-sec').length===2&&!!document.querySelector('#todoIn');
+      state.side='상황';renderSide();const sec=document.querySelectorAll('#sideView .sit-sec').length===3&&!!document.querySelector('#todoIn');
       state.sitOpen.todo=false;renderSide();const folded=!document.querySelector('#todoIn');
       [state.todos,state.todoSeq,state.sitOpen,state.side]=JSON.parse(bak);renderSide();return a&&cap&&cl===1&&rm&&sec&&folded})()"""))
     check('todo_sanitized_on_load', ev(pg, """(()=>{const s=JSON.parse(JSON.stringify(state));s.todos=[{id:1,t:'<b>a</b>',done:true},{id:1,t:'b'},{t:5},null,...Array.from({length:60},(_,i)=>({id:i+10,t:'t'+i}))];s.side='주위 대원';hardenState(s);const h=s;return h.todos.length===TODO_MAX&&new Set(h.todos.map(t=>t.id)).size===h.todos.length&&h.side==='상황'&&!h.todos.some(t=>t.t.includes('<'))})()"""))
@@ -1985,7 +1985,7 @@ with sync_playwright() as p:
     # --- 12. 프로필 '캐릭터 정보' / 채팅 프레임 ---
     pg.click('#avatarButton'); pg.wait_for_timeout(80)
     check('profile_section_renamed', ev(pg, "[...document.querySelectorAll('.pf-head h3')].map(h=>h.textContent)")== ['캐릭터 정보'])
-    check('profile_rows_order', ev(pg, "[...document.querySelectorAll('.pf-row>span')].map(e=>e.textContent)")== ['이름', '나이', '키워드', '이능력 이름', '이능력 설명'])
+    check('profile_rows_order', ev(pg, "[...document.querySelectorAll('.pf-row>span')].map(e=>e.textContent)")== ['이름', '나이', '키워드', '이능력 이름', '이능력 설명', '주·부 스탯'])
     check('profile_rows_boxed', ev(pg, "[...document.querySelectorAll('.pf-row')].every(e=>{const c=getComputedStyle(e);return parseFloat(c.borderTopWidth)>=1&&parseFloat(c.borderTopLeftRadius)>=6&&c.backgroundColor!=='rgba(0, 0, 0, 0)'})"))
     pg.click('#closeModal')
     check('chat_frame_thinner', ev(pg, "parseFloat(getComputedStyle(document.querySelector('.term-screen')).marginLeft)")<= 5 and ev(pg, "document.querySelector('.term-screen').getBoundingClientRect().width")> ev(pg, "document.querySelector('.chat-panel').getBoundingClientRect().width-2*(2+9)"))
@@ -2173,6 +2173,60 @@ with sync_playwright() as p:
     pg.add_style_tag(content='.mock-card .stat-plus{height:44px!important}'); ev(pg, "remeasureStat()")
     check('stat_pages_same_height_even_if_page2_taller', ev(pg, "[0,1,0,1].map(p=>{view.statusPage=p;renderStatus();return Math.round(document.querySelector('#statusBody .stat-grid').getBoundingClientRect().height)}).every((h,i,a)=>h===a[0])") is True)
     ev(pg, "(()=>{document.head.lastElementChild.remove();remeasureStat();view.statusPage=0;renderStatus()})()")
+    # ---- 2026-10-23 추가: 여가구역 · 무기 · 주/부 스탯 · 장비 묘사 · 채팅 탭 ----
+    check('weapons_added', ev(pg, "['채찍','빗자루','요요'].every(n=>ITEMS[n]&&ITEMS[n].slot==='무기'&&ITEMS[n].atk>0&&SHOPS['종합 상가'].sections['무기'].some(r=>r[0]===n&&r[1]>ITEMS[n].sell))"))
+    check('broom_has_flying_rumor', ev(pg, "ITEMS['빗자루'].desc.includes('하늘')"))
+    check('leisure_zone_exists_6_choices', ev(pg, "LOCATIONS['여가구역']&&LOCATIONS['여가구역'].groups[0].items.length===6&&MAP_NODES.some(n=>n.id==='여가구역')&&!!ACTIONS['이동 여가구역']"))
+    check('leisure_stat_map', ev(pg, "JSON.stringify(Object.fromEntries(LEISURE_IDS.map(i=>[i,LEISURE[i].stat])))") == '{"배팅장":"str","게임센터":"agi","도서관":"int","사우나":"wil","영화관":"sen","사진관":"luk"}')
+    ev(pg, "(()=>{state.pending=null;state.active=null;state.buffs=[];state.leisure={day:-1,id:''};PARTY.id=0;PARTY.members=[];doTravel('여가구역');renderAction()})()")
+    check('leisure_travel_ok', ev(pg, "state.location") == '여가구역')
+    pg.click('[data-choice="배팅장"]')
+    check('leisure_asks_confirm_first', ev(pg, "view.phase") == 'confirm' and '배팅장' in text(pg, '.action-confirm-inline') and ev(pg, "state.leisure.id") == '', text(pg, '.action-confirm-inline')[:120])
+    pg.click('[data-act="action-run"]')
+    check('leisure_first_gives_buff', ev(pg, "state.leisure.id==='배팅장'&&state.leisure.day===todayIndex()&&state.buffs.some(b=>b.id==='여가 · 배팅장')&&state.pending===null"), ev(pg, "[state.leisure,state.buffs,!!state.pending]"))
+    check('leisure_buff_plus2_str_8h', ev(pg, "(()=>{const b=state.buffs.find(x=>x.id==='여가 · 배팅장');const d=b.endAt-Date.now();return statMods().str>=2&&d>7.9*3600e3&&d<=8*3600e3})()"))
+    check('leisure_buff_text_hours', ev(pg, "buffText('여가 · 배팅장').includes('8시간')"))
+    pg.click('[data-choice="사진관"]')
+    check('leisure_second_is_rp_only_no_confirm', ev(pg, "state.leisure.id")=='배팅장' and ev(pg, "!state.buffs.some(b=>b.id==='여가 · 사진관')&&state.pending===null") and '이미 받았' in ev(pg, "state.results[0].text"), ev(pg, "state.results[0]&&state.results[0].text"))
+    check('leisure_marks_taken', '오늘 받음' in text(pg, '#choices'))
+    ev(pg, "state.leisure.day=todayIndex()-1")
+    check('leisure_resets_next_day', ev(pg, "leisureTaken()") is False)
+    ev(pg, "state.leisure={day:-1,id:''}")
+    check('leisure_texts_all_variants_clean', ev(pg, """(()=>{const bad=[];const sets={0:[],1:['민준'],2:['민준','수아'],3:['민준','수아','하늘']};
+      for(const k in sets){PARTY.members=[{uid:'x',name:state.character.name,leader:true},...sets[k].map((n,i)=>({uid:'u'+i,name:n}))];
+        for(const id of LEISURE_IDS)for(let i=0;i<60;i++){const t=leisureText(id,Math.random);if(/undefined|NaN|\\[object/.test(t)||!t||(+k>0&&false))bad.push([k,id,t])}}
+      PARTY.members=[];return bad.length?bad.slice(0,3):true})()"""))
+    check('leisure_party_sizes_have_distinct_pools', ev(pg, """(()=>{const out={};for(const n of [1,2,3]){PARTY.members=[{uid:'x',name:state.character.name},...['민준','수아','하늘'].slice(0,n).map((m,i)=>({uid:'u'+i,name:m}))];
+      const seen=new Set();let named=0;for(let i=0;i<300;i++){const t=leisureText('도서관',Math.random);seen.add(t);if(['민준','수아','하늘'].slice(0,n).some(m=>t.includes(m)))named++}out[n]=[seen.size,named]}PARTY.members=[];
+      return out[1][0]>=4&&out[2][0]>=7&&out[3][0]>=8&&out[1][1]>100&&out[2][1]>100&&out[3][1]>100?true:out})()"""))
+    ev(pg, "(()=>{PARTY.members=[];doTravel('본부');renderAction()})()")
+    # 주/부 스탯
+    ev(pg, "(()=>{state.buffs=[];state.character.mainStat='';state.character.subStat=''})()")
+    base = ev(pg, "totalStats()")
+    ev(pg, "(()=>{state.character.mainStat='int';state.character.subStat='luk'})()")
+    now = ev(pg, "totalStats()")
+    check('main_sub_stat_bonus_2_and_1', now['int'] == base['int'] + 2 and now['luk'] == base['luk'] + 1 and now['str'] == base['str'], [base, now])
+    check('main_sub_sanitized', ev(pg, "(()=>{const s=JSON.parse(JSON.stringify(state));s.character.mainStat='str';s.character.subStat='str';hardenState(s);const a=s.character.subStat==='';s.character.mainStat='zzz';s.character.subStat='<b>';hardenState(s);return a&&s.character.mainStat===''&&s.character.subStat===''})()"))
+    ev(pg, "(()=>{state.profileEditAt=0;view.profEdit=true;openProfile(true)})()")
+    check('profile_has_main_sub_select', pg.locator('#cMain').count() == 1 and pg.locator('#cSub').count() == 1 and pg.locator('#cMain option').count() == 7)
+    ev(pg, "(()=>{document.querySelector('#cMain').value='str';document.querySelector('#cSub').value='str'})()")
+    pg.click('[data-act="char-save"]')
+    check('profile_rejects_same_main_sub', ev(pg, "state.character.mainStat") == 'int', ev(pg, "state.character.mainStat"))
+    ev(pg, "(()=>{document.querySelector('#cMain').value='str';document.querySelector('#cSub').value='agi'})()")
+    pg.click('[data-act="char-save"]')
+    check('profile_saves_main_sub', ev(pg, "state.character.mainStat+state.character.subStat") == 'stragi', ev(pg, "[state.character.mainStat,state.character.subStat]"))
+    ev(pg, "(()=>{state.character.mainStat='';state.character.subStat='';state.profileEditAt=0;closeModal()})()")
+    # 장비 묘사
+    check('josa_fix', ev(pg, "[fixJosa('빗자루','빗자루을 쥐었다'),fixJosa('검','검로 쳤다'),fixJosa('요요','요요가 돌았다'),fixJosa('채찍','채찍를 휘둘렀다'),fixJosa('활','활로 쏘았다')].join('|')") == '빗자루를 쥐었다|검으로 쳤다|요요가 돌았다|채찍을 휘둘렀다|활로 쏘았다')
+    check('equip_lines_all_kinds_nonempty_clean', ev(pg, """(()=>{const bad=[];const old=state.equipment['무기'];
+      for(const w of ['채찍','빗자루','요요','중식도','곡괭이','훈련용 검','훈련용 활','훈련용 권총']){state.equipment['무기']=w;
+        for(const k of ['t','b','g','i']){let ok=false;for(let i=0;i<40;i++){const l=equipLine(k,Math.random);if(l){ok=true;if(/undefined|\\$\\{|이\\(가\\)|을\\(를\\)|[가-힣]{2,}(을|를)\\s?(을|를)/.test(l)&&/undefined|\\$\\{/.test(l))bad.push([w,k,l])}}if(!ok)bad.push([w,k,'empty'])}}
+      state.equipment['무기']=old;return bad.length?bad.slice(0,4):true})()"""))
+    check('gather_log_and_investigate_accept_equip', ev(pg, "typeof equipLine('g',Math.random)==='string'&&typeof equipLine('i',Math.random)==='string'"))
+    check('chat_tabs_default_all_on', ev(pg, "CHAT_TABS.join()==='월드,길드,파티,알림'&&CHAT_TABS.every(k=>state.settings.chatTabs[k]===true)"))
+    check('chat_tabs_harden', ev(pg, "(()=>{const s=JSON.parse(JSON.stringify(state));s.settings.chatTabs={월드:false,길드:false,파티:false,알림:false};hardenState(s);const a=Object.values(s.settings.chatTabs).every(Boolean);s.settings.chatTabs={월드:false};s.chatTab='월드';hardenState(s);return a&&s.chatTab==='길드'})()"))
+    check('party_offline_state_empty', ev(pg, "PARTY.id===0&&partyOthers().length===0"))
+    check('old_save_gets_leisure_and_tabs', ev(pg, "(()=>{const s=JSON.parse(JSON.stringify(state));delete s.leisure;delete s.settings.chatTabs;delete s.character.mainStat;hardenState(s);return s.leisure.day===-1&&s.leisure.id===''&&s.settings.chatTabs['파티']===true&&s.character.mainStat===''})()"))
     check('no_js_errors', not errs, errs)
     b.close()
 

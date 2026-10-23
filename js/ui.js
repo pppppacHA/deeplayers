@@ -372,7 +372,7 @@ function doMove() {
 }
 
 /* ---------- 구역 활동 (대기 / 확인 / 진행 중 / 결과) ---------- */
-const buffText = b => `${b} (${BUFFS[b].desc.split('. ')[1]}, 5분)`;
+const buffText = b => { const ms = BUFFS[b].ms || BUFF_MS; return `${b} (${BUFFS[b].desc.split('. ')[1]}, ${ms >= 3600000 ? ms / 3600000 + '시간' : ms / 60000 + '분'})`; };
 /* 얻는 것 / 잃는 것(디메리트) */
 function rewardChips(r) {
   return [...r.items.map(([n, q]) => `${n} ×${q}`), r.exp ? `EXP +${r.exp}` : '', r.money > 0 ? `CR +${r.money}` : '',
@@ -387,11 +387,11 @@ function choicesHtml(disabled) {
   if (!groups.length) return '<div class="empty">이 칸에서 할 수 있는 행동이 없습니다. 지형 칸을 찾아 이동하세요.</div>';
   return groups.map(g =>
     `<div class="choice-group">${g.label ? `<div class="choice-label">${esc(g.label)}</div>` : ''}<div class="choice-col">` +
-    g.items.map(id => { const bl = actionBlocked(id), lg = levelGate(id); return `<button data-act="choice" data-choice="${esc(id)}" class="${lg ? 'locked' : ''}" ${disabled || bl ? 'disabled' : ''}${lg ? ` title="${esc(lg)}"` : ''}>${icon(ACTIONS[id].icon)} ${esc(ACTIONS[id].label)}${lg ? ` <small>(Lv.${ACTIONS[id].kind === 'subjob' ? SUBJOB_MIN_LV : PET_MIN_LV}~)</small>` : ''}${bl ? ` <small>(${Math.ceil(bl / 3600000)}시간 뒤)</small>` : ''}</button>`; }).join('') + '</div></div>').join('');
+    g.items.map(id => { const bl = actionBlocked(id), lg = levelGate(id); return `<button data-act="choice" data-choice="${esc(id)}" class="${lg ? 'locked' : ''}" ${disabled || bl ? 'disabled' : ''}${lg ? ` title="${esc(lg)}"` : ''}>${icon(ACTIONS[id].icon)} ${esc(ACTIONS[id].label)}${ACTIONS[id].kind === 'leisure' && leisureTaken() && state.leisure.id === id ? ' <small>(오늘 받음)</small>' : ''}${lg ? ` <small>(Lv.${ACTIONS[id].kind === 'subjob' ? SUBJOB_MIN_LV : PET_MIN_LV}~)</small>` : ''}${bl ? ` <small>(${Math.ceil(bl / 3600000)}시간 뒤)</small>` : ''}</button>`; }).join('') + '</div></div>').join('');
 }
 const MOVE_KINDS = ['travel', 'step', 'enter', 'leave'];
-const runLabel = a => MOVE_KINDS.includes(a.kind) ? (a.kind === 'enter' ? '입장' : a.kind === 'leave' ? '퇴장' : '이동') : '실행';
-const confirmTitle = a => a.kind === 'travel' ? `${LOCATIONS[a.to].name}(으)로 이동하시겠습니까?` : a.kind === 'step' ? '이 타일로 이동하시겠습니까?' : a.kind === 'enter' ? `${LOCATIONS[state.location].name}에 입장하시겠습니까?` : a.kind === 'leave' ? '미궁에서 퇴장하시겠습니까?' : `행동 확인 · ${a.title}`;
+const runLabel = a => a.kind === 'leisure' ? '즐기기' : MOVE_KINDS.includes(a.kind) ? (a.kind === 'enter' ? '입장' : a.kind === 'leave' ? '퇴장' : '이동') : '실행';
+const confirmTitle = a => a.kind === 'leisure' ? `오늘의 여가를 ${a.title}에서 보내시겠습니까?` : a.kind === 'travel' ? `${LOCATIONS[a.to].name}(으)로 이동하시겠습니까?` : a.kind === 'step' ? '이 타일로 이동하시겠습니까?' : a.kind === 'enter' ? `${LOCATIONS[state.location].name}에 입장하시겠습니까?` : a.kind === 'leave' ? '미궁에서 퇴장하시겠습니까?' : `행동 확인 · ${a.title}`;
 /* 확인창용 예상 정보. 타일 이동은 목표 칸까지의 경로로 계산한다 */
 function previewOf(id, mi) {
   const a = ACTIONS[id];
@@ -583,14 +583,19 @@ function renderSide() {
   }).join('');
 }
 function renderSituation() { // '상황' 탭: 접을 수 있는 두 칸 — 주위 대원 / 투두리스트
-  const box = $('#sideView'), old = box.querySelector('#todoIn'), keep = old ? { v: old.value, f: document.activeElement === old } : null, so = state.sitOpen || { near: true, todo: true };
+  const box = $('#sideView'), old = box.querySelector('#todoIn'), keep = old ? { v: old.value, f: document.activeElement === old } : null, so = state.sitOpen || { near: true, todo: true, party: true };
   const head = (k, title, extra) => `<button class="sit-head" data-act="sit-toggle" data-k="${k}" aria-expanded="${!!so[k]}">${icon(so[k] ? 'expand_more' : 'chevron_right')}<b>${title}</b>${extra ? `<small>${extra}</small>` : ''}</button>`;
-  const near = NEARBY_PLAYERS.map(([n, s]) => `<div class="nearby-row"><div class="round-avatar">${icon('person')}</div><div class="grow"><strong>${esc(n)}</strong><small>${esc(LOCATIONS[state.location].name)} · ${esc(s)}</small></div><button data-act="player" data-player="${esc(n)}">정보</button><button data-act="trade-open" data-player="${esc(n)}">교환</button></div>`).join('') || '<div class="empty">주위에 다른 대원이 없습니다.</div>';
+  const pm = PARTY.members.filter(m => m.name !== state.character.name);
+  const nearP = pm.map(m => `<div class="nearby-row"><div class="round-avatar" data-user="${esc(m.name)}">${avatarOf(m.name)}</div><div class="grow"><strong data-user="${esc(m.name)}">${esc(m.name)}</strong><small>파티${m.leader ? ' · 파티장' : ''} · 주위 대원 · ${m.online ? '접속 중' : '오프라인'}</small></div><button data-act="ftrade-open" data-name="${esc(m.name)}">교환</button></div>`).join('');
+  const nearAll = NEARBY_PLAYERS.length + pm.length;
+  const partyBody = partyOn() ? (PARTY.id ? `<div class="party-list">${PARTY.members.map(m => `<div class="party-row"><span>${icon(m.leader ? 'workspace_premium' : 'person')}</span><b data-user="${esc(m.name)}">${esc(m.name)}</b>${m.leader ? '<em class="tag">파티장</em>' : ''}${partyLeader() && m.uid !== Cloud.userUid ? `<button data-act="party-kick" data-uid="${esc(m.uid)}" data-name="${esc(m.name)}" title="파티에서 내보냅니다">내보내기</button>` : ''}</div>`).join('')}</div><div class="party-foot"><small>${PARTY.members.length}/4명 · 파티원은 항상 주위 대원이에요</small><button data-act="party-leave">나가기</button></div>` : '<div class="empty">파티가 없습니다. 친구 창이나 대원 프로필에서 초대해 보세요. (2~4명)</div>')
+    + (PARTY.invites.length ? `<div class="party-inv">${PARTY.invites.map(r => `<div class="party-row"><span>${icon('mail')}</span><b>${esc(r.name)}</b><small>의 파티 초대</small><button class="primary" data-act="party-answer" data-id="${r.id}" data-ok="1">수락</button><button data-act="party-answer" data-id="${r.id}" data-ok="0">거절</button></div>`).join('')}</div>` : '') : '<div class="empty">파티는 서버에 로그인하면 쓸 수 있어요.</div>';
+  const near = nearP + (NEARBY_PLAYERS.length ? '' : nearP ? '' : '<div class="empty">주위에 다른 대원이 없습니다.</div>') + NEARBY_PLAYERS.map(([n, s]) => `<div class="nearby-row"><div class="round-avatar">${icon('person')}</div><div class="grow"><strong>${esc(n)}</strong><small>${esc(LOCATIONS[state.location].name)} · ${esc(s)}</small></div><button data-act="player" data-player="${esc(n)}">정보</button><button data-act="trade-open" data-player="${esc(n)}">교환</button></div>`).join('');
   const doneN = state.todos.filter(t => t.done).length;
   const todo = `<div class="todo-add"><input id="todoIn" maxlength="${TODO_LEN}" placeholder="할 일을 적고 Enter" autocomplete="off"><button class="primary" data-act="todo-add">추가</button></div>` +
     (state.todos.map(t => `<div class="todo-row ${t.done ? 'done' : ''}"><button class="todo-check" data-act="todo-toggle" data-id="${t.id}" role="checkbox" aria-checked="${t.done}" aria-label="${esc(t.t)}">${icon(t.done ? 'check_box' : 'check_box_outline_blank')}</button><span class="todo-t">${esc(t.t)}</span><button class="mini" data-act="todo-del" data-id="${t.id}" aria-label="삭제" title="삭제">${icon('close')}</button></div>`).join('') || '<div class="empty">적어 둔 할 일이 없습니다.</div>') +
     (doneN ? `<div class="todo-foot"><button data-act="todo-clear">완료한 항목 ${doneN}개 지우기</button></div>` : '');
-  box.innerHTML = `<div class="sit-sec">${head('near', '주위 대원', `${NEARBY_PLAYERS.length}명`)}${so.near ? `<div class="sit-body">${near}</div>` : ''}</div><div class="sit-sec">${head('todo', '투두리스트', `${doneN}/${state.todos.length}`)}${so.todo ? `<div class="sit-body">${todo}</div>` : ''}</div>`;
+  box.innerHTML = `<div class="sit-sec">${head('party', '파티', PARTY.id ? `${PARTY.members.length}/4명` : PARTY.invites.length ? `초대 ${PARTY.invites.length}` : '')}${so.party ? `<div class="sit-body">${partyBody}</div>` : ''}</div><div class="sit-sec">${head('near', '주위 대원', `${nearAll}명`)}${so.near ? `<div class="sit-body">${near}</div>` : ''}</div><div class="sit-sec">${head('todo', '투두리스트', `${doneN}/${state.todos.length}`)}${so.todo ? `<div class="sit-body">${todo}</div>` : ''}</div>`;
   if (keep) { const n = box.querySelector('#todoIn'); if (n) { n.value = keep.v; if (keep.f) n.focus(); } }
 }
 function masteryNote(list) { // 숙련 레벨이 오르면 알린다 (list: [[태그, 레벨], ...])
@@ -601,8 +606,8 @@ const SYSTEM_SPEAKERS = { '관제 시스템': 'smart_toy', '시스템': 'smart_t
 const FACE_ICONS = ['face', 'face_2', 'face_3', 'face_4', 'face_5', 'face_6'];
 const speakerIcon = n => SYSTEM_SPEAKERS[n] || 'person'; // 프로필 이미지가 없는 유저는 모두 같은 사람 모양 아이콘(성별 구분 없음)
 /* ---- 대원 아이콘: 각자 설정한 프로필 이미지(서버에 64px로 올려 둔 것)를 보여 주고, 없으면 기본 얼굴 아이콘 ---- */
-view.avatars = {}; view.avWant = new Set(); view.chatSrv = { '월드': [], '길드': [] }; view.chatLast = { '월드': 0, '길드': 0 };
-const CHAT_CH = { '월드': 'world', '길드': 'guild' }, CHAT_CACHE = 'deeplayer-chat', CHAT_KEEP = 60;
+view.avatars = {}; view.avWant = new Set(); view.chatSrv = { '월드': [], '길드': [], '파티': [] }; view.chatLast = { '월드': 0, '길드': 0, '파티': 0 }; view.partyId = 0;
+const CHAT_CH = { '월드': 'world', '길드': 'guild', '파티': 'party' }, CHAT_CACHE = 'deeplayer-chat', CHAT_KEEP = 60;
 (function loadChatCache() { // 새로고침해도 직전 대화가 바로 보이도록 서버 채팅의 최근 글을 이 기기에 남겨 둔다 (아이디가 다르면 무시)
   try {
     const c = JSON.parse(localStorage.getItem(CHAT_CACHE)); if (!c || c.u !== Cloud.user()) return;
@@ -654,8 +659,11 @@ async function chatPoll() { // 월드·길드 채팅을 서버에서 가져온�
   if (!chatOnline() || !state.created || document.hidden || view.chatBusy) return;
   view.chatBusy = true; let changed = false;
   try {
-    for (const tab of ['월드', '길드']) {
+    if (nowMs() - (view.partyAt || 0) > 20000) { view.partyAt = nowMs(); await partySync(); } // 파티 초대·구성은 20초마다 확인
+    for (const tab of ['월드', '길드', '파티']) {
+      if (!chatTabOn(tab)) continue; // 꺼 둔 탭은 가져오지 않는다
       if (tab === '길드' && !state.guild) { if (view.chatSrv['길드'].length) { view.chatSrv['길드'] = []; view.chatLast['길드'] = 0; changed = true; } continue; }
+      if (tab === '파티' && !PARTY.id) { if (view.chatSrv['파티'].length) { view.chatSrv['파티'] = []; view.chatLast['파티'] = 0; changed = true; } continue; }
       let rows; try { rows = await Cloud.chatFetch(CHAT_CH[tab], view.chatLast[tab]); } catch (e) { continue; }
       for (const r of rows) {
         const id = Number(r.id); if (!Number.isFinite(id) || id <= view.chatLast[tab]) continue;
@@ -667,17 +675,21 @@ async function chatPoll() { // 월드·길드 채팅을 서버에서 가져온�
   } finally { view.chatBusy = false; }
   view.chatReady = true;
   if (changed) saveChatCache();
-  if (changed && $('#chatFeed') && (state.chatTab === '월드' || state.chatTab === '길드')) renderChat();
+  if (changed && $('#chatFeed') && CHAT_CH[state.chatTab]) renderChat();
 }
 function fmtChatTime(ms) { // 오늘이면 '오후 7:35', 다른 날이면 '10/20 오후 7:35'
   if (!Number.isFinite(ms) || ms <= 0) return '';
   const d = new Date(ms), n = new Date(), t = d.toLocaleTimeString('ko-KR', { hour: 'numeric', minute: '2-digit' });
   return d.toDateString() === n.toDateString() ? t : `${d.getMonth() + 1}/${d.getDate()} ${t}`;
 }
+const partyBarHtml = () => `<span class="chan-info">${icon('group')} ${PARTY.id ? `파티 · ${PARTY.members.map(m => esc(m.name)).join(', ')}` : partyOn() ? '파티 없음' : '서버 로그인 필요'}</span>${PARTY.id ? '<button data-act="party-leave">나가기</button>' : ''}`;
+const chatTabOn = k => state.settings.chatTabs[k] !== false;
 function renderChat() {
+  if (!chatTabOn(state.chatTab)) state.chatTab = CHAT_TABS.find(chatTabOn) || '알림'; // 꺼 둔 탭을 보고 있었다면 켜진 첫 탭으로
+  $$('[data-chat]').forEach(b => b.classList.toggle('hidden', !chatTabOn(b.dataset.chat)));
   const tab = state.chatTab, g = state.guild, bar = $('#guildBar');
-  bar.classList.toggle('hidden', tab !== '길드');
-  bar.innerHTML = `<span class="chan-info">${icon('groups')} ${g ? `${esc(g.name)} · ${g.members.length + 1}명${g.master ? ' · 길드장' : ''}` : '길드 없음'}</span><button data-act="guild-open">${icon('settings')} ${g ? '관리' : '만들기'}</button>`;
+  bar.classList.toggle('hidden', tab !== '길드' && tab !== '파티');
+  if (tab === '파티') bar.innerHTML = partyBarHtml(); else bar.innerHTML = `<span class="chan-info">${icon('groups')} ${g ? `${esc(g.name)} · ${g.members.length + 1}명${g.master ? ' · 길드장' : ''}` : '길드 없음'}</span><button data-act="guild-open">${icon('settings')} ${g ? '관리' : '만들기'}</button>`;
   const writer = tab === '알림' && canNotice(); // 알림은 공지만 받는 읽기 전용 — 개발자 모드가 켜져 있으면 말머리를 달아 공지를 쓸 수 있다
   $('#chatForm').classList.toggle('hidden', tab === '알림' && !writer);
   $('#noticeHead').classList.toggle('hidden', !writer); $('#chatInput').placeholder = writer ? '공지 내용 입력...' : '암호화 메시지 입력...';
@@ -838,6 +850,7 @@ function openSettings() {
     `<div class="setting-group"><h3>표시</h3>${sw('cursorOn', '사용자 지정 커서', st.cursor)}<div class="srow fontrow"><span>글자 크기</span><select id="fontSize">${opt('s', '작게', st.fontSize)}${opt('m', '보통', st.fontSize)}${opt('l', '크게', st.fontSize)}${opt('xl', '아주 크게', st.fontSize)}</select></div></div>` +
     `<div class="setting-group"><h3>튜토리얼</h3><div class="row-gap"><button data-act="tutorial-replay">튜토리얼 다시 보기</button></div></div>` +
     cloudGroupHtml() +
+    `<div class="setting-group"><h3>채팅창 탭</h3>${CHAT_TABS.map(k => sw('ctab_' + k, `${k} 탭 표시`, st.chatTabs[k])).join('')}<p class="tiny">끈 탭은 채팅창에서 사라지고, 그 채널의 새 메시지 알림도 오지 않아요. 최소 한 개는 켜 두어야 해요.</p></div>` +
     `<div class="setting-group"><h3>알림</h3>${sw('notifyOn', '다른 탭을 보고 있을 때 행동 완료 알림', st.notify)}${sw('guildAlertOn', '길드 채팅 알림 (새 메시지가 오면 알림음과 알림창)', st.guildAlert)}</div>` +
     `<div class="setting-group"><h3>테마</h3><div class="srow theme"><select id="themeSelect">${opt('light', '라이트', st.theme)}${opt('dark', '다크', st.theme)}${opt('custom', '사용자 설정', st.theme)}</select>` +
     `<span id="customOpts" class="${st.theme === 'custom' ? '' : 'hidden'}"><select id="customBase">${opt('light', '라이트 기반', st.customBase)}${opt('dark', '다크 기반', st.customBase)}</select><input id="customAccent" type="color" value="${esc(st.customAccent)}" title="강조 색상"></span></div></div>` +
@@ -932,6 +945,35 @@ const inboxHtml = () => {
   return h;
 };
 const sid9 = v => intIn(v, 1, 9e15, 0);
+/* ---- 파티 (서버 기준): PARTY = { id, members:[{uid,name,leader}], invites:[{id,name}] } ---- */
+const partyOn = () => chatOnline();
+const partyMe = () => PARTY.members.find(m => m.uid === Cloud.userUid);
+const partyLeader = () => !!(partyMe() && partyMe().leader);
+const PARTY_ERR = { not_leader: '파티장만 초대할 수 있어요.', target_in_party: '이미 다른 파티에 속해 있는 대원이에요.', full: '파티는 최대 4명이에요.', limit: '보낸 초대가 너무 많아요.', busy: '상대에게 쌓인 초대가 너무 많아요.', not_found: '대원을 찾지 못했어요.', bad: '자기 자신은 초대할 수 없어요.', gone: '이미 사라진 초대예요.', in_party: '이미 파티에 속해 있어요.' };
+async function partySync(quiet) { // 서버에서 내 파티와 받은 초대를 가져온다
+  if (!partyOn()) { if (PARTY.id || PARTY.members.length) { Object.assign(PARTY, { id: 0, members: [], invites: [] }); view.chatSrv['파티'] = []; } return; }
+  let pi; try { pi = await Cloud.partyInfo(); } catch (e) { return; } // 서버 준비 전
+  const p = pi && pi.party, before = PARTY.id, names0 = partyOthers().join('|');
+  PARTY.id = p && Number.isFinite(+p.id) ? +p.id : 0;
+  PARTY.members = p && Array.isArray(p.members) ? p.members.slice(0, 4).map(m => ({ uid: /^[0-9a-f-]{36}$/i.test(m.uid) ? m.uid : '', name: cleanText(m.name, 12) || '?', leader: !!m.leader, online: m.online === true || m.uid === Cloud.userUid })).filter(m => m.uid) : [];
+  if (!PARTY.members.length) PARTY.id = 0;
+  PARTY.invites = (pi && Array.isArray(pi.incoming) ? pi.incoming : []).slice(0, 10).map(r => ({ id: sid9(r.id), name: cleanText(r.name, 12) })).filter(r => r.id && r.name);
+  view.partyUid = {}; PARTY.members.forEach(m => { view.partyUid[m.name] = m.uid; });
+  if (PARTY.invites.length > Math.max(view.partyInvN || 0, 0) && !quiet) toast(`파티 초대가 ${PARTY.invites.length}건 와 있어요. (상황 탭에서 확인)`);
+  view.partyInvN = PARTY.invites.length;
+  if (before !== PARTY.id) { view.chatSrv['파티'] = []; view.chatLast['파티'] = 0; if (!PARTY.id && before && !quiet) toast('파티에서 나왔어요.'); }
+  if (state.side === '상황') renderSituation();
+  if ($('#chatFeed') && (state.chatTab === '파티' || before !== PARTY.id || names0 !== partyOthers().join('|'))) renderChat();
+}
+async function partyDo(fn, okMsg) { // 파티 요청 공통 처리
+  if (!partyOn()) { toast('파티는 서버에 로그인해야 쓸 수 있어요.'); sfx('error'); return false; }
+  try {
+    const r = await fn();
+    if (r && r.ok === false) { toast(PARTY_ERR[r.msg] || '처리하지 못했어요.'); sfx('error'); await partySync(true); return false; }
+    if (okMsg) toast(okMsg); sfx('ok');
+  } catch (e) { toast('서버에 연결하지 못했어요. 서버에 supabase/friends.sql 최신본이 적용됐는지 확인하세요.'); sfx('error'); return false; }
+  await partySync(true); return true;
+}
 async function friendPoll() { // 서버에서 친구 신청·메일·교환 소식을 가져온다
   if (!Cloud.enabled || !Cloud.user() || !state.created || _polling) return;
   _polling = true;
@@ -992,6 +1034,7 @@ async function friendPoll() { // 서버에서 친구 신청·메일·교환 소�
       if (n > Math.max(_guildN, 0)) toast(`길드 요청이 ${n}건 와 있어요. (길드 창에서 확인)`);
       _guildN = n; view.guildIn = n;
     } catch (e) { /* 서버 준비 전 */ }
+    await partySync();
     renderMailBadge();
     if (changed || newMail) { if ($('#friendInbox')) openFriends(true); }
     else if ($('#friendInbox')) $('#friendInbox').innerHTML = inboxHtml();
@@ -1005,6 +1048,7 @@ function openFriends(noPoll) {
   const list = state.friends.map(n => { const uid = (view.friendUid || {})[n]; return `<div class="nearby-row"><div class="round-avatar" data-user="${esc(n)}">${avatarOf(n)}</div><div class="grow"><strong data-user="${esc(n)}">${esc(n)}</strong><small>${esc((samplePlayer(n) || ['', '온라인'])[1])}</small></div><div class="row-btns">` +
     `<button data-act="friend-mail" data-name="${esc(n)}">메일</button>` +
     (on ? `<button data-act="ftrade-open" data-name="${esc(n)}">교환</button>` : '') +
+    (on ? `<button data-act="party-invite" data-uid="${esc(uid || '')}" data-name="${esc(n)}" ${uid && (!PARTY.id || partyLeader()) ? '' : 'disabled'} title="${!PARTY.id || partyLeader() ? '파티에 초대합니다 (2~4명)' : '파티장만 초대할 수 있어요'}">파티 초대</button>` : '') +
     `<button data-act="friend-guild-invite" data-name="${esc(n)}" ${master && uid ? '' : 'disabled'} title="${master ? '길드에 초대합니다' : '길드장만 초대할 수 있어요'}">길드 초대</button>` +
     `<button data-act="friend-remove" data-name="${esc(n)}">삭제</button></div></div>`; }).join('');
   modal('친구', `<div class="search-row"><input id="friendSearch" placeholder="대원 이름으로 검색" aria-label="대원 검색"><button data-act="friend-search">검색</button></div><div id="friendResult"></div><div id="friendInbox">${inboxHtml()}</div>` +
@@ -1218,7 +1262,7 @@ const A = {
     }
     else if (a.kind === 'enter') { enterDungeon(a.zone); resetPhase(); renderMapHead(); renderMap(); renderAction(); renderSide(); }
     else if (a.kind === 'leave') { leaveDungeon(); resetPhase(); renderMapHead(); renderMap(); renderAction(); }
-    else if (a.kind === 'investigate' || a.kind === 'gamble') { // 시간이 걸리지 않는 행동은 누르면 바로 실행한다
+    else if (a.kind === 'investigate' || a.kind === 'gamble' || (a.kind === 'leisure' && leisureTaken())) { // 시간이 걸리지 않는 행동은 누르면 바로 실행한다 (여가는 버프를 받은 뒤에만)
       const msg = startAction(el.dataset.choice);
       if (msg) { toast(msg); sfx('error'); return; }
       renderBars(); renderAction(); sfx('ok');
@@ -1299,7 +1343,18 @@ const A = {
   'pet-name-save': el => { const err = renamePet(+el.dataset.i, petRoot(el).querySelector('#petNameIn').value); if (err) { toast(err); sfx('error'); return; } view.petNaming = -1; renderBuffs(true); sfx('ok'); toast('펫 이름을 저장했습니다.'); petRefresh(el); },
   'pet-sub': el => { view.petSub = el.dataset.sub; renderSide(); },
   'pet-active': el => { const i = +el.dataset.i, err = setActivePet(state.petActive === i ? -1 : i); if (err) { toast(err); sfx('error'); return; } renderBuffs(true); petRefresh(el); },
-  'sit-toggle': el => { const k = el.dataset.k; if (k !== 'near' && k !== 'todo') return; state.sitOpen[k] = !state.sitOpen[k]; save(); renderSide(); },
+  'party-invite': async el => {
+    const uid = el.dataset.uid, name = el.dataset.name;
+    if (!/^[0-9a-f-]{36}$/i.test(uid || '')) { toast('대원 정보를 서버에서 가져오는 중이에요. 잠시 뒤 다시 시도해 주세요.'); friendPoll(); return; }
+    el.disabled = true;
+    const ok = await partyDo(() => Cloud.partyInvite(uid), `${name} 대원에게 파티 초대를 보냈어요.`);
+    el.disabled = false; if (ok) addLog(`${name} 대원에게 파티 초대를 보냈습니다.`);
+  },
+  'party-answer': async el => { const id = +el.dataset.id, yes = el.dataset.ok === '1'; el.disabled = true; await partyDo(() => Cloud.partyAnswer(id, yes), yes ? '파티에 들어왔어요.' : '초대를 거절했어요.'); renderChat(); },
+  'party-leave': () => askConfirm('파티 나가기', '파티에서 나갈까요? 파티장이 나가면 다음 사람이 파티장이 되고, 혼자 남으면 파티가 사라져요.', '나가기', 'party-leave-do', {}, closeModal),
+  'party-leave-do': async () => { closeModal(); await partyDo(() => Cloud.partyLeave(), '파티에서 나왔어요.'); renderChat(); },
+  'party-kick': async el => { if (!partyLeader()) return; el.disabled = true; await partyDo(() => Cloud.partyKick(el.dataset.uid), `${el.dataset.name} 대원을 파티에서 내보냈어요.`); },
+  'sit-toggle': el => { const k = el.dataset.k; if (k !== 'near' && k !== 'todo' && k !== 'party') return; state.sitOpen[k] = !state.sitOpen[k]; save(); renderSide(); },
   'todo-add': () => { const i = $('#todoIn'), e = addTodo(i ? i.value : ''); if (e) { toast(e); sfx('error'); return; } if (i) i.value = ''; renderSide(); const n = $('#todoIn'); if (n) n.focus(); sfx('click'); },
   'todo-toggle': el => { toggleTodo(+el.dataset.id); renderSide(); sfx('click'); },
   'todo-del': el => { removeTodo(+el.dataset.id); renderSide(); },
@@ -1509,6 +1564,7 @@ const A = {
     if (a.kind === 'step') { doMove(); return; }
     if (a.kind === 'enter') { enterDungeon(a.zone); resetPhase(); renderMapHead(); renderMap(); renderAction(); renderSide(); return; }
     if (a.kind === 'leave') { leaveDungeon(); resetPhase(); renderMapHead(); renderMap(); renderAction(); return; }
+    if (a.kind === 'leisure') { const msg = startAction(view.id); if (msg) { toast(msg); sfx('error'); return; } resetPhase(); renderBars(); renderAction(); sfx('ok'); if (state.pending) A.claim(); return; }
     { const ce = $('#customMin'); if (ce && MULTI_OPTIONS[view.mult].custom) setCustomMin(ce.value); }
     const bsel = $('#tameBait'); if (bsel) view.bait = bsel.value;
     const msg = startAction(view.id, view.mult, ACTIONS[view.id].kind === 'tame' && bsel ? view.bait : null);
@@ -1622,15 +1678,19 @@ const A = {
     if (left > 0) { toast(`프로필은 ${fmtLong(left)} 뒤에 다시 수정할 수 있어요.`); return; }
     const next = { name: cleanText($('#cName').value, 12) || c.name, age: intIn($('#cAge').value, AGE_MIN, AGE_MAX, c.age), keywords: cleanText($('#cKeywords').value, 60),
       ability: cleanText($('#cAbility').value, 20) || c.ability, abilityDesc: cleanText($('#cAbilityDesc').value, 300),
-      allowFriend: $('#cFriend').checked, allowGuild: $('#cGuild').checked };
+      mainStat: $('#cMain').value, subStat: $('#cSub').value, allowFriend: $('#cFriend').checked, allowGuild: $('#cGuild').checked };
+    if (!STAT_DEFS.some(d => d.key === next.mainStat)) next.mainStat = ''; if (!STAT_DEFS.some(d => d.key === next.subStat)) next.subStat = '';
+    if (next.mainStat && next.mainStat === next.subStat) { toast('주 스탯과 부 스탯은 서로 다른 스테이터스로 골라 주세요.'); sfx('error'); return; }
     if (Object.keys(next).some(k => next[k] !== c[k])) { Object.assign(c, next); state.profileEditAt = nowMs(); toast('프로필을 수정했습니다. 24시간 뒤에 다시 수정할 수 있어요.'); }
     view.profEdit = false; renderProfile(); save(); closeModal();
   },
   'settings-save': () => {
-    state.settings = { bgmOn: $('#bgmOn').checked, bgmVolume: +$('#bgmVolume').value, clickOn: $('#clickOn').checked, alertOn: $('#alertOn').checked, sfxVolume: +$('#sfxVolume').value,
+    const ctabs = Object.fromEntries(CHAT_TABS.map(k => [k, $('#ctab_' + k) ? $('#ctab_' + k).checked : true]));
+    if (!CHAT_TABS.some(k => ctabs[k])) { toast('채팅 탭은 최소 한 개는 켜 두어야 해요.'); sfx('error'); return; }
+    state.settings = { chatTabs: ctabs, bgmOn: $('#bgmOn').checked, bgmVolume: +$('#bgmVolume').value, clickOn: $('#clickOn').checked, alertOn: $('#alertOn').checked, sfxVolume: +$('#sfxVolume').value,
       notify: $('#notifyOn').checked, guildAlert: $('#guildAlertOn').checked, cursor: $('#cursorOn').checked, theme: $('#themeSelect').value, customBase: $('#customBase').value, customAccent: $('#customAccent').value, fontSize: $('#fontSize').value };
     if (state.settings.notify && window.Notification && Notification.permission === 'default') { try { Notification.requestPermission(); } catch (e) { /* 알림 불가 */ } }
-    applyTheme(); applyBgm(); save(); closeModal(); toast('설정을 저장했습니다.');
+    applyTheme(); applyBgm(); renderChat(); save(); closeModal(); toast('설정을 저장했습니다.');
   },
 
   /* 메일 / 친구 / 길드 / 도감 */
@@ -1737,9 +1797,13 @@ const A = {
     }
     renderBag(); sfx('ok'); toast(`메일을 보냈습니다.${had.length ? ' (운송장치 1개 사용)' : ''} (서버에 로그인하지 않아 실제로는 전달되지 않아요)`); view.mailTab = '받은 메일함'; openMail();
   },
-  'ftrade-open': el => openFriendTrade(el.dataset.name),
+  'ftrade-open': el => {
+    const pm = PARTY.members.find(m => m.name === el.dataset.name);
+    if (pm && !pm.online) { toast(`${pm.name} 대원이 접속 중이 아니라 교환할 수 없어요. 교환은 상대가 접속해 있을 때만 가능해요.`); sfx('error'); return; }
+    openFriendTrade(el.dataset.name);
+  },
   'ftrade-send': async el => {
-    const name = el.dataset.name, uid = (view.friendUid || {})[name], give = $('#ftGive').value, want = $('#ftWant').value.trim();
+    const name = el.dataset.name, uid = (view.friendUid || {})[name] || (view.partyUid || {})[name], give = $('#ftGive').value, want = $('#ftWant').value.trim();
     const gq = intIn($('#ftGiveQty').value, 1, 99, 0), wq = intIn($('#ftWantQty').value, 1, 99, 0);
     if (!uid) { toast('친구 정보를 서버에서 가져오는 중이에요. 잠시 뒤 다시 시도해 주세요.'); friendPoll(); return; }
     if (!tradesLeft()) { toast(`오늘은 교환 제안을 모두 보냈습니다. (하루 ${TRADE_DAILY}회)`); sfx('error'); return; }
@@ -1753,7 +1817,7 @@ const A = {
       renderBag(); sfx('ok'); toast(`${name} 대원에게 교환을 제안했어요. 물건은 맡겨 두며, 거절·취소되면 메일로 돌아와요.`); friendPoll(); openFriends(true);
     } catch (e) {
       addItem(give, gq); renderBag(); el.disabled = false; sfx('error');
-      toast({ limit: '대기 중인 제안이 너무 많아요. (최대 5건)', busy: '상대에게 쌓인 제안이 너무 많아요.', not_friend: '서버에서 친구로 확인되지 않아요.' }[e && e.message] || '제안하지 못했어요. 서버에 friends.sql 을 실행했는지 확인해 주세요.');
+      toast({ limit: '대기 중인 제안이 너무 많아요. (최대 5건)', busy: '상대에게 쌓인 제안이 너무 많아요.', not_friend: '서버에서 친구로 확인되지 않아요.', offline: '상대가 접속 중이 아니에요. 교환은 상대가 접속해 있을 때만 할 수 있어요.' }[e && e.message] || '제안하지 못했어요. 서버에 friends.sql 을 실행했는지 확인해 주세요.');
     }
   },
   'ftrade-accept': async el => {
@@ -1852,7 +1916,7 @@ async function viewUser(name) { // 이름·아이콘을 누르면 그 대원의 
       `<div class="user-grid">${cell('상태', st)}${r ? cell('레벨', 'Lv.' + intIn(r.level, 1, MAX_LEVEL, 1)) + cell('등급', ('FEDCBAS'.includes(r.rank) ? r.rank : 'F') + '등급') : ''}${pr ? cell('나이', intIn(pr.age, 0, 999, 0) + '세') : ''}${cell('관계', has ? '친구' : '친구 아님')}${pr ? cell('길드', pr.guild ? cleanText(pr.guild, 12) : '-') : ''}</div>` +
       (kw ? `<div class="char-tags">${esc(kw)}</div>` : '') + (pr && pr.equipment ? otherEquipHtml(pr.equipment) : pr ? '<p class="tiny">장비 정보는 서버에 supabase/friends.sql 최신본을 실행하면 보여요.</p>' : '') +
       (pr ? `<div class="pc-ability"><b>${icon('bolt')} 이능력 · ${esc(cleanText(pr.ability, 20) || '미설정')}</b><p>${esc(cleanText(pr.abilityDesc, 300) || '이능력 설명이 없습니다.')}</p></div>` : (Cloud.enabled && Cloud.user() ? `<p class="tiny">${esc(note || '자세한 프로필을 불러오는 중…')}</p>` : '<p class="tiny">서버에 로그인하면 이능력 등 자세한 프로필을 볼 수 있어요.</p>')),
-      [btnClose, !has && uid ? `<button class="primary" data-act="friend-req" data-uid="${esc(uid)}" data-name="${esc(name)}">친구 신청</button>` : ''].filter(Boolean));
+      [btnClose, uid && chatOnline() && (!PARTY.id || partyLeader()) && !PARTY.members.some(m => m.name === name) ? `<button data-act="party-invite" data-uid="${esc(uid)}" data-name="${esc(name)}">파티 초대</button>` : '', !has && uid ? `<button class="primary" data-act="friend-req" data-uid="${esc(uid)}" data-name="${esc(name)}">친구 신청</button>` : ''].filter(Boolean));
     view.userShown = name;
   };
   draw(null, '');
@@ -1952,16 +2016,18 @@ async function startCrop(file) {
   $('#cropSize').oninput = e => { const cx = c.x + c.s / 2, cy = c.y + c.s / 2; c.s = clampN(+e.target.value, c.min, Math.min(W, H)); c.x = clampN(cx - c.s / 2, 0, W - c.s); c.y = clampN(cy - c.s / 2, 0, H - c.s); draw(); };
   draw();
 }
+const statOpts = (cur, skip) => `<option value="">선택 안 함</option>${STAT_DEFS.filter(d => d.key !== skip).map(d => `<option value="${d.key}" ${d.key === cur ? 'selected' : ''}>${d.name}</option>`).join('')}`;
+const abilityStatChips = c => (c.mainStat || c.subStat) ? `<div class="ab-stats">${c.mainStat ? `<span class="ab-chip main" title="주 스탯: 해당 스테이터스 +${MAIN_STAT_BONUS}">주 ${STAT_DEFS.find(d => d.key === c.mainStat).name} +${MAIN_STAT_BONUS}</span>` : ''}${c.subStat ? `<span class="ab-chip" title="부 스탯: 해당 스테이터스 +${SUB_STAT_BONUS}">부 ${STAT_DEFS.find(d => d.key === c.subStat).name} +${SUB_STAT_BONUS}</span>` : ''}</div>` : '';
 function openProfile(keepScroll) {
   const st0 = keepScroll === true && $('#modalBody') ? $('#modalBody').scrollTop : 0;
   const c = state.character, img = getAvatar(), tags = c.keywords.split(',').map(t => t.trim()).filter(Boolean).map(t => '#' + t).join(' ');
   // 이미 열려 있는 입력칸에 쓴 내용은 창을 다시 그려도 지우지 않는다
-  const dr = $('#cName') ? { ab: $('#cAbility').value, name: $('#cName').value, age: $('#cAge').value, kw: $('#cKeywords').value, desc: $('#cAbilityDesc').value, fr: $('#cFriend').checked, gu: $('#cGuild').checked } : null;
+  const dr = $('#cName') ? { ab: $('#cAbility').value, name: $('#cName').value, age: $('#cAge').value, kw: $('#cKeywords').value, desc: $('#cAbilityDesc').value, fr: $('#cFriend').checked, gu: $('#cGuild').checked, ms: $('#cMain').value, ss: $('#cSub').value } : null;
   const lock = profileLockLeft(), editing = !!view.profEdit && lock <= 0, dis = editing ? '' : 'disabled'; // 수정 버튼을 눌러야 입력칸이 열린다
   const row = (label, inner) => `<div class="srow fontrow pf-row"><span>${label}</span>${inner}</div>`;
   modal('프로필', `<div class="profile-card"><button class="avatar big ${img ? '' : 'empty'}" data-act="avatar-pick" title="이미지 변경" aria-label="프로필 이미지 변경">${img ? `<img src="${esc(img)}" alt="프로필">` : icon('add_a_photo')}<span class="avatar-edit">${icon('photo_camera')}</span></button>` +
     `<div class="pc-info"><div class="title-chip" id="pcTitle">${esc(c.title)}</div><strong>${esc(c.name || '-')}</strong><div class="char-meta">LV.${c.level}　${esc(c.rank)}등급　${c.age}세</div><div class="char-tags">${esc(tags)}</div>${state.subjob ? `<div class="char-job">${esc(`서브잡 · ${state.subjob.name} Lv.${state.subjob.level}`)}</div>` : ''}</div><div class="pf-sw">${sw('cFriend', '친구 추가 허용', dr ? dr.fr : c.allowFriend, 'near', dis)}${sw('cGuild', '길드 초대 허용', dr ? dr.gu : c.allowGuild, 'near', dis)}</div></div>` +
-    `<div class="pc-ability"><b>${icon('bolt')} 이능력 · ${esc(c.ability || '미설정')}</b><p>${esc(c.abilityDesc || '이능력 설명이 없습니다.')}</p></div>` +
+    `<div class="pc-ability"><b>${icon('bolt')} 이능력 · ${esc(c.ability || '미설정')}</b><p>${esc(c.abilityDesc || '이능력 설명이 없습니다.')}</p>${abilityStatChips(c)}</div>` +
     `<div class="choice-label">칭호 ${state.titles.length}개 보유 · 눌러서 착용</div><div class="title-chips">${TITLE_DEFS.filter(([n]) => state.titles.includes(n)).map(([n, d]) =>
       `<button class="tchip ${c.title === n ? 'on' : ''}" data-act="title-set" data-title="${esc(n)}" title="달성: ${esc(d)}">${esc(n)}</button>`).join('')}</div>` +
     `<div class="setting-group"><div class="pf-head"><h3>캐릭터 정보</h3><div class="pf-side">${editing ? `<button class="pf-edit on" data-act="profile-edit-cancel">${icon('close')} 편집 취소</button>` : `<button class="pf-edit" data-act="profile-edit" ${lock > 0 ? 'disabled' : ''}>${icon('edit')} 편집</button>`}</div></div>` +
@@ -1971,6 +2037,8 @@ function openProfile(keepScroll) {
     row('키워드', `<input id="cKeywords" maxlength="60" ${dis} placeholder="쉼표로 구분 (예: 과묵, 정찰)" value="${esc(dr ? dr.kw : c.keywords)}">`) +
     row('이능력 이름', `<input id="cAbility" maxlength="20" ${dis} value="${esc(dr ? dr.ab : c.ability)}">`) +
     row('이능력 설명', `<textarea id="cAbilityDesc" maxlength="300" ${dis} placeholder="어떤 능력인지 자유롭게 적어 주세요">${esc(dr ? dr.desc : c.abilityDesc)}</textarea>`) +
+    row('주·부 스탯', `<div class="ab-sel"><select id="cMain" ${dis} aria-label="주 스탯" title="주 스탯 +${MAIN_STAT_BONUS}">${statOpts(dr ? dr.ms : c.mainStat, '')}</select><select id="cSub" ${dis} aria-label="부 스탯" title="부 스탯 +${SUB_STAT_BONUS}">${statOpts(dr ? dr.ss : c.subStat, '')}</select></div>`) +
+    `<p class="tiny">이능력과 어울리는 스테이터스 두 개를 고르면 주 스탯 +${MAIN_STAT_BONUS}, 부 스탯 +${SUB_STAT_BONUS}이 적용돼요. (프로필 수정 간격에 따라 바꿀 수 있어요)</p>` +
     `</div>` +
     `<p class="tiny">사진 버튼을 눌러 이미지를 고르면 ${AVATAR_PX}px로 자동 압축됩니다. (png·jpg·webp·gif)</p>`,
     [`<button data-act="avatar-clear" ${img ? '' : 'disabled'}>이미지 삭제</button>`, `<button class="primary" data-act="char-save" ${editing ? '' : 'disabled'}>저장</button>`]);
@@ -2012,12 +2080,14 @@ const CHAT_COOL_MS = 3000; // 도배 방지: 채팅은 3초에 한 번
 function sendChat(val) {
   if (state.chatTab === '알림') { if (canNotice()) postNotice(val); else { toast('알림 채널은 공지만 받을 수 있어요.'); sfx('error'); } return; }
   if (state.chatTab === '길드' && !state.guild) { toast('길드가 없습니다. 위의 버튼으로 길드를 만들거나 가입하세요.'); sfx('error'); return; }
+  if (state.chatTab === '파티' && !PARTY.id) { toast('파티가 없습니다. 친구 창이나 대원 프로필에서 파티에 초대해 보세요.'); sfx('error'); return; }
+  if (state.chatTab === '파티' && !chatOnline()) { toast('파티 채팅은 서버에 로그인해야 쓸 수 있어요.'); sfx('error'); return; }
   const wait = (view.chatAt || 0) + CHAT_COOL_MS - nowMs();
   if (wait > 0) { toast(`채팅은 3초에 한 번만 보낼 수 있어요. (${Math.ceil(wait / 1000)}초 뒤)`); sfx('error'); return false; }
   view.chatAt = nowMs();
   if (chatOnline() && CHAT_CH[state.chatTab]) { // 서버 채팅: 다른 대원에게도 보인다
     const tab = state.chatTab; state.flags.chatted = true;
-    Cloud.chatSend(CHAT_CH[tab], val).then(r => { if (r && r.ok === false) { toast(r.msg === 'too_fast' ? '너무 빨리 보내고 있어요. 잠시 뒤에 보내 주세요.' : r.msg === 'no_channel' ? '길드가 없어 보낼 수 없어요.' : '보내지 못했어요.'); sfx('error'); } else chatPoll(); }).catch(() => { toast('보내지 못했어요. 서버에 friends.sql 을 실행했는지 확인해 주세요.'); sfx('error'); });
+    Cloud.chatSend(CHAT_CH[tab], val).then(r => { if (r && r.ok === false) { toast(r.msg === 'too_fast' ? '너무 빨리 보내고 있어요. 잠시 뒤에 보내 주세요.' : r.msg === 'no_channel' ? (tab === '파티' ? '파티가 없어 보낼 수 없어요.' : '길드가 없어 보낼 수 없어요.') : '보내지 못했어요.'); sfx('error'); } else chatPoll(); }).catch(() => { toast('보내지 못했어요. 서버에 friends.sql 을 실행했는지 확인해 주세요.'); sfx('error'); });
     renderSide(); return;
   }
   state.chats[state.chatTab] = [...state.chats[state.chatTab], ['나', val, Date.now()]].slice(-200);
@@ -2236,7 +2306,7 @@ function mockStart() {
 function openFriendTrade(name) {
   const mine = ['소모품', '재료', '장비'].flatMap(t => state.inventory[t]).map(s => s.n).filter(n => n !== MAIL_SHIP_ITEM), uniq = [...new Set(mine)];
   const all = Object.keys(ITEMS).filter(n => n !== MAIL_SHIP_ITEM);
-  const body = `<p class="tiny">${esc(name)} 대원에게 교환을 제안합니다. 내가 줄 물건은 상대가 답할 때까지 맡겨 두고, 거절·취소·3일 만료 시 메일로 돌아와요. 하루 ${TRADE_DAILY}회까지 · 오늘 남은 횟수 <b>${tradesLeft()}회</b>. 장착 중인 장비는 줄 수 없어요.</p>` +
+  const body = `<p class="tiny">${esc(name)} 대원에게 교환을 제안합니다. 상대가 접속해 있을 때만 보낼 수 있어요. 내가 줄 물건은 상대가 답할 때까지 맡겨 두고, 거절·취소·3일 만료 시 메일로 돌아와요. 하루 ${TRADE_DAILY}회까지 · 오늘 남은 횟수 <b>${tradesLeft()}회</b>. 장착 중인 장비는 줄 수 없어요.</p>` +
     (uniq.length ? `<div class="srow fontrow trade-row"><span>내가 줄 물건</span><select id="ftGive">${uniq.map(n => `<option value="${esc(n)}">${esc(n)} (${countItem(n)})</option>`).join('')}</select><input id="ftGiveQty" type="number" min="1" max="99" value="1" style="width:64px"></div>` +
       `<div class="srow fontrow trade-row"><span>받고 싶은 물건</span><input id="ftWant" list="ftItems" placeholder="아이템 이름" autocomplete="off"><input id="ftWantQty" type="number" min="1" max="99" value="1" style="width:64px"></div><datalist id="ftItems">${all.map(n => `<option value="${esc(n)}">`).join('')}</datalist>` : '<div class="empty">줄 수 있는 물건이 없습니다.</div>');
   modal(`${name} 대원과 교환`, body, ['<button data-act="close">닫기</button>', `<button class="primary" data-act="ftrade-send" data-name="${esc(name)}" ${uniq.length && tradesLeft() ? '' : 'disabled'}>제안 보내기</button>`], true);
@@ -2496,8 +2566,8 @@ document.addEventListener('keydown', e => {
 
 /* ---------- 튜토리얼: 안드로이드 리코의 이야기 → 캐릭터 생성 → 화면 안내 → 무기 선택 ---------- */
 const tut = { page: 0, step: 0, mode: null, replay: false };
-const cf = { step: 1, name: '', age: '', keywords: '', ability: '', abilityDesc: '', stats: {} };
-const resetCf = () => Object.assign(cf, { step: 1, name: '', age: '', keywords: '', ability: '', abilityDesc: '', stats: Object.fromEntries(STAT_DEFS.map(d => [d.key, STAT_BASE])) });
+const cf = { step: 1, name: '', age: '', keywords: '', ability: '', abilityDesc: '', mainStat: '', subStat: '', stats: {} };
+const resetCf = () => Object.assign(cf, { step: 1, name: '', age: '', keywords: '', ability: '', abilityDesc: '', mainStat: '', subStat: '', stats: Object.fromEntries(STAT_DEFS.map(d => [d.key, STAT_BASE])) });
 let weaponPick = null;
 function tutShow(mode) {
   tut.mode = mode;
@@ -2543,9 +2613,10 @@ function renderCreate() {
       `<div class="form-row"><label>키워드 <em class="opt">선택</em></label><input id="ctKeywords" maxlength="60" placeholder="쉼표로 구분 (예: 과묵, 정찰)" value="${esc(cf.keywords)}"></div>`;
     $('#tutCreateActions').innerHTML = '<button class="primary" id="ctNext">다음</button>';
   } else {
-    body.innerHTML = `<p class="npc-say">이능력은 자유롭게 적어 주세요. (롤플용이라 게임 수치에는 영향이 없어요) 스테이터스는 전부 0에서 시작해요. ${STAT_POOL}포인트를 원하는 곳에 자유롭게 나눠 주세요. (한 곳에 몰아도 돼요) 모든 탐색자의 총합은 같아요.</p>` +
+    body.innerHTML = `<p class="npc-say">이능력은 자유롭게 적어 주세요. (이름과 설명은 롤플용이에요. 어울리는 스테이터스를 주·부로 고르면 +2/+1이 붙어요) 스테이터스는 전부 0에서 시작해요. ${STAT_POOL}포인트를 원하는 곳에 자유롭게 나눠 주세요. (한 곳에 몰아도 돼요) 모든 탐색자의 총합은 같아요.</p>` +
       `<div class="form-row"><label>이능력 이름 <em class="req">필수</em></label><input id="ctAbility" maxlength="20" placeholder="예: 그림자 이동" value="${esc(cf.ability)}"></div>` +
       `<div class="form-row"><label>이능력 설명 <em class="opt">선택</em></label><textarea id="ctAbilityDesc" maxlength="300" placeholder="어떤 능력인지 자유롭게 적어 주세요">${esc(cf.abilityDesc)}</textarea></div>` +
+      `<div class="form-row"><label>주·부 스탯 <em class="opt">선택</em></label><span class="ab-sel"><select id="ctMain" aria-label="주 스탯">${statOpts(cf.mainStat, '')}</select><select id="ctSub" aria-label="부 스탯">${statOpts(cf.subStat, '')}</select></span><small class="tiny">주 스탯 +${MAIN_STAT_BONUS} · 부 스탯 +${SUB_STAT_BONUS} (나중에 프로필에서 바꿀 수 있어요)</small></div>` +
       `<div class="pool">남은 포인트 <b id="ctPool">${poolLeft()}</b><span class="pool-btns"><button id="ctRandom">${icon('casino')} 랜덤 배분</button><button id="ctReset">초기화</button></span></div><div class="ct-stats">` +
       STAT_DEFS.map(d => { const [k, label, sign, unit] = d.fx[0]; return `<div class="ct-stat"><div class="ct-name"><b>${d.name}</b><small>${d.en}</small></div><div class="ct-ctrl"><button data-ct="${d.key}" data-d="-1" aria-label="${d.name} 감소">${icon('remove')}</button><b class="ct-val" id="ctv-${d.key}">${cf.stats[d.key]}</b><button data-ct="${d.key}" data-d="1" aria-label="${d.name} 증가">${icon('add')}</button></div><small class="ct-eff" id="cte-${d.key}">${label} ${sign}${round1(fx[k] * 100)}${unit}</small></div>`; }).join('') + '</div>';
     $('#tutCreateActions').innerHTML = '<button id="ctPrev">이전</button><button class="primary" id="ctDone">생성 완료</button>';
@@ -2558,7 +2629,7 @@ function updateCreateStats() {
   STAT_DEFS.forEach(d => { const [k, label, sign, unit] = d.fx[0]; $(`#ctv-${d.key}`).textContent = cf.stats[d.key]; $(`#cte-${d.key}`).textContent = `${label} ${sign}${round1(fx[k] * 100)}${unit}`; });
 }
 $('#tutCreate').addEventListener('input', e => {
-  const m = { ctName: 'name', ctAge: 'age', ctKeywords: 'keywords', ctAbility: 'ability', ctAbilityDesc: 'abilityDesc' }[e.target.id];
+  const m = { ctName: 'name', ctAge: 'age', ctKeywords: 'keywords', ctAbility: 'ability', ctAbilityDesc: 'abilityDesc', ctMain: 'mainStat', ctSub: 'subStat' }[e.target.id];
   if (m) cf[m] = e.target.value;
 });
 $('#tutCreate').addEventListener('click', e => {

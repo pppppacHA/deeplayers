@@ -48,17 +48,19 @@ function sanitize(s) {
    (클라이언트 검증일 뿐이다. 실서비스에서는 서버가 모든 규칙을 다시 계산해야 한다 → SECURITY.md) */
 const cleanText = (v, max) => String(v ?? '').replace(/[\u0000-\u001f\u007f<>]/g, '').trim().slice(0, max);
 const intIn = (v, lo, hi, d) => Number.isFinite(+v) ? clamp(Math.floor(+v), lo, hi) : d;
-const CHAT_TABS = ['월드', '길드', '알림']; // 알림 = 공지만 받는 읽기 전용
+const CHAT_TABS = ['월드', '길드', '파티', '알림']; // 알림 = 공지만 받는 읽기 전용
 function hardenState(s) {
   const c = s.character;
   c.name = cleanText(c.name, 12); c.title = TITLES.includes(c.title) ? c.title : TITLES[0];
   s.titles = [...new Set([TITLES[0], ...(Array.isArray(s.titles) ? s.titles : []).filter(t => TITLES.includes(t)), ...(TITLES.includes(c.title) ? [c.title] : [])])];
   c.age = intIn(c.age, AGE_MIN, AGE_MAX, 20); c.keywords = cleanText(c.keywords, 60);
   c.ability = cleanText(c.ability, 20); c.abilityDesc = cleanText(c.abilityDesc, 300);
+  c.mainStat = STAT_DEFS.some(d => d.key === c.mainStat) ? c.mainStat : ''; c.subStat = STAT_DEFS.some(d => d.key === c.subStat) && c.subStat !== c.mainStat ? c.subStat : '';
   c.level = intIn(c.level, 1, MAX_LEVEL, 1); c.rank = 'FEDCBAS'.includes(c.rank) ? c.rank : 'F';
   c.allowFriend = c.allowFriend !== false; c.allowGuild = c.allowGuild !== false;
   s.unlockSeen = Object.fromEntries(Object.entries(s.unlockSeen && typeof s.unlockSeen === 'object' ? s.unlockSeen : {}).filter(([k, v]) => typeof k === 'string' && k.length < 30 && v === true));
   s.profileEditAt = intIn(s.profileEditAt, 0, 4e12, 0);
+  { const lz = s.leisure && typeof s.leisure === 'object' ? s.leisure : {}; s.leisure = { day: intIn(lz.day, -1, 1e7, -1), id: LEISURE_IDS.includes(lz.id) ? lz.id : '' }; }
   s.deaths = intIn(s.deaths, 0, 99999, 0);
   s.tickets = intIn(s.tickets, 0, 9999, 0); s.questCount = intIn(s.questCount, 0, 999999, 0); s.actMs = Number.isFinite(s.actMs) ? clamp(s.actMs, 0, 1e12) : 0;
   { const g = s.gacha && typeof s.gacha === 'object' ? s.gacha : {}; s.gacha = { pat: intIn(g.pat, 0, GACHA_SETS.length - 1, 0), pulls: intIn(g.pulls, 0, 999999, 0), wins: intIn(g.wins, 0, 999999, 0) }; }
@@ -78,13 +80,14 @@ function hardenState(s) {
   if (!['light', 'dark', 'custom'].includes(s.settings.theme)) s.settings.theme = 'light';
   if (!['light', 'dark'].includes(s.settings.customBase)) s.settings.customBase = 'light';
   s.settings.guildAlert = s.settings.guildAlert !== false;
+  { const ct = s.settings.chatTabs && typeof s.settings.chatTabs === 'object' ? s.settings.chatTabs : {}; const o = Object.fromEntries(CHAT_TABS.map(k => [k, ct[k] !== false])); s.settings.chatTabs = CHAT_TABS.some(k => o[k]) ? o : Object.fromEntries(CHAT_TABS.map(k => [k, true])); }
   if (s.side === '주위 대원') s.side = '상황'; // 탭 이름이 바뀌었다
   if (!['임무', '서브잡', '펫', '상황'].includes(s.side)) s.side = '임무';
   { const m = {}; TAG_NAMES.forEach(t => { const v = s.mastery && s.mastery[t]; if (Number.isFinite(v) && v > 0) m[t] = Math.min(MASTERY_TOTAL, Math.floor(v)); }); s.mastery = m; }
   s.engraves = Object.fromEntries(Object.entries(s.engraves && typeof s.engraves === 'object' ? s.engraves : {}).filter(([k, v]) => ITEMS[k] && ITEMS[k].engrave && typeof v === 'string').map(([k, v]) => [k, cleanText(v, ENGRAVE_MAX)]).filter(([, v]) => v));
   s.todos = (Array.isArray(s.todos) ? s.todos : []).filter(t => t && typeof t.t === 'string' && cleanText(t.t, TODO_LEN)).slice(0, TODO_MAX).map(t => ({ id: intIn(t.id, 1, 1e9, 1), t: cleanText(t.t, TODO_LEN), done: t.done === true }));
   { const seen = new Set(); s.todos.forEach(t => { while (seen.has(t.id)) t.id++; seen.add(t.id); }); s.todoSeq = intIn(s.todoSeq, 0, 1e9, 0); s.todoSeq = Math.max(s.todoSeq, ...s.todos.map(t => t.id), 0); }
-  s.sitOpen = { near: !(s.sitOpen && s.sitOpen.near === false), todo: !(s.sitOpen && s.sitOpen.todo === false) };
+  s.sitOpen = { near: !(s.sitOpen && s.sitOpen.near === false), todo: !(s.sitOpen && s.sitOpen.todo === false), party: !(s.sitOpen && s.sitOpen.party === false) };
   const ex = {}; // 가 본 칸: 구역/좌표 형식만 남긴다
   DANGER_ZONES.forEach(z => { const src = s.explored && typeof s.explored === 'object' ? s.explored[z.id] : null; ex[z.id] = {}; if (src && typeof src === 'object') Object.keys(src).filter(k => /^-?\d{1,3},-?\d{1,3}$/.test(k)).slice(0, 4000).forEach(k => { ex[z.id][k] = 1; }); });
   if (s.dungeon) Object.keys(s.dungeon.seen || {}).filter(k => /^-?\d{1,3},-?\d{1,3}$/.test(k)).forEach(k => { ex[s.dungeon.zone][k] = 1; });
@@ -96,7 +99,7 @@ function hardenState(s) {
   const chats = {}; // 채널은 월드/길드/알림만. 알림은 항상 공지에서 다시 만든다(읽기 전용)
   CHAT_TABS.forEach(k => { chats[k] = (Array.isArray(s.chats[k]) ? s.chats[k] : []).filter(m => Array.isArray(m) && (m.length === 2 || m.length === 3)).map(m => [cleanText(m[0], 20), cleanText(m[1], 300), Number.isFinite(m[2]) ? m[2] : 0]).slice(-200); });
   chats['알림'] = NOTICE_FEED();
-  s.chats = chats; if (!CHAT_TABS.includes(s.chatTab)) s.chatTab = CHAT_TABS[0];
+  s.chats = chats; if (!CHAT_TABS.includes(s.chatTab) || !s.settings.chatTabs[s.chatTab]) s.chatTab = CHAT_TABS.find(k => s.settings.chatTabs[k]);
   const known = id => QUESTS.some(q => q.id === String(id).split('#')[0]); // 'id#0' 같은 조건별 진행도 키도 인정한다(승급 시험 처치 현황이 불러올 때마다 지워지던 원인)
   s.questTaken = Object.fromEntries(Object.keys(s.questTaken || {}).filter(known).map(k => [k, true]));
   s.qprog = Object.fromEntries(Object.keys(s.qprog || {}).filter(known).map(k => [k, intIn(s.qprog[k], 0, 999, 0)]));
@@ -427,7 +430,7 @@ function pruneBuffs() {
 }
 function addBuff(id) {
   state.buffs = state.buffs.filter(b => b.id !== id);
-  state.buffs.push({ id, endAt: nowMs() + BUFF_MS });
+  state.buffs.push({ id, endAt: nowMs() + ((BUFFS[id] && BUFFS[id].ms) || BUFF_MS) });
 }
 
 /* 장비 + 소지(hold) 아이템 + 세트 + 세공으로 인한 스탯 보정 { str: n, ... } (버프는 빼고) */
@@ -436,6 +439,7 @@ function gearMods() {
   new Set(Object.values(state.inventory).flat().map(s => s.n)).forEach(n => { if (ITEMS[n] && ITEMS[n].hold) add(ITEMS[n].hold); }); // 소지만 해도 적용되는 아이템(반지 등): 종류마다 한 번만
   Object.values(state.equipment).forEach(n => { if (!n) return; if (ITEMS[n].mods) add(ITEMS[n].mods); const e = state.enchants[n]; if (e && STAT_DEFS.some(d => d.key === e.k)) add({ [e.k]: e.v }); });
   ITEM_SETS.forEach(st => { if (st.need.every(n => Object.values(state.equipment).includes(n))) add(st.mods); });
+  const ch = state.character; if (ch.mainStat) add({ [ch.mainStat]: MAIN_STAT_BONUS }); if (ch.subStat && ch.subStat !== ch.mainStat) add({ [ch.subStat]: SUB_STAT_BONUS });
   return m;
 }
 /* 장비 + 버프로 인한 스탯 보정 { str: n, ... } */
@@ -574,8 +578,19 @@ function scaleMonster(m, d) {
 }
 const monsterBase = a => a.monster || a.terrain.monster;
 const monsterOf = (a, d) => scaleMonster(monsterBase(a), d === undefined ? curDifficulty() : d);
+/* ---- 여가구역 ---- */
+const leisureTaken = () => state.leisure.day === todayIndex() && !!state.leisure.id; // 오늘 이미 버프를 받았나
+/* 파티 정보(서버에서 받아 온다, 저장하지 않음): members = [{ uid, name, leader }] (나 포함) */
+const PARTY = { id: 0, members: [], invites: [] };
+const partyOthers = () => PARTY.members.map(m => m.name).filter(n => n && n !== state.character.name);
+function leisureText(id, rnd = Math.random) {
+  const l = LEISURE[id], others = partyOthers().sort(() => rnd() - .5).slice(0, 3);
+  if (others.length >= 1 && rnd() < .7) return pickR(rnd, l[`p${others.length + 1}`](...others));
+  return pickR(rnd, l.solo);
+}
 function actionPreview(id, mi = 0) {
   const a = ACTIONS[id], fx = effects(), sp = spOf(a), opt = multiOpt(mi);
+  if (a.kind === 'leisure') { const sn = STAT_DEFS.find(d => d.key === LEISURE[id].stat).name; return { time: '즉시', gain: leisureTaken() ? '오늘은 이미 버프를 받았습니다. 분위기만 즐깁니다.' : `${sn} +2 버프 (8시간) · EXP +5`, cost: '없음 (버프는 하루 한 번 · 한국 시간 오전 4시에 초기화 · 한 번 받으면 바꿀 수 없음)' }; }
   const multi = (a.kind === 'gather' || a.kind === 'battle') && opt.sec > 0;
   const cMin = multi ? Math.floor(opt.sec / (a.kind === 'gather' ? GATHER_SEC : MAX_CYCLE)) : 1, cMax = multi ? Math.floor(opt.sec / (a.kind === 'gather' ? GATHER_SEC : MIN_CYCLE)) : 1;
   const rng = (lo, hi, f = x => x) => lo === hi ? `${f(lo)}` : `${f(lo)}~${f(hi)}`;
@@ -655,7 +670,7 @@ function tileGatherIds(z, x, y, seed) {
 function startAction(id, mi = 0, baitName = null) {
   const a = ACTIONS[id];
   if (a.kind === 'todo') return '아직 구현되지 않은 기능입니다.';
-  if (!['gather', 'battle', 'rest', 'investigate', 'gamble', 'tame', 'train'].includes(a.kind)) return '시작할 수 없는 행동입니다.';
+  if (!['gather', 'battle', 'rest', 'investigate', 'gamble', 'tame', 'train', 'leisure'].includes(a.kind)) return '시작할 수 없는 행동입니다.';
   if (!state.created) return '먼저 캐릭터를 만드세요.';
   if (state.active || state.pending) return '이미 진행 중이거나 결과 확인이 필요한 행동이 있습니다.';
   const lg = levelGate(id);
@@ -664,6 +679,14 @@ function startAction(id, mi = 0, baitName = null) {
   if (actionBlocked(id)) return a.kind === 'gamble' ? `방금 한 판을 했습니다. ${fmtDur(actionBlocked(id))} 뒤에 다시 할 수 있어요.` : '이 칸은 조금 전에 조사했습니다. 12시간 뒤에 다시 할 수 있습니다.';
   if (a.kind === 'battle' && state.vitals.hp <= HP_RETREAT) return `HP가 부족합니다. (${HP_RETREAT} 초과 필요) 쉬거나 응급 키트를 사용하세요.`;
   const t = nowMs(), v = state.vitals, cost = spOf(a);
+  if (a.kind === 'leisure') { // 여가: 하루 한 번만 버프. 그 뒤에는 분위기 묘사만
+    const first = !leisureTaken(), r = { text: leisureText(id), items: [], exp: first ? 5 : 0, money: 0, hp: 0, sp: 0, spCost: 0, buff: null };
+    if (first) { state.leisure = { day: todayIndex(), id }; r.buff = a.buff; r.text += ` 【${BUFFS[a.buff].desc.split('. ')[1]} · 8시간】`; }
+    else r.text += ' (오늘의 여가 버프는 이미 받았어요. 분위기만 즐겼습니다.)';
+    state.pending = { id, result: r };
+    save();
+    return null;
+  }
   if (a.kind === 'investigate') {
     if (v.sp < cost) return `기력이 부족합니다. (필요 ${cost})`;
     v.sp -= cost;
@@ -808,10 +831,27 @@ function battleRuns(act, a) { // [{win, rounds, lost, rs}] 회차별 전투 (res
 }
 const pickR = (r, arr) => arr[Math.floor(r() * arr.length)];
 /* 착용 장비에 반응하는 묘사 한 줄 (없으면 ''). kind: 't' 이동 / 'b' 전투 */
+const PARTICLES = [['이(가)', '이', '가'], ['은(는)', '은', '는'], ['을(를)', '을', '를'], ['와(과)', '과', '와'], ['으로', '으로', '로'], ['로', '으로', '로'], ['이', '이', '가'], ['가', '이', '가'], ['은', '은', '는'], ['는', '은', '는'], ['을', '을', '를'], ['를', '을', '를'], ['과', '과', '와'], ['와', '과', '와']];
+/* 이름 바로 뒤에 붙은 조사를 받침에 맞게 고친다 ('빗자루을' -> '빗자루를') */
+function fixJosa(name, text) {
+  const jong = hasJong(name), esc = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return text.replace(new RegExp(esc + '(이\\(가\\)|은\\(는\\)|을\\(를\\)|와\\(과\\)|으로|로|이|가|은|는|을|를|과|와)(?![가-힣])', 'g'), (m, p) => {
+    const e = PARTICLES.find(x => x[0] === p); if (!e) return m;
+    const lastRieul = (name.charCodeAt(name.length - 1) - 0xAC00) % 28 === 8;
+    return name + (p === '으로' || p === '로' ? (jong && !lastRieul ? '으로' : '로') : jong ? e[1] : e[2]);
+  });
+}
+/* 착용 장비에 반응하는 묘사 한 줄 (없으면 ''). kind: 't' 이동 / 'b' 전투 / 'g' 채집 / 'i' 조사 */
 function equipLine(kind, r) {
-  const worn = Object.values(state.equipment).filter(Boolean), pool = [];
-  worn.forEach(n => { const e = EQUIP_LINES[n]; if (e && e[kind] && e[kind].length) pool.push(e[kind]); });
-  Object.values(EQUIP_SET_LINES).forEach(st => { if (st.need.every(n => worn.includes(n)) && st[kind].length) { pool.push(st[kind]); pool.push(st[kind]); } });
+  const worn = Object.values(state.equipment).filter(n => n && ITEMS[n]), pool = [];
+  worn.forEach(n => {
+    const e = EQUIP_LINES[n];
+    if (e && e[kind] && e[kind].length) { pool.push(e[kind]); pool.push(e[kind]); } // 아이템 전용 문장은 두 배로 자주
+    const it = ITEMS[n], sl = SLOT_LINES[it.slot], wk = it.slot === '무기' ? WEAPON_LINES[weaponKind(n)] : null;
+    if (wk && wk[kind]) pool.push(wk[kind](n).map(x => fixJosa(n, x)));
+    if (sl && sl[kind]) pool.push(sl[kind](n).map(x => fixJosa(n, x)));
+  });
+  Object.values(EQUIP_SET_LINES).forEach(st => { if (st.need.every(n => worn.includes(n)) && st[kind] && st[kind].length) { pool.push(st[kind]); pool.push(st[kind]); } });
   if (!pool.length) return '';
   return pickR(r, pickR(r, pool));
 }
@@ -944,6 +984,7 @@ function gatherLogFor(act, now = nowMs()) {
       let x = r() * sum, st = keys[0]; for (const kk of keys) { x -= t[kk]; if (x <= 0) { st = kk; break; } }
       out.push({ text: pickR(r, GATHER_STYLE[st][how] || GATHER_STYLE[st]['채집'])(it), kind: 'hit' });
     } else out.push({ text: pickR(r, GATHER_SCENE[how] || GATHER_SCENE['채집'])(place), kind: 'note' });
+    { const re = seededRng(base * 67 + k * 131 + 3), ln = re() < .2 ? equipLine('g', re) : ''; if (ln) out.push({ text: ln, kind: 'note' }); } // 착용 장비 묘사 (별도 시드라 기존 문장 순서는 그대로)
   }
   return out;
 }
@@ -987,6 +1028,7 @@ function investigate(a) {
   if (chance(.05 + fx.rare)) { r.items.push([t.rare, 1]); r.text += ` 조사 중 희귀한 ${t.rare}을(를) 발견했습니다!`; }
   else if (chance(INVEST_ITEM)) { const n = pick(t.gather); r.items.push([n, 1]); r.text += ` 조사 중 ${n}을(를) 발견했습니다.`; }
   else r.text += ' 눈에 띄는 물건은 없었습니다.';
+  { const ln = chance(.3) ? equipLine('i', Math.random) : ''; if (ln) r.text += ` ${ln}`; }
   if (chance(INVEST_HURT)) { const h = rand(...INVEST_HURT_HP); r.hp -= h; r.text += ` 함정을 건드려 HP를 ${h} 잃었습니다.`; }
   floorLoss(r);
   return r;
@@ -1341,7 +1383,7 @@ function createCharacter(f) {
   }
   if (statsTotal(st) !== STAT_BASE * STAT_DEFS.length + STAT_POOL) return `스테이터스 포인트 ${STAT_POOL}을(를) 모두 분배하세요.`;
   state.learned = [];
-  Object.assign(state.character, { name, age, keywords: cleanText(f.keywords, 60), ability, abilityDesc: cleanText(f.abilityDesc, 300), level: 1, rank: 'F', title: TITLES[0] });
+  Object.assign(state.character, { name, age, keywords: cleanText(f.keywords, 60), ability, abilityDesc: cleanText(f.abilityDesc, 300), mainStat: STAT_DEFS.some(d => d.key === f.mainStat) ? f.mainStat : '', subStat: STAT_DEFS.some(d => d.key === f.subStat) && f.subStat !== f.mainStat ? f.subStat : '', level: 1, rank: 'F', title: TITLES[0] });
   state.stats = st; state.statPoints = 0; state.money = 100; state.vitals = { hp: 100, hpMax: 100, sp: 100, spMax: 100, exp: 0 };
   state.created = true; state.questTaken = {}; state.qprog = {}; state.questAt = {}; state.titles = [TITLES[0]]; state.friends = []; state.mail = []; state.mailSeq = 1; pushMail('관제국', '배치 안내', '탐색자 등록이 승인되었습니다. 본부에서 장비를 점검하고 첫 임무를 확인하십시오. 아이템을 담아 보낼 때 쓰는 운송장치를 보급품으로 드립니다. 15일이 지난 메일은 사라지니 남기고 싶은 메일은 보존하세요.', [[MAIL_SHIP_ITEM, 2]]); state.farm = { plots: [] }; state.pets = []; state.petActive = -1; state.subjob = null; save();
   return null;
