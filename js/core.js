@@ -78,7 +78,13 @@ function hardenState(s) {
   if (!['light', 'dark', 'custom'].includes(s.settings.theme)) s.settings.theme = 'light';
   if (!['light', 'dark'].includes(s.settings.customBase)) s.settings.customBase = 'light';
   s.settings.guildAlert = s.settings.guildAlert !== false;
-  if (!['임무', '서브잡', '펫', '주위 대원'].includes(s.side)) s.side = '임무';
+  if (s.side === '주위 대원') s.side = '상황'; // 탭 이름이 바뀌었다
+  if (!['임무', '서브잡', '펫', '상황'].includes(s.side)) s.side = '임무';
+  { const m = {}; TAG_NAMES.forEach(t => { const v = s.mastery && s.mastery[t]; if (Number.isFinite(v) && v > 0) m[t] = Math.min(MASTERY_TOTAL, Math.floor(v)); }); s.mastery = m; }
+  s.engraves = Object.fromEntries(Object.entries(s.engraves && typeof s.engraves === 'object' ? s.engraves : {}).filter(([k, v]) => ITEMS[k] && ITEMS[k].engrave && typeof v === 'string').map(([k, v]) => [k, cleanText(v, ENGRAVE_MAX)]).filter(([, v]) => v));
+  s.todos = (Array.isArray(s.todos) ? s.todos : []).filter(t => t && typeof t.t === 'string' && cleanText(t.t, TODO_LEN)).slice(0, TODO_MAX).map(t => ({ id: intIn(t.id, 1, 1e9, 1), t: cleanText(t.t, TODO_LEN), done: t.done === true }));
+  { const seen = new Set(); s.todos.forEach(t => { while (seen.has(t.id)) t.id++; seen.add(t.id); }); s.todoSeq = intIn(s.todoSeq, 0, 1e9, 0); s.todoSeq = Math.max(s.todoSeq, ...s.todos.map(t => t.id), 0); }
+  s.sitOpen = { near: !(s.sitOpen && s.sitOpen.near === false), todo: !(s.sitOpen && s.sitOpen.todo === false) };
   const ex = {}; // 가 본 칸: 구역/좌표 형식만 남긴다
   DANGER_ZONES.forEach(z => { const src = s.explored && typeof s.explored === 'object' ? s.explored[z.id] : null; ex[z.id] = {}; if (src && typeof src === 'object') Object.keys(src).filter(k => /^-?\d{1,3},-?\d{1,3}$/.test(k)).slice(0, 4000).forEach(k => { ex[z.id][k] = 1; }); });
   if (s.dungeon) Object.keys(s.dungeon.seen || {}).filter(k => /^-?\d{1,3},-?\d{1,3}$/.test(k)).forEach(k => { ex[s.dungeon.zone][k] = 1; });
@@ -254,7 +260,7 @@ function reinforceItem(name, rnd = Math.random) { // 성공 { ok, lv } / 실패 
 const DISMANTLE_BACK = .5, DISMANTLE_CR = .25; // 레시피 재료의 절반(내림, 최소 1종 1개) / 판매가의 1/4 CR
 function dismantleYield(name) { // { mats:[[이름,수량]], cr } 또는 null(분해 불가)
   const it = ITEMS[name];
-  if (!it || it.tab !== '장비' || it.hidden) return null;
+  if (!it || it.tab !== '장비' || it.hidden || it.hold) return null; // 소지만으로 효과가 있는 물건(반지)은 분해하지 않는다
   const rc = RECIPES.find(r => r.out === name), bag = {};
   if (rc) {
     Object.entries(rc.mats).forEach(([k, q]) => { const n = MAT_GROUPS[k] ? MAT_GROUPS[k][0] : k, g = Math.floor(q * DISMANTLE_BACK); if (g > 0 && ITEMS[n]) bag[n] = (bag[n] || 0) + g; });
@@ -280,13 +286,60 @@ function dismantleItem(name, qty = 1) { // 성공하면 { mats, cr, qty }, 실�
   for (const [n, q] of y.mats) { const want = q * qty, g = addItem(n, want); if (g < want) { state.inventory = JSON.parse(snap); return '가방 공간이 부족해 재료를 모두 담을 수 없습니다. 가방을 비워 주세요.'; } got[n] = want; }
   state.money += y.cr * qty;
   if (!state.inventory['장비'].some(s => s.n === name) && !Object.values(state.equipment).includes(name)) { // 마지막 한 개면 그 이름의 강화·세공·이름도 함께 사라진다
-    delete state.enchants[name]; delete state.reinforce[name]; delete state.nicks[name];
+    delete state.enchants[name]; delete state.reinforce[name]; delete state.nicks[name]; delete state.engraves[name];
   }
   syncMax(); save();
   return { mats: Object.entries(got), cr: y.cr * qty, qty };
 }
+/* ---------- 숙련 ---------- */
+function masteryInfo(tag) { // { lv, cur, need } (만렙이면 need 0)
+  let xp = (state.mastery && state.mastery[tag]) | 0, lv = 1;
+  while (lv < MASTERY_MAX && xp >= MASTERY_NEED(lv)) { xp -= MASTERY_NEED(lv); lv++; }
+  return lv >= MASTERY_MAX ? { lv, cur: 0, need: 0 } : { lv, cur: xp, need: MASTERY_NEED(lv) };
+}
+const masteryLv = tag => masteryInfo(tag).lv;
+function addMastery(tag, n) { // 오른 레벨(안 올랐으면 0)
+  if (!TAG_NAMES.includes(tag) || !(n > 0)) return 0;
+  const before = masteryLv(tag);
+  state.mastery[tag] = Math.min(MASTERY_TOTAL, (state.mastery[tag] | 0) + Math.floor(n));
+  const now = masteryLv(tag); return now > before ? now : 0;
+}
+function masteryBonus(tag) { // 숙련이 주는 보너스 { gather, craftTime, farmTime, farmYield, heal } (해당 없는 건 0)
+  const lv = masteryLv(tag) - 1, b = { gather: 0, craftTime: 0, farmTime: 0, farmYield: 0, heal: 0 };
+  if (GATHER_KINDS[tag]) b.gather = lv * .006;                       // 수확 +1개 확률 (최대 17.4%)
+  else if (MASTERY_CRAFT_TAGS.includes(tag)) b.craftTime = lv * .005; // 제작 시간 단축 (최대 14.5%)
+  else if (tag === '농사') { b.farmTime = lv * .005; b.farmYield = lv * .01; }
+  else if (MASTERY_HEAL_TAGS.includes(tag)) b.heal = lv * .01;      // 음식·약 회복량 (최대 29%)
+  return b;
+}
+function masteryText(tag) { // 마우스를 올렸을 때 보이는 보너스 설명
+  const b = masteryBonus(tag), p = n => `${Math.round(n * 1000) / 10}%`;
+  if (GATHER_KINDS[tag]) return `${tag}할 때 수확 +1개 확률 ${p(b.gather)} (레벨당 +0.6%)`;
+  if (MASTERY_CRAFT_TAGS.includes(tag)) return `${tag} 물건의 제작 시간 -${p(b.craftTime)} (레벨당 -0.5%)`;
+  if (tag === '농사') return `작물 성장 시간 -${p(b.farmTime)} · 수확 +1개 확률 ${p(b.farmYield)} (레벨당 -0.5% / +1%)`;
+  return `${tag} 음식·약의 회복량 +${p(b.heal)} (레벨당 +1%)`;
+}
+/* 투두리스트 (상황 탭): 직접 쓰고 체크하고 지운다 ---------- */
+function addTodo(text) {
+  const t = cleanText(text, TODO_LEN);
+  if (!t) return '내용을 입력하세요.';
+  if (state.todos.length >= TODO_MAX) return `할 일은 ${TODO_MAX}개까지 적을 수 있습니다.`;
+  state.todos.push({ id: ++state.todoSeq, t, done: false }); save(); return null;
+}
+function toggleTodo(id) { const t = state.todos.find(x => x.id === id); if (!t) return false; t.done = !t.done; save(); return true; }
+function removeTodo(id) { const n = state.todos.length; state.todos = state.todos.filter(x => x.id !== id); if (state.todos.length !== n) save(); return state.todos.length !== n; }
+function clearDoneTodos() { const n = state.todos.length; state.todos = state.todos.filter(x => !x.done); if (state.todos.length !== n) save(); return n - state.todos.length; }
 const nickOf = n => (state.nicks && state.nicks[n]) || '';
-const shownName = n => nickOf(n) || n;
+const engraveOf = n => (state.engraves && state.engraves[n]) || '';
+const shownName = n => nickOf(n) || (engraveOf(n) ? `${engraveOf(n)}의 ${n}` : n);
+function engraveItem(name, text) { // 반지에 이름 새기기 (비우면 지움). 성공 null / 실패 사유
+  if (!state.created) return '먼저 캐릭터를 만드세요.';
+  if (!ITEMS[name] || !ITEMS[name].engrave) return '이름을 새길 수 없는 물건입니다.';
+  if (!countItem(name)) return '그 반지를 가지고 있지 않습니다.';
+  const t = cleanText(text, ENGRAVE_MAX);
+  if (!t) delete state.engraves[name]; else state.engraves[name] = t;
+  save(); return null;
+}
 const canNick = n => !!(ITEMS[n] && ITEMS[n].slot === '무기' && reinforceLv(n) >= REINFORCE_RANKS.length - 1);
 function setNick(name, text) { // 성공 null / 실패 사유
   if (!canNick(name) || !enchantables().includes(name)) return 'A랭까지 강화한 무기에만 이름을 붙일 수 있습니다.';
@@ -411,6 +464,17 @@ function todayWeather(now = nowMs()) {
   const day = Math.floor((now + 9 * 3600000) / 86400000), r = seededRng(day * 7919 + 17)(); let acc = 0, w = WEATHERS[0];
   for (const x of WEATHERS) { acc += x.p; if (r < acc) { w = x; break; } }
   return { ...w, desc: w.wet ? `${w.name} 오는 날: 채집·채굴·낚시로 재료를 얻을 확률 +${WEATHER_GATHER * 100}%p` : `${w.name}인 날: 사냥 공격력 +${WEATHER_ATK * 100}%` };
+}
+function seasonOf(now = nowMs()) { // { name, icon, day(그 계절 몇 일째) } — 한국 시간 날짜 기준
+  const d = new Date(now + 9 * 3600000), y = d.getUTCFullYear(), m = d.getUTCMonth() + 1;
+  const s = m === 12 || m <= 2 ? SEASONS[0] : m <= 5 ? SEASONS[1] : m <= 8 ? SEASONS[2] : SEASONS[3];
+  const sy = s.m === 12 && m <= 2 ? y - 1 : y, start = Date.UTC(sy, s.m - 1, 1), today = Date.UTC(y, m - 1, d.getUTCDate());
+  return { name: s.n, icon: s.ic, day: Math.floor((today - start) / 86400000) + 1 };
+}
+function altitude(now = nowMs()) { // 상공(안전지대)은 8,4xx m 근처에서 천천히 흔들리고, 지상은 구역 고도 + 칸마다 조금 다르다
+  const dn = state.dungeon;
+  if (dn && ZONE_ALT[dn.zone] != null) { const h = (Math.imul(dn.x + 3, 73856093) ^ Math.imul(dn.y + 5, 19349663)) >>> 0; return { sky: false, m: Math.max(0, ZONE_ALT[dn.zone] + (h % 61) - 30) }; }
+  return { sky: true, m: SKY_ALT + Math.round(18 * Math.sin(now / 90000)) };
 }
 const weatherFx = () => { const w = todayWeather(); return { gather: w.wet ? WEATHER_GATHER : 0, atk: w.wet ? 0 : WEATHER_ATK }; };
 const modText = mods => Object.entries(mods).map(([k, v]) => `${STAT_DEFS.find(d => d.key === k).name} ${v > 0 ? '+' : ''}${v}`);
@@ -962,7 +1026,7 @@ function resolveAction(id, cycles = 1, spPaid = 0, act = null) {
     if (!keep) lowered++;
     if (great) greats++;
     if (a.kind === 'gather') {
-      if (keep) { const it = pick(a.items); add(it, rand(1, 3) * mult); if (chance(jf.gather[a.method] || 0)) add(it, 1); if (dd && chance(DEPTH_GATHER.more * dd)) add(it, 1); if (a.rare && chance(.05 + fx.rare + DEPTH_GATHER.rare * dd)) add(a.rare, mult); if (seed && chance(SEED_DROP.gather)) add(seed, 1); if (chance(PERS_SEED_DROP)) add(pick(PERS_SEEDS), 1); }
+      if (keep) { const it = pick(a.items); add(it, rand(1, 3) * mult); if (chance((jf.gather[a.method] || 0) + masteryBonus(a.method).gather)) add(it, 1); if (dd && chance(DEPTH_GATHER.more * dd)) add(it, 1); if (a.rare && chance(.05 + fx.rare + DEPTH_GATHER.rare * dd)) add(a.rare, mult); if (seed && chance(SEED_DROP.gather)) add(seed, 1); if (chance(PERS_SEED_DROP)) add(pick(PERS_SEEDS), 1); }
       r.exp += 6;
       if (chance(a.hazard.chance)) { r.hp -= rand(...a.hazard.hp); accidents++; }
     } else {
@@ -987,6 +1051,7 @@ function resolveAction(id, cycles = 1, spPaid = 0, act = null) {
     r.fishShow = sizes.slice(0, FISH_SHOW).map(([n, cm]) => `${n} ${cm}cm${cm > (state.fishBest[n] || 0) && best[n] === cm ? ' ★신기록' : ''}`);
   }
   r.items = Object.entries(bag);
+  if (a.kind === 'gather' && GATHER_KINDS[a.method]) r.mast = [a.method, done]; // 숙련은 결과를 받을 때(claimResult) 오른다
   floorLoss(r);
   r.refund = (cycles - done) * per; r.sp = 0; r.spCost = spPaid - r.refund; // 쓰지 않은 회차의 기력은 '회복'이 아니라 소모에서 빼서 보여 준다
   noteRepeat(id, done);
@@ -1022,10 +1087,11 @@ function claimResult() {
   v.hp = clamp(v.hp + r.hp, 1, v.hpMax);
   v.sp = clamp(v.sp + r.sp + (r.refund || 0), 0, v.spMax);
   if (r.buff) addBuff(r.buff);
-  const ups = gainExp(r.exp);
+  const ups = gainExp(r.exp), mUp = [];
+  if (Array.isArray(r.mast) && GATHER_KINDS[r.mast[0]] && Number.isFinite(r.mast[1]) && r.mast[1] > 0) { const u = addMastery(r.mast[0], MASTERY_GAIN.gather * Math.min(r.mast[1], 1000)); if (u) mUp.push([r.mast[0], u]); }
   state.pending = null;
   save();
-  return { id, lost, ups, result: r };
+  return { id, lost, ups, result: r, mUp };
 }
 
 /* ---------- 분실물 ---------- */
@@ -1060,11 +1126,12 @@ function takeMats(rc, qty, picks) {
   return Object.entries(used);
 }
 /* 제작 아이템의 효과 문장 */
-function itemEffectParts(name) { // { base: 기본 효과, extra: 강화·세공·세트 } 문장 목록
+function itemEffectParts(name, plain) { // { base: 기본 효과, extra: 강화·세공·세트 } 문장 목록
   const it = ITEMS[name], base = [], extra = [];
   if (it.use) { if (it.use.hp) base.push(`HP +${it.use.hp} 회복`); if (it.use.sp) base.push(`기력 +${it.use.sp} 회복`); }
   if (it.atk) base.push(`공격력 +${it.atk}`);
   if (it.mods) base.push(...modText(it.mods));
+  if (plain) { if (it.capacity) base.push(`소지 칸 ${it.capacity}칸`); return { base, extra }; } // 다른 사람의 장비를 볼 때는 내 강화·세공·세트를 붙이지 않는다
   if (reinforceLv(name)) extra.push(`강화 ${REINFORCE_RANKS[reinforceLv(name)]}랭 (공격력 +${reinforceBonus(name)})`);
   if (state.enchants[name]) extra.push(`세공: ${enchantText(state.enchants[name])}`);
   if (nickOf(name)) extra.push(`${state.character.name || '주인'}의 애착이 담긴 무기`);
@@ -1078,15 +1145,16 @@ function itemEffectRaw(name) { // 설명에 없는 착용·사용 효과. 없으
 }
 function itemEffect(name) { return itemEffectRaw(name) || '제작 재료'; }
 /* 아이템 설명 통일: 1줄 '설명 | 효과'(효과가 없으면 생략), 2줄 '[태그] … [판매가] nCR' */
-function itemLines(name) {
+function itemLines(name, plain) {
   const it = ITEMS[name]; if (!it) return ['', ''];
-  const { base, extra } = itemEffectParts(name), b = base.join(' · ');
+  const { base, extra } = itemEffectParts(name, plain), b = base.join(' · ');
   const eff = [b && !it.desc.includes(b) ? b : '', ...extra].filter(Boolean).join(' · '); // 기본 효과가 설명에 이미 있으면 빼고, 강화·세공은 항상 붙인다
   const l2 = [it.group ? `[분류] ${it.group}` : '', (it.tags || []).length ? `[태그] ${it.tags.join(' · ')}` : '', it.sell ? `[판매가] ${it.sell}CR` : ''].filter(Boolean).join(' ');
   return [it.desc + (eff ? ` | ${eff}` : ''), l2];
 }
 /* 제작 시간(초): 감각 스탯으로 단축 */
-const craftSec = rc => Math.max(5, Math.round(rc.sec * (1 - effects().craftTime)));
+const craftMastery = rc => Math.max(0, ...(ITEMS[rc.out].tags || []).filter(t => MASTERY_CRAFT_TAGS.includes(t)).map(t => masteryBonus(t).craftTime));
+const craftSec = rc => Math.max(5, Math.round(rc.sec * (1 - Math.min(.6, effects().craftTime + craftMastery(rc)))));
 /* 제작 시작. 'ok' / 'mats' / 'space' / 'busy'. 재료는 시작할 때 소모하고, 시간이 지나면 완성된다 (성공률 없음) */
 /* 이 아이템을 몇 개까지 더 넣을 수 있나 (빈 칸 + 쌓을 수 있는 자리) */
 function roomFor(name) {
@@ -1126,8 +1194,10 @@ function collectCraft() {
   const want = (c.qty || 1) + (c.great ? 1 : 0), got = addItem(c.out, want);
   if (!got) return { got: 0, lost: want, great: c.great, out: c.out, full: true };
   discover('recipes', c.out);
-  state.crafting = null; save();
-  return { got, lost: want - got, great: c.great, out: c.out };
+  state.crafting = null;
+  const mUp = []; (ITEMS[c.out].tags || []).filter(t => TAG_NAMES.includes(t) && !GATHER_KINDS[t] && t !== '농사').forEach(t => { const u = addMastery(t, MASTERY_GAIN.craft * (c.qty || 1)); if (u) mUp.push([t, u]); });
+  save();
+  return { got, lost: want - got, great: c.great, out: c.out, mUp };
 }
 /* 제작 취소: 재료를 돌려받는다 */
 function cancelCraft() {
@@ -1312,7 +1382,7 @@ function takeQuest(id) {
   if (!q || !q.board) return '수주할 수 없는 임무입니다.';
   if (!state.created) return '먼저 캐릭터를 만드세요.';
   if (placeKey() !== q.board) return '이 장소에서 받을 수 있는 임무가 아닙니다.';
-  if (state.questDone[id]) return '이미 완수한 임무입니다. 24시간 뒤에 다시 나타납니다.';
+  if (state.questDone[id]) return q.once ? '이미 완수한 임무입니다.' : '이미 완수한 임무입니다. 24시간 뒤에 다시 나타납니다.';
   if (state.questTaken[id]) return '이미 수주한 임무입니다.';
   if (activeBoard().length >= BOARD_MAX_ACTIVE) return `수주 임무는 동시에 ${BOARD_MAX_ACTIVE}개까지 진행할 수 있습니다.`;
   state.questTaken[id] = true; state.qprog[id] = 0; state.questAt[id] = nowMs(); save();
@@ -1321,7 +1391,8 @@ function takeQuest(id) {
 /* 임무 리셋(오전 4시): 완수해 둔 임무만 처음 상태로 돌아가 다시 수주할 수 있다. 진행 중인 임무와 진행도는 유지된다. 리셋된 임무 수 */
 function resetBoardQuests() {
   let n = 0;
-  QUESTS.filter(q => q.board && state.questTaken[q.id] && state.questDone[q.id]).forEach(q => { // 완수해 둔 임무만 다시 받을 수 있게 되돌린다. 지금 진행 중인 임무와 진행도는 건드리지 않는다
+  QUESTS.filter(q => q.board && !q.once && state.questTaken[q.id] && state.questDone[q.id]).forEach(q => { // 한 번만 하는 기본 임무(once)는 되돌리지 않는다
+ // 완수해 둔 임무만 다시 받을 수 있게 되돌린다. 지금 진행 중인 임무와 진행도는 건드리지 않는다
     if (!state.questAt[q.id]) state.questAt[q.id] = nowMs(); // 옛 저장: 지금부터 센다
     if (nowMs() < nextBoardReset(state.questAt[q.id])) return;
     needParts(q).forEach((_, i) => delete state.qprog[progKey(q, i)]);
@@ -1475,7 +1546,7 @@ function jobFx(always) {
   });
   return fx;
 }
-const healBonus = name => Math.max(0, ...(ITEMS[name].tags || []).map(t => jobFx().heal[t] || 0));
+const healBonus = name => Math.max(0, ...(ITEMS[name].tags || []).map(t => (jobFx().heal[t] || 0) + masteryBonus(t).heal));
 const jobFxText = (always) => {
   const f = jobFx(always), p = [];
   Object.entries(f.gather).forEach(([t, v]) => p.push(`${t} 수확 +1개 확률 ${Math.round(v * 100)}%`));
@@ -1537,7 +1608,7 @@ function deliverJob(picks) {
 
 /* ---------- 농장 ---------- */
 const farmPlotCount = () => FARM_PLOTS[state.character.rank] || FARM_PLOTS.F;
-const growMs = crop => Math.round(CROPS[crop].grow * 60000 * (1 - Math.min(.7, jobFx().farmTime + effects().farmTime)));
+const growMs = crop => Math.round(CROPS[crop].grow * 60000 * (1 - Math.min(.7, jobFx().farmTime + effects().farmTime + masteryBonus('농사').farmTime)));
 const plotReady = p => !!p && nowMs() - p.at >= growMs(p.crop);
 function plantCrop(i, seed) {
   const crop = ITEMS[seed] && ITEMS[seed].seed;
@@ -1554,10 +1625,10 @@ function harvestPlot(i) {
   const p = state.farm.plots[i];
   if (!p) return '비어 있는 밭입니다.';
   if (!plotReady(p)) return '아직 자라는 중입니다.';
-  const c = CROPS[p.crop], qty = rand(...c.yield) + (chance(jobFx().farmYield) ? 1 : 0), got = addItem(p.crop, qty);
+  const c = CROPS[p.crop], qty = rand(...c.yield) + (chance(jobFx().farmYield + masteryBonus('농사').farmYield) ? 1 : 0), got = addItem(p.crop, qty);
   if (got < qty) { if (got) removeItem(p.crop, got); return '가방에 빈 칸이 없습니다.'; }
-  state.farm.plots[i] = null; save();
-  return { crop: p.crop, qty };
+  state.farm.plots[i] = null; const up = addMastery('농사', MASTERY_GAIN.farm); save();
+  return { crop: p.crop, qty, mUp: up ? ['농사', up] : null };
 }
 
 /* ---------- 펫 ---------- */
@@ -1602,14 +1673,14 @@ function petMood(p) {
   if (!fed) return p.bond >= 60 ? '조금 출출함' : p.bond >= 30 ? '배고픔' : '시무룩함';
   return p.bond >= 80 ? '아주 행복함' : p.bond >= 50 ? '기분 좋음' : p.bond >= 25 ? '편안함' : '아직 낯설어함';
 }
-const petTalk = p => `${petName(p)}: ${petCry(p)} (${petMood(p)})`;
+const petTalk = p => `${petName(p)}: ${petCry(p)} (${petName(p)}은(는) ${PET_FEEL[petMood(p)] || '평온한 기분을 느끼는 것 같다'})`;
 function petAskMood(i) { const e = petCareErr(i); return e ? { err: e } : { text: petTalk(state.pets[i]) }; }
 function petStroke(i) { // 쓰다듬기: 친밀도 +1, 펫마다 10분에 한 번
   const e = petCareErr(i); if (e) return { err: e };
   const p = state.pets[i], t = nowMs(), left = p.petAt + PET_STROKE_MS - t;
   if (left > 0) return { err: `${petName(p)}은(는) 방금 쓰다듬었어요. ${Math.ceil(left / 60000)}분 뒤에 다시 쓰다듬을 수 있어요.` };
   p.petAt = t; const up = p.bond < 100; p.bond = Math.min(100, p.bond + PET_STROKE_BOND); save();
-  return { text: `${petName(p)}: ${petCry(p)} (${petMood(p)})${up ? ` · 친밀도 +${PET_STROKE_BOND}` : ''}` };
+  return { text: `${petName(p)}: ${petCry(p)} ${petLineFill(pick(PET_PAT[petPersOf(p)]), p)}${up ? ` (친밀도 +${PET_STROKE_BOND})` : ''}` };
 }
 /* 성격에 따라 바뀌는 문구 */
 const petPersOf = p => PET_PERS[p && p.pers] ? p.pers : PET_PERS_LIST[0];

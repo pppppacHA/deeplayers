@@ -104,6 +104,12 @@ function renderBuffs(force) {
   $('#buffIcons').innerHTML = one('buff') + one('debuff');
   renderStatus();
 }
+function masteryPageHtml() { // 스테이터스 3페이지: 숙련을 한 줄씩 (이름 · 레벨 · 진행 막대 · 숙련도). 보너스는 마우스를 올리면 보인다
+  return '<div class="mast-list">' + TAG_NAMES.map(t => {
+    const m = masteryInfo(t), ic = (JOB_TAGS.find(x => x[0] === t) || [])[1] || 'star', max = m.lv >= MASTERY_MAX, pct = max ? 100 : Math.round(m.cur / m.need * 100);
+    return `<div class="mast-row" data-tip-title="${esc(t)} 숙련 Lv.${m.lv}${max ? ' (MAX)' : ''}" data-tip-desc="${esc(masteryText(t) + (max ? '' : `\n다음 레벨까지 ${m.need - m.cur}`))}">${icon(ic)}<b>${esc(t)}</b><em>Lv.${m.lv}</em><div class="bar"><span style="width:${pct}%"></span></div><span class="val">${max ? 'MAX' : `${m.cur}/${m.need}`}</span></div>`;
+  }).join('') + '</div>';
+}
 function combatPageHtml() { // 스테이터스 2페이지: 1단 공격력/방어력 · 2단 이동속도 · 3단 모의전투 (1페이지와 같은 칸 크기)
   const t = totalStats(), fx = effects(t), wa = weaponAtk(), eff = (3 + wa) * (1 + fx.atk + weatherFx().atk), hit = BATTLE_HIT * (1 - fx.evade), ps = petSpeed(), sec = stepSec();
   const w = state.equipment['무기'];
@@ -119,12 +125,14 @@ function remeasureStat() { // 글꼴이 늦게 로드되거나 창 크기·글�
   const p = view.statusPage || 0, gh = () => { const g = $('#statusBody .stat-grid'); return g ? Math.round(g.getBoundingClientRect().height) : 0; };
   view.statH = 0; view.statusPage = 0; renderStatus(); const n0 = gh();
   view.statH = 0; view.statusPage = 1; renderStatus(); const n1 = gh();
-  view.statH = Math.max(n0, n1); view.statusPage = p; renderStatus(); // 두 페이지 중 더 큰 쪽 높이로 맞춘다
+  view.statH = 0; view.statusPage = 2; renderStatus(); const n2 = $('#statusBody .mast-list') ? Math.round($('#statusBody .mast-list').getBoundingClientRect().height) : 0;
+  view.statH = Math.max(n0, n1, n2); view.statusPage = p; renderStatus(); // 세 페이지 중 가장 큰 쪽 높이로 맞춘다
 }
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(remeasureStat);
 { let _rt; addEventListener('resize', () => { clearTimeout(_rt); _rt = setTimeout(remeasureStat, 150); }); }
 function renderStatus() {
   $$('#statusPager button').forEach(b => b.classList.toggle('on', +b.dataset.p === (view.statusPage || 0)));
+  if (view.statusPage === 2) { const h = view.statH; $('#statusBody').innerHTML = masteryPageHtml(); if (h) $('#statusBody .mast-list').style.minHeight = h + 'px'; $('#statPoints').classList.toggle('hidden', !state.statPoints); $('#statPoints').textContent = `남은 포인트 ${state.statPoints}`; return; }
   if (view.statusPage === 1) { const h = view.statH; $('#statusBody').innerHTML = combatPageHtml(); if (h) $('#statusBody .stat-grid').style.minHeight = h + 'px'; const g1 = $('#statusBody .stat-grid'), h1 = Math.round(g1.getBoundingClientRect().height); if (h1 > (view.statH || 0)) view.statH = h1; $('#statPoints').classList.toggle('hidden', !state.statPoints); $('#statPoints').textContent = `남은 포인트 ${state.statPoints}`; return; }
   const t = totalStats(), fx = effects(t), dr = view.statDraft || {}, drSum = Object.values(dr).reduce((a, b) => a + b, 0), pts = state.statPoints - drSum;
   $('#statSave').classList.toggle('hidden', !drSum);
@@ -508,6 +516,7 @@ function tick() {
   if (craftTick()) {
     const name = state.crafting.out, res = collectCraft();
     renderBag(); sfx('done'); notifyDone(`${name} 제작이 완료되었습니다.`);
+    if (res) masteryNote(res.mUp);
     if (res && res.got) { toast(`${name} 제작 완료${res.great ? ' (대성공! 2개)' : ''}`); if (res.great) addLog(`${name} 제작 대성공! 2개가 만들어졌습니다.`); }
     else toast(`${name} 제작 완료. 가방을 비우고 제작 탭에서 수령하세요.`);
   }
@@ -526,7 +535,7 @@ const petSig = () => state.pets.map(p => `${p.id}|${p.name || ''}|${p.exp ? (exp
 const petOrder = () => state.pets.map((_, i) => i).sort((a, b) => (state.petActive === b) - (state.petActive === a) || a - b); // 함께 다니는 펫이 맨 위
 function petPanelHtml() {
   const sub = ['상태', '도감', '돌보기'].includes(view.petSub) ? view.petSub : '상태', tabs = `<div class="subtabs">${['상태', '도감', '돌보기'].map(t => `<button class="${t === sub ? 'active' : ''}" data-act="pet-sub" data-sub="${t}">${t}</button>`).join('')}</div>`;
-  if (sub === '돌보기') return tabs + petCareHtml();
+  if (sub === '돌보기') return tabs + petCareHtml(true);
   if (sub === '도감') { const l = codexEntries('펫'); return tabs + `<p class="tiny codex-count">지금 데리고 있는 펫 ${l.filter(e => e.known).length} / ${l.length}</p><div class="codex-list">` + l.map(e => e.known
     ? `<div class="nearby-row"><div class="round-avatar">${icon(e.icon)}</div><div class="grow"><strong>${esc(e.name)}</strong><small>${esc(e.desc)}</small></div></div>`
     : `<div class="nearby-row unknown"><div class="round-avatar">${icon('help')}</div><div class="grow"><strong>???</strong><small>아직 길들이지 못했습니다. 서식지: ${esc(e.where)}</small></div></div>`).join('') + '</div>'; }
@@ -562,12 +571,7 @@ function renderSide() {
     const pk = view.jobPicks || {}; $$('#sideView .job-pick').forEach(i => { if (pk[i.dataset.n] != null) i.value = Math.min(+i.max, pk[i.dataset.n]); }); jobPickSum($('#sideView'));
     return;
   }
-  if (state.side === '주위 대원') {
-    $('#sideView').innerHTML = NEARBY_PLAYERS.map(([n, s]) =>
-      `<div class="nearby-row"><div class="round-avatar">${icon('person')}</div><div class="grow"><strong>${esc(n)}</strong><small>${esc(LOCATIONS[state.location].name)} · ${esc(s)}</small></div><button data-act="player" data-player="${esc(n)}">정보</button><button data-act="trade-open" data-player="${esc(n)}">교환</button></div>`).join('') +
-      (NEARBY_PLAYERS.length ? '' : '<div class="empty">주위에 다른 대원이 없습니다.</div>') ;
-    return;
-  }
+  if (state.side === '상황') { renderSituation(); return; }
   const order = [...mine].sort((a, b) => ((b.kind === '메인') - (a.kind === '메인')) || ((questProgress(b).ready ? 1 : 0) - (questProgress(a).ready ? 1 : 0))); // 메인 임무가 맨 위, 그다음 완수 가능한 임무 (같으면 원래 순서)
   if (!order.length) { $('#sideView').innerHTML = '<div class="empty">진행 중인 임무가 없습니다.</div>'; return; }
   $('#sideView').innerHTML = order.map(q => {
@@ -577,6 +581,21 @@ function renderSide() {
       `<div class="confirm-actions"><button class="primary" data-act="quest-done" data-id="${q.id}" ${done || !pr.ready ? 'disabled' : ''}>${done ? '완료됨' : '임무 완수'}</button></div></div>` : '';
     return `<div class="quest-item ${open ? 'open' : ''} ${done ? 'done' : ''} ${!done && pr.ready ? 'ready' : ''}"><div class="quest-row ${q.kind === '메인' ? 'main-quest' : ''}" data-act="quest" data-id="${q.id}"><span class="quest-state">${done ? '완료' : pr.ready ? '완수 가능' : '진행 중'}</span><strong>${q.kind === '메인' ? '◆ ' : ''}${esc(q.title)}</strong><small>${esc(q.desc)}</small></div>${detail}</div>`;
   }).join('');
+}
+function renderSituation() { // '상황' 탭: 접을 수 있는 두 칸 — 주위 대원 / 투두리스트
+  const box = $('#sideView'), old = box.querySelector('#todoIn'), keep = old ? { v: old.value, f: document.activeElement === old } : null, so = state.sitOpen || { near: true, todo: true };
+  const head = (k, title, extra) => `<button class="sit-head" data-act="sit-toggle" data-k="${k}" aria-expanded="${!!so[k]}">${icon(so[k] ? 'expand_more' : 'chevron_right')}<b>${title}</b>${extra ? `<small>${extra}</small>` : ''}</button>`;
+  const near = NEARBY_PLAYERS.map(([n, s]) => `<div class="nearby-row"><div class="round-avatar">${icon('person')}</div><div class="grow"><strong>${esc(n)}</strong><small>${esc(LOCATIONS[state.location].name)} · ${esc(s)}</small></div><button data-act="player" data-player="${esc(n)}">정보</button><button data-act="trade-open" data-player="${esc(n)}">교환</button></div>`).join('') || '<div class="empty">주위에 다른 대원이 없습니다.</div>';
+  const doneN = state.todos.filter(t => t.done).length;
+  const todo = `<div class="todo-add"><input id="todoIn" maxlength="${TODO_LEN}" placeholder="할 일을 적고 Enter" autocomplete="off"><button class="primary" data-act="todo-add">추가</button></div>` +
+    (state.todos.map(t => `<div class="todo-row ${t.done ? 'done' : ''}"><button class="todo-check" data-act="todo-toggle" data-id="${t.id}" role="checkbox" aria-checked="${t.done}" aria-label="${esc(t.t)}">${icon(t.done ? 'check_box' : 'check_box_outline_blank')}</button><span class="todo-t">${esc(t.t)}</span><button class="mini" data-act="todo-del" data-id="${t.id}" aria-label="삭제" title="삭제">${icon('close')}</button></div>`).join('') || '<div class="empty">적어 둔 할 일이 없습니다.</div>') +
+    (doneN ? `<div class="todo-foot"><button data-act="todo-clear">완료한 항목 ${doneN}개 지우기</button></div>` : '');
+  box.innerHTML = `<div class="sit-sec">${head('near', '주위 대원', `${NEARBY_PLAYERS.length}명`)}${so.near ? `<div class="sit-body">${near}</div>` : ''}</div><div class="sit-sec">${head('todo', '투두리스트', `${doneN}/${state.todos.length}`)}${so.todo ? `<div class="sit-body">${todo}</div>` : ''}</div>`;
+  if (keep) { const n = box.querySelector('#todoIn'); if (n) { n.value = keep.v; if (keep.f) n.focus(); } }
+}
+function masteryNote(list) { // 숙련 레벨이 오르면 알린다 (list: [[태그, 레벨], ...])
+  (list || []).filter(Boolean).forEach(([t, lv]) => { toast(`숙련 「${t}」 Lv.${lv} 달성!`); addLog(`숙련 「${t}」이(가) Lv.${lv}이(가) 되었습니다.`); });
+  if (list && list.length) renderStatus();
 }
 const SYSTEM_SPEAKERS = { '관제 시스템': 'smart_toy', '시스템': 'smart_toy', '공지': 'campaign', '업데이트': 'system_update_alt' };
 const FACE_ICONS = ['face', 'face_2', 'face_3', 'face_4', 'face_5', 'face_6'];
@@ -1255,7 +1274,7 @@ const A = {
   'farm-harvest': el => {
     const r = harvestPlot(+el.dataset.i);
     if (typeof r === 'string') { toast(r); sfx('error'); return; }
-    renderBag(); sfx('ok'); toast(`${r.crop} ×${r.qty} 수확`); openFarm(true);
+    renderBag(); sfx('ok'); toast(`${r.crop} ×${r.qty} 수확`); masteryNote(r.mUp ? [r.mUp] : []); openFarm(true);
   },
   'farm-harvest-all': () => {
     const got = {}; let err = '';
@@ -1263,7 +1282,7 @@ const A = {
       if (!plotReady(state.farm.plots[i])) continue;
       const r = harvestPlot(i);
       if (typeof r === 'string') { err = r; break; }
-      got[r.crop] = (got[r.crop] || 0) + r.qty;
+      got[r.crop] = (got[r.crop] || 0) + r.qty; if (r.mUp) masteryNote([r.mUp]);
     }
     const txt = Object.entries(got).map(([n, q]) => `${n} ×${q}`).join(', ');
     renderBag(); openFarm(true);
@@ -1280,6 +1299,11 @@ const A = {
   'pet-name-save': el => { const err = renamePet(+el.dataset.i, petRoot(el).querySelector('#petNameIn').value); if (err) { toast(err); sfx('error'); return; } view.petNaming = -1; renderBuffs(true); sfx('ok'); toast('펫 이름을 저장했습니다.'); petRefresh(el); },
   'pet-sub': el => { view.petSub = el.dataset.sub; renderSide(); },
   'pet-active': el => { const i = +el.dataset.i, err = setActivePet(state.petActive === i ? -1 : i); if (err) { toast(err); sfx('error'); return; } renderBuffs(true); petRefresh(el); },
+  'sit-toggle': el => { const k = el.dataset.k; if (k !== 'near' && k !== 'todo') return; state.sitOpen[k] = !state.sitOpen[k]; save(); renderSide(); },
+  'todo-add': () => { const i = $('#todoIn'), e = addTodo(i ? i.value : ''); if (e) { toast(e); sfx('error'); return; } if (i) i.value = ''; renderSide(); const n = $('#todoIn'); if (n) n.focus(); sfx('click'); },
+  'todo-toggle': el => { toggleTodo(+el.dataset.id); renderSide(); sfx('click'); },
+  'todo-del': el => { removeTodo(+el.dataset.id); renderSide(); },
+  'todo-clear': () => { clearDoneTodos(); renderSide(); sfx('ok'); },
   'pet-dex-toggle': el => { view.petDexOpen = !view.petDexOpen; petRefresh(el); },
   'pet-stroke': el => { const r = petStroke(+el.dataset.i); if (r.err) { toast(r.err); sfx('error'); return; } view.petMsg = { i: +el.dataset.i, text: r.text }; sfx('ok'); petRefresh(el); },
   'pet-mood': el => { const r = petAskMood(+el.dataset.i); if (r.err) { toast(r.err); sfx('error'); return; } view.petMsg = { i: +el.dataset.i, text: r.text }; sfx('ok'); petRefresh(el); },
@@ -1392,7 +1416,7 @@ const A = {
     if (fromSide) renderSide(); else openJob();
   },
   'job-quit': () => { if (!view.quitAsk) { view.quitAsk = true; openJob(true); return; } view.quitAsk = false; quitSubjob(); renderProfile(); renderBuffs(true); toast('서브잡을 그만두었습니다.'); renderSide(); openJob(); },
-  'status-page': el => { view.statusPage = +el.dataset.p === 1 ? 1 : 0; renderStatus(); },
+  'status-page': el => { const p = +el.dataset.p; view.statusPage = p === 2 ? 2 : p === 1 ? 1 : 0; renderStatus(); },
   'stat-slide': el => { view.statSlide = view.statSlide || {}; view.statSlide[el.dataset.stat] = !view.statSlide[el.dataset.stat]; renderStatus(); },
   'extras-open': () => openMock(),
   'mock-start': () => mockStart(),
@@ -1500,7 +1524,7 @@ const A = {
     state.results.unshift({ t: (ACTIONS[pend.id] || {}).title || String(pend.id), text: pend.result.text, at: nowMs(), gain: rewardChips(pend.result), loss: costChips(pend.result) });
     state.results.length = Math.min(state.results.length, RESULT_KEEP); save();
     renderProfile(); renderBars(); renderBuffs(true); renderBag(); renderAction(); renderMapHead(); renderMap(); renderSide();
-    const loss = costChips(r.result);
+    const loss = costChips(r.result); masteryNote(r.mUp);
     const act = ACTIONS[r.id], rare = act.terrain && r.result.items.some(([n]) => n === act.terrain.rare);
     if (r.died) {
       awardTitles();
@@ -1541,13 +1565,13 @@ const A = {
     const r = collectCraft();
     if (!r) return;
     if (!r.got) { toast('가방이 가득 찼습니다. 칸을 비우세요.'); sfx('error'); return; }
-    toast(`${r.out} ${r.got}개 제작 완료${r.great ? ' (대성공! +1)' : ''}`); renderBag();
+    toast(`${r.out} ${r.got}개 제작 완료${r.great ? ' (대성공! +1)' : ''}`); masteryNote(r.mUp); renderBag();
   },
   item: el => {
     const name = el.dataset.item, it = ITEMS[name], have = countItem(name), canEquip = it.slot && state.inventory['장비'].some(s => s.n === name);
-    modal(name, `<div class="nearby-row"><div class="round-avatar">${icon(it.icon)}</div><div class="grow"><strong>${esc(name)}</strong><small>${it.slot ? esc(it.slot) + ' 장비' : esc(it.tab)} · 보유 ${countItem(name)}개</small></div></div><p class="detail-desc item-info">${itemInfoHtml(name)}</p>` +
+    modal(shownName(name), `<div class="nearby-row"><div class="round-avatar">${icon(it.icon)}</div><div class="grow"><strong>${esc(shownName(name))}</strong><small>${it.slot ? esc(it.slot) + ' 장비' : esc(it.tab)} · 보유 ${countItem(name)}개</small></div></div><p class="detail-desc item-info">${itemInfoHtml(name)}</p>` +
       ((it.mods || state.enchants[name]) ? `<div class="buffs">${[...(it.mods ? modText(it.mods) : []), ...(state.enchants[name] ? [`세공 · ${enchantText(state.enchants[name])}`] : [])].map(b => `<span class="buff">${esc(b)}</span>`).join('')}</div>` : ''),
-      [btnClose, ...(it.use ? [(it.use.warp || have < 2 ? '' : `<input id="useQty" type="number" min="1" max="${Math.min(have, MAX_BATCH)}" value="1" aria-label="사용 개수" style="width:56px">`) + `<button class="primary" data-act="use" data-item="${esc(name)}">사용</button>`] : []), ...(canEquip ? [`<button class="primary" data-act="equip" data-item="${esc(name)}">장착</button>`] : [])], true);
+      [btnClose, ...(it.engrave ? [`<button class="primary" data-act="engrave-open" data-item="${esc(name)}">${icon('edit')} 이름 새기기</button>`] : []), ...(it.use ? [(it.use.warp || have < 2 ? '' : `<input id="useQty" type="number" min="1" max="${Math.min(have, MAX_BATCH)}" value="1" aria-label="사용 개수" style="width:56px">`) + `<button class="primary" data-act="use" data-item="${esc(name)}">사용</button>`] : []), ...(canEquip ? [`<button class="primary" data-act="equip" data-item="${esc(name)}">장착</button>`] : [])], true);
   },
   use: el => {
     const name = el.dataset.item;
@@ -1622,6 +1646,18 @@ const A = {
     const n = el.dataset.name; if (!canNick(n)) { toast('A랭까지 강화한 무기에만 이름을 붙일 수 있어요.'); return; }
     view.nickFor = n;
     modal('무기 이름 붙이기', `<p class="detail-desc">A랭까지 키운 「${esc(n)}」에 이름을 붙여 주세요. 설명에 ‘${esc(state.character.name || '')}의 애착이 담긴 무기’가 더해집니다. (최대 ${NICK_MAX}자, 비우면 원래 이름)</p><div class="srow fontrow"><span>이름</span><input id="nickInput" maxlength="${NICK_MAX}" value="${esc(nickOf(n))}" placeholder="${esc(n)}"></div>`, ['<button data-act="nick-cancel">취소</button>', '<button class="primary" data-act="nick-save">저장</button>'], true);
+  },
+  'engrave-open': el => {
+    const n = el.dataset.item; if (!ITEMS[n] || !ITEMS[n].engrave) return;
+    view.engraveFor = n;
+    modal('이름 새기기', `<p class="detail-desc">「${esc(n)}」 안쪽에 이름을 새깁니다. ‘○○의 ${esc(n)}’처럼 보여요. (최대 ${ENGRAVE_MAX}자, 비우면 지움 · 언제든 다시 새길 수 있어요)</p><div class="srow fontrow"><span>새길 이름</span><input id="engraveInput" maxlength="${ENGRAVE_MAX}" value="${esc(engraveOf(n))}" placeholder="이름" autocomplete="off"></div>`, ['<button data-act="engrave-cancel">취소</button>', '<button class="primary" data-act="engrave-save">새기기</button>'], true);
+    const i = $('#engraveInput'); if (i) i.focus();
+  },
+  'engrave-cancel': el => { const n = view.engraveFor; if (n) A.item({ dataset: { item: n } }); else closeModal(); },
+  'engrave-save': () => {
+    const n = view.engraveFor, r = engraveItem(n, ($('#engraveInput') || {}).value || '');
+    if (r) { toast(r); sfx('error'); return; }
+    renderInventory(); renderEquip(); sfx('ok'); toast(engraveOf(n) ? `「${shownName(n)}」(으)로 새겼어요.` : '새긴 이름을 지웠어요.'); A.item({ dataset: { item: n } });
   },
   'nick-cancel': () => openEnhance(true),
   'nick-save': () => {
@@ -1800,6 +1836,11 @@ const A = {
   'codex-sub': el => { codexView.sub = el.dataset.sub || null; $('#codexRoot').innerHTML = codexHtml(); },
   'logout-ok': () => { closeModal(); if (Cloud.enabled && Cloud.user()) { if (_cloudTimer) { clearTimeout(_cloudTimer); _cloudTimer = 0; cloudAutoPush().finally(() => A['cloud-logout']()); } else A['cloud-logout'](); } else toast('서버 인증 기능은 아직 연결되지 않았습니다.'); },
 };
+function otherEquipHtml(eq) { // 다른 대원의 착용 장비 (서버가 준 {칸: 이름}을 걸러서 내 장비 탭과 같은 칸 UI로)
+  const safe = {}; if (eq && typeof eq === 'object') EQUIP_SMALL.concat(EQUIP_BIG).forEach(sl => { const n = eq[sl]; if (typeof n === 'string' && ITEMS[n] && ITEMS[n].tab === '장비' && ITEMS[n].slot === sl && !ITEMS[n].hidden) safe[sl] = n; });
+  const cell = (sl, big) => { const n = safe[sl], it = n && ITEMS[n]; return `<div class="slot ${big ? 'big' : ''} ${it ? 'filled' : ''}" ${it ? `data-tip-title="${esc(n)}" data-tip-desc="${esc(itemLines(n, true).filter(Boolean).join('\n'))}"` : `data-tip-title="${esc(sl)} · 비어 있음" data-tip-desc=""`} aria-label="${esc(sl)}">${it ? icon(it.icon) : `<span class="slot-label">${esc(sl)}</span>`}</div>`; };
+  return `<div class="choice-label">착용 장비</div><div class="equip-wrap other-equip"><div class="equip-grid">${EQUIP_SMALL.map(s => cell(s)).join('')}</div><div class="equip-big">${EQUIP_BIG.map(s => cell(s, true)).join('')}</div></div>`;
+}
 async function viewUser(name) { // 이름·아이콘을 누르면 그 대원의 프로필을 보여준다 (나는 내 프로필)
   if (name === '나' || name === state.character.name) { view.profEdit = false; openProfile(); return; }
   const cell = (k, v) => `<div class="uc"><span>${esc(k)}</span><b>${esc(v)}</b></div>`;
@@ -1809,7 +1850,7 @@ async function viewUser(name) { // 이름·아이콘을 누르면 그 대원의 
     const kw = pr ? String(pr.keywords || '').split(',').map(t => t.trim()).filter(Boolean).map(t => '#' + cleanText(t, 10)).join(' ') : '';
     modal('프로필', `<div class="user-card"><div class="round-avatar big">${avatarOf(name)}</div><div class="uc-name">${pr && pr.title ? `<span class="title-chip">${esc(cleanText(pr.title, 20))}</span>` : ''}<strong>${esc(name)}</strong></div></div>` +
       `<div class="user-grid">${cell('상태', st)}${r ? cell('레벨', 'Lv.' + intIn(r.level, 1, MAX_LEVEL, 1)) + cell('등급', ('FEDCBAS'.includes(r.rank) ? r.rank : 'F') + '등급') : ''}${pr ? cell('나이', intIn(pr.age, 0, 999, 0) + '세') : ''}${cell('관계', has ? '친구' : '친구 아님')}${pr ? cell('길드', pr.guild ? cleanText(pr.guild, 12) : '-') : ''}</div>` +
-      (kw ? `<div class="char-tags">${esc(kw)}</div>` : '') +
+      (kw ? `<div class="char-tags">${esc(kw)}</div>` : '') + (pr && pr.equipment ? otherEquipHtml(pr.equipment) : pr ? '<p class="tiny">장비 정보는 서버에 supabase/friends.sql 최신본을 실행하면 보여요.</p>' : '') +
       (pr ? `<div class="pc-ability"><b>${icon('bolt')} 이능력 · ${esc(cleanText(pr.ability, 20) || '미설정')}</b><p>${esc(cleanText(pr.abilityDesc, 300) || '이능력 설명이 없습니다.')}</p></div>` : (Cloud.enabled && Cloud.user() ? `<p class="tiny">${esc(note || '자세한 프로필을 불러오는 중…')}</p>` : '<p class="tiny">서버에 로그인하면 이능력 등 자세한 프로필을 볼 수 있어요.</p>')),
       [btnClose, !has && uid ? `<button class="primary" data-act="friend-req" data-uid="${esc(uid)}" data-name="${esc(name)}">친구 신청</button>` : ''].filter(Boolean));
     view.userShown = name;
@@ -1847,7 +1888,7 @@ function equipChange(slot, name, doneText) {
 /* ---------- 정적 요소 연결 ---------- */
 $('#closeModal').onclick = closeModal;
 $('#overlay').onclick = e => { if (e.target === $('#overlay')) closeModal(); };
-document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); if (e.key === 'Enter' && e.target && e.target.id === 'todoIn' && !e.isComposing) { e.preventDefault(); A['todo-add'](); } });
 $$('[data-board]').forEach(b => { b.onclick = () => openBoard(b.dataset.board); });
 $$('[data-system]').forEach(b => { b.onclick = () => openSystem(b.dataset.system); });
 $('#settingsBtn').onclick = openSettings;
@@ -1987,7 +2028,7 @@ function sendChat(val) {
 /* ---------- 임무 수주 / 상점 / 길드 창 ---------- */
 const fmtLeft = ms => { const h = Math.floor(ms / 3600000), m = Math.ceil(ms % 3600000 / 60000); return h ? `${h}시간 ${m % 60}분` : `${m}분`; };
 function openQuestBoard(keepScroll) {
-  const place = placeKey(), list = QUESTS.filter(q => q.board === place && (!q.daily || q.id === dailyQuestId() || state.questTaken[q.id]));
+  const place = placeKey(), list = QUESTS.filter(q => q.board === place && !(q.once && state.questDone[q.id]) && (!q.daily || dailyQuestIds().includes(q.id) || state.questTaken[q.id]));
   if (!list.length) { toast('이곳에서는 임무를 수주할 수 없습니다.'); return; }
   const active = activeBoard().length;
   const st = keepScroll ? $('#modalBody').scrollTop : 0;
@@ -1997,7 +2038,7 @@ function openQuestBoard(keepScroll) {
       `<button class="${taken || done ? '' : 'primary'}" data-act="quest-take" data-id="${q.id}" ${taken || done ? 'disabled' : ''}>${done ? '완수' : taken ? '수주함' : '수주'}</button></div>`;
   }).join('');
   modal(`임무 수주 · ${place === '본부' ? '본부' : place + ' 캠프'}`,
-    `<p class="tiny">${place === '본부' ? '본부에서는 공통 임무를 받을 수 있어요.' : `${esc(place)}에서만 받을 수 있는 특별 임무예요.`} 동시에 ${BOARD_MAX_ACTIVE}개까지 (지금 ${active}개). <b>완수한 임무</b>는 매일 오전 4시에 리셋되어 다시 받을 수 있고, 진행 중인 임무는 리셋되지 않아요.</p>` + rows, [btnClose]);
+    `<p class="tiny">${place === '본부' ? '본부에서는 공통 임무를 받을 수 있어요.' : `${esc(place)}에서만 받을 수 있는 특별 임무예요.`} 동시에 ${BOARD_MAX_ACTIVE}개까지 (지금 ${active}개). <b>완수한 임무</b>는 매일 오전 4시에 리셋되어 다시 받을 수 있고, 진행 중인 임무는 리셋되지 않아요.${place === '본부' ? ' 본부의 기본 임무는 한 번만 할 수 있고, 일일 의뢰는 매일 5개가 새로 걸려요.' : ''}</p>` + rows, [btnClose]);
   $('#modalBody').scrollTop = st;
 }
 function openShop(keepScroll) {
@@ -2101,14 +2142,18 @@ function farmRefresh() {
 }
 
 /* ---------- 펫 (개인실) ---------- */
-function petCareHtml() { // 펫 돌보기 화면 (창과 오른쪽 '펫' 탭이 함께 쓴다)
+function petCareHtml(compact) { // 펫 돌보기 화면. compact=오른쪽 '펫' 탭: 함께 다니는 펫 + 펫 목록(탐험 남은 시간)만. 전체는 개인실 '펫 돌보기' 창
   const feeds = Object.values(state.inventory).flat().filter(x => ITEMS[x.n].feed);
   if (!feeds.some(x => x.n === view.feed)) view.feed = feeds[0] ? feeds[0].n : null;
   if (!DANGER_ZONES.some(z => z.id === view.expZone)) view.expZone = DANGER_ZONES[0].id;
   const owned = Object.fromEntries(state.pets.map(p => [p.id, p]));
   const dex = Object.entries(PET_SPECIES).map(([id, sp]) => owned[id]
     ? `<div class="pet-dex got" title="${esc(sp.name)}">${icon('pets')}<small>${esc(sp.name)}</small></div>` : `<div class="pet-dex" title="아직 길들이지 못했습니다">${icon('help')}<small>${esc(sp.zone)}</small></div>`).join('');
+  const mini = i => { const p = state.pets[i], sp = PET_SPECIES[p.id], away = !!p.exp, ready = expReady(p);
+    const st = away ? (ready ? `${p.exp.zone} 탐험에서 돌아왔어요!` : `${p.exp.zone} 탐험 중 · <span class="pet-left" data-i="${i}">${fmtLeft(expLeft(p))}</span> 남음`) : '대기 중';
+    return `<div class="nearby-row pet-side-row ${away ? 'away' : ''}"><div class="round-avatar">${icon(sp.icon || 'pets')}</div><div class="grow"><strong>${esc(petName(p))}${p.name ? ` <small>(${esc(sp.name)})</small>` : ''}</strong><small>${st}</small><small>친밀도 ${p.bond}/100 · 성격 ${esc(petPersOf(p))}</small>${away && !ready ? `<div class="bar thin"><span class="pet-bar" data-i="${i}" style="width:${Math.round((1 - expLeft(p) / (p.exp.ms || PET_EXP_MS)) * 100)}%"></span></div>` : ''}</div>${ready ? `<button class="primary" data-act="pet-claim" data-i="${i}">수확물 받기</button>` : away ? '' : `<button data-act="pet-active" data-i="${i}">함께 다니기</button>`}</div>`; };
   const rows = petOrder().map(i => {
+    if (compact && state.petActive !== i) return mini(i);
     const p = state.pets[i], sp = PET_SPECIES[p.id], fed = petFed(p), act = state.petActive === i, away = !!p.exp, ready = expReady(p);
     const state1 = away ? (ready ? `${p.exp.zone} 탐험에서 돌아왔어요!` : `${p.exp.zone} 탐험 중 · ${fmtLeft(expLeft(p))} 남음`) : act ? '동행 중' : '대기 중';
     return `<div class="pet-row ${act ? 'active' : ''}"><div class="round-avatar">${icon('pets')}</div><div class="grow">${view.petNaming === i ? `<div class="search-row"><input id="petNameIn" maxlength="${PET_NAME_MAX}" placeholder="${esc(sp.name)}" value="${esc(p.name || '')}"><button class="primary" data-act="pet-name-save" data-i="${i}">저장</button><button data-act="pet-name-cancel">취소</button></div>` : `<strong>${esc(petName(p))} ${p.name ? `<small>(${esc(sp.name)})</small> ` : ''}<span class="tag">${esc(state1)}</span> <button class="mini" data-act="pet-name" data-i="${i}" title="이름 짓기" aria-label="이름 짓기">${icon('edit')}</button></strong>`}` +
@@ -2117,6 +2162,10 @@ function petCareHtml() { // 펫 돌보기 화면 (창과 오른쪽 '펫' 탭이 
       `<div class="col-btns">${away ? (ready ? `<button class="primary" data-act="pet-claim" data-i="${i}">수확물 받기</button>` : '<button disabled>탐험 중</button>')
         : (() => { const ok = !petCareErr(i), tip = ok ? '' : ' title="함께 다니지 않는 펫은 개인실에서 돌볼 수 있어요"'; return `<button data-act="pet-feed" data-i="${i}" ${feeds.length && ok ? '' : 'disabled'}${tip}>간식 주기</button><button data-act="pet-stroke" data-i="${i}" ${ok ? '' : 'disabled'}${tip}>쓰다듬기</button><button data-act="pet-mood" data-i="${i}" ${ok ? '' : 'disabled'}${tip}>기분 묻기</button><button data-act="pet-active" data-i="${i}">${act ? '동행 해제' : '함께 다니기'}</button>${act ? '' : `<button data-act="pet-send" data-i="${i}" ${feeds.length ? '' : 'disabled'}>탐험 보내기</button>`}`; })()}</div></div>`;
   }).join('');
+  if (compact) {
+    const feedBox = feeds.length ? `<div class="choice-label">줄 간식 <small class="tiny">— 눌러서 고르고, 펫의 '간식 주기'를 누르세요</small></div><div class="feed-picks" id="feedPicks">${feeds.map(x => `<button class="feed-opt ${x.n === view.feed ? 'selected' : ''}" data-act="pet-feed-pick" data-item="${esc(x.n)}" data-tip-title="${esc(x.n)}" data-tip-desc="${esc(itemTip(x.n) + `\n친밀도 +${ITEMS[x.n].feed}`)}" aria-pressed="${x.n === view.feed}">${icon(ITEMS[x.n].icon)}<span>${esc(x.n)}</span><b>×${x.q}</b><small>+${ITEMS[x.n].feed}</small></button>`).join('')}</div>` : '';
+    return (state.petActive >= 0 ? feedBox : '') + (rows || '<div class="empty">아직 길들인 펫이 없습니다.</div>') + '<p class="tiny">성격 허브를 간식으로 주면 펫의 성격이 바뀌어요. 탐험 보내기·도감 등 전체 돌보기는 개인실의 \'펫 돌보기\'에서 할 수 있어요.</p>';
+  }
   return `<p class="tiny">펫은 지상의 짐승 지형에서 <b>길들이기</b>로 얻어요. 펫 보관함은 소지품과 별도이고, 같은 종은 한 마리만 모을 수 있어요. 한 마리는 <b>동행</b>(먹이를 준 뒤 24시간 타일 이동 시간 단축), 나머지는 <b>24시간 자동 탐험</b>을 보낼 수 있어요.</p>` +
     `<button class="choice-label dex-toggle" data-act="pet-dex-toggle" aria-expanded="${!!view.petDexOpen}">${icon(view.petDexOpen ? 'expand_less' : 'expand_more')} 펫 도감 ${state.pets.length}/${petCap()}</button>${view.petDexOpen ? `<div class="pet-dex-grid">${dex}</div>` : ''}` +
     `<div class="choice-label">줄 간식 <small class="tiny">${feeds.length ? '— 눌러서 고르고, 펫의 \'간식 주기\'를 누르세요' : ''}</small></div>` +
@@ -2638,7 +2687,13 @@ function init() {
   renderLogs(); renderChat();
   setLocation(state.location);
   if (!state.tutorialDone) { if (Cloud.enabled && Cloud.user() && !state.created) cloudRecover(); else startTutorial(); }
-  const clock = () => { $('#clock').textContent = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }); };
+  const setTxt = (id, v) => { const e = $(id); if (e && e.textContent !== v) e.textContent = v; };
+  const clock = () => {
+    $('#clock').textContent = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+    const w = todayWeather(), se = seasonOf(), al = altitude();
+    setTxt('#hdWeather', w.name); setTxt('#hdWeatherIc', w.icon); setTxt('#hdSeason', `${se.name} · ${se.day}일차`); setTxt('#hdSeasonIc', se.icon);
+    setTxt('#hdAlt', `${al.sky ? '상공' : '지상'} ${al.m.toLocaleString('ko-KR')}m`);
+  };
   clock();
   setInterval(() => { tick(); clock(); }, 1000);
   checkUpdate(); setInterval(checkUpdate, 5 * 60 * 1000);

@@ -537,7 +537,7 @@ with sync_playwright() as p:
     check('hq_has_board', '임무 수주' in text(pg, '#choices'))
     q0 = ev(pg, "takenQuests().length")
     pg.click('#choices button:has-text("임무 수주")'); pg.wait_for_timeout(80)
-    check('board_lists_hq_quests', pg.locator('#overlay.open').count() == 1 and pg.locator('.board-quest').count() == 6 and pg.locator('[data-act="action-run"]').count() == 0)
+    check('board_lists_hq_quests', pg.locator('#overlay.open').count() == 1 and pg.locator('.board-quest').count() == 10 and pg.locator('[data-act="action-run"]').count() == 0)
     check('board_not_taken_not_listed', ev(pg, "takenQuests().length")== q0 and pg.locator('.quest-row[data-id="hq_scrap"]').count() == 0)
     pg.click('[data-act="quest-take"][data-id="hq_scrap"]'); pg.wait_for_timeout(80)
     check('board_take_adds_to_side', ev(pg, "state.questTaken.hq_scrap")== True and pg.locator('.quest-row[data-id="hq_scrap"]').count() == 1 and pg.locator('[data-act="quest-take"][data-id="hq_scrap"]').is_disabled() and ev(pg, "takeQuest('hq_scrap')")!= None)
@@ -552,7 +552,7 @@ with sync_playwright() as p:
     ev(pg, "countKill('숲 늑대');countKill('모래게');countKill('화염 정령')")
     check('kill_quest_counts_any_monster', ev(pg, "state.qprog.hq_hunt")== 3 and ev(pg, "questProgress(QUESTS.find(q=>q.id==='hq_hunt')).ready")== True)
     ev(pg, "state.questTaken.hq_hunt=false;state.qprog.hq_hunt=0;delete state.questTaken.hq_herb;renderSide()")
-    check('board_active_limit', ev(pg, "(()=>{state.questTaken={hq_herb:true,hq_hunt:true,z1_wolf:true,z1_wood:true,z2_crab:true};state.questDone={};return takeQuest('hq_scrap')})()") and '동시에' in ev(pg, "takeQuest('hq_scrap')"))
+    check('board_active_limit', ev(pg, "(()=>{state.questTaken={hq_herb:true,hq_hunt:true,z1_wolf:true,z1_wood:true,z2_crab:true,z2_salt:true,z3_fire:true};state.questDone={};return takeQuest('hq_scrap')})()") and '동시에' in ev(pg, "takeQuest('hq_scrap')"))
     ev(pg, "state.questTaken={};state.questDone={};state.qprog={};renderSide()")
     ev(pg, "countKill('숲 늑대')")
     check('kill_not_counted_before_take', ev(pg, "state.qprog.z1_wolf")is None)
@@ -842,7 +842,7 @@ with sync_playwright() as p:
 
     # ---------- 임무 (펼침) ----------
     check('quest_word_replaced', '퀘스트' not in text(pg, 'body'), None)
-    check('quest_tab_labels', ev(pg, "[...document.querySelectorAll('[data-side]')].map(b=>b.textContent)")== ['임무', '서브잡', '펫', '주위 대원'])
+    check('quest_tab_labels', ev(pg, "[...document.querySelectorAll('[data-side]')].map(b=>b.textContent)")== ['임무', '서브잡', '펫', '상황'])
     ev(pg, "state.questTaken={};state.questDone={};state.qprog={};renderSide()")
     check('new_character_has_only_main_quest', ev(pg, "takenQuests().map(q=>q.id).join()")== 'adapt' and ev(pg, "QUESTS.filter(q=>!q.board).every(q=>q.kind==='메인')") and pg.locator('.quest-row').count() == 1)
     check('sub_quests_need_board', ev(pg, "QUESTS.filter(q=>q.board==='본부').map(q=>q.id).join()").startswith('material,explore'))
@@ -885,7 +885,7 @@ with sync_playwright() as p:
     ev(pg, "view.chatAt=0")
     pg.fill('#chatInput', '<b>굵게</b><img src=x onerror=window.__xss=1>'); pg.press('#chatInput', 'Enter'); pg.wait_for_timeout(100)
     check('chat_html_escaped', pg.locator('#chatFeed b').count() == 0 and pg.locator('#chatFeed img').count() == 0 and ev(pg, "typeof window.__xss")== 'undefined' and '<b>굵게</b>' in text(pg, '#chatFeed'))
-    pg.click('[data-side="주위 대원"]'); pg.click('[data-side="임무"]')
+    pg.click('[data-side="상황"]'); pg.click('[data-side="임무"]')
 
     check('chat_not_in_log', ev(pg, "state.logs.every(l=>!l.text.includes('채팅'))") and ev(pg, "state.logs.every(l=>!l.text.includes('이동'))"))
     check('special_events_logged_quest', ev(pg, "state.logs.some(l=>l.text.includes('임무 완수: '))"))
@@ -987,7 +987,7 @@ with sync_playwright() as p:
     ev(pg, "closeModal();view.statusPage=0;renderStatus()")
     h0 = ev(pg, "document.querySelector('#statusBody .stat-grid').getBoundingClientRect().height"); t0 = text(pg, '#statusBody .stat')
     pg.click('#statusBody .stat [data-act="stat-slide"]'); pg.wait_for_timeout(60)
-    check('stat_slide_next_buff_same_size', abs(ev(pg, "document.querySelector('#statusBody .stat-grid').getBoundingClientRect().height") - h0) <= 2 and '펫 탐험 시간' in text(pg, '#statusBody .stat') and text(pg, '#statusBody .stat') != t0 and pg.locator('#statusPager button').count() == 2)
+    check('stat_slide_next_buff_same_size', abs(ev(pg, "document.querySelector('#statusBody .stat-grid').getBoundingClientRect().height") - h0) <= 2 and '펫 탐험 시간' in text(pg, '#statusBody .stat') and text(pg, '#statusBody .stat') != t0 and pg.locator('#statusPager button').count() == 3)
     pg.click('#statusBody .stat [data-act="stat-slide"]'); pg.wait_for_timeout(60)
     check('stat_slide_back', text(pg, '#statusBody .stat') == t0)
     ev(pg, "view.profEdit=false;openProfile()")
@@ -1001,7 +1001,7 @@ with sync_playwright() as p:
       const tab=!document.querySelector('#sidePetTab').classList.contains('hidden'),txt=document.querySelector('#sideView').innerText;
       const ent=codexEntries('펫'),own=ent.find(e=>e.known);
       view.petSub='도감';renderSide();const dtxt=document.querySelector('#sideView').innerText;view.petSub='돌보기';renderSide();const ctxt=document.querySelector('#sideView').innerText;const sub=document.querySelectorAll('#sideView .subtabs button').length===3;view.petSub='상태';
-      state.pets=[];renderSide();return sub&&dtxt.includes('콩이')&&ctxt.includes('줄 간식')&&tab&&txt.includes('콩이')&&txt.includes('탐험 중')&&!!own&&own.name.includes('콩이')&&ent.filter(e=>e.known).length===1&&state.side==='임무'})()"""))
+      state.pets=[];renderSide();return sub&&dtxt.includes('콩이')&&ctxt.includes('탐험 중')&&tab&&txt.includes('콩이')&&txt.includes('탐험 중')&&!!own&&own.name.includes('콩이')&&ent.filter(e=>e.known).length===1&&state.side==='임무'})()"""))
     check('multi_custom_time', ev(pg, """(()=>{const id=Object.keys(ACTIONS).find(k=>ACTIONS[k].kind==='gather');const ci=MULTI_OPTIONS.findIndex(o=>o.custom);
       setCustomMin(50);const p=previewOf(id,ci);const lo=setCustomMin(1),hi=setCustomMin(99999);setCustomMin(50);
       const sp=state.vitals.sp;state.active=null;state.pending=null;state.vitals.sp=state.vitals.spMax;
@@ -1079,7 +1079,7 @@ with sync_playwright() as p:
     pg.click('#settingsBtn'); sw('alertOn', True); pg.click('[data-act="settings-save"]'); pg.wait_for_timeout(60)
 
     # ---------- 오른쪽 탭 제목 / 튜토리얼 다시 보기 ----------
-    pg.click('[data-side="주위 대원"]'); check('right_title_follows_tab', text(pg, '#rightTitle') == '주위 대원'); pg.click('[data-side="임무"]')
+    pg.click('[data-side="상황"]'); check('right_title_follows_tab', text(pg, '#rightTitle') == '상황'); pg.click('[data-side="임무"]')
     pg.click('#settingsBtn'); pg.click('[data-act="tutorial-replay"]'); pg.wait_for_timeout(100)
     check('tutorial_replay_from_settings', pg.locator('#tutStory').is_visible() and pg.locator('#overlay.open').count() == 0 and '리코' in text(pg, '#tutNpc') and ev(pg, "tut.replay"))
     check('replay_skips_character_creation', text(pg, '#tutNextStory') == '다음' and pg.locator('#tutDots i').count() == 2)
@@ -1201,12 +1201,12 @@ with sync_playwright() as p:
     # --- 임무 24시간 리셋 ---
     home('본부')
     ev(pg, "state.questTaken={};state.questDone={};state.questAt={};state.qprog={}")
-    check('board_take_records_time', ev(pg, "takeQuest('hq_scrap')")is None and ev(pg, "state.questAt.hq_scrap>0"))
-    ev(pg, "state.questDone.hq_scrap=true"); left = ev(pg, "boardResetLeft('hq_scrap')")
-    check('board_reset_within_a_day_at_4am', 0 < left <= 86400000 and ev(pg, "(()=>{const t=nextBoardReset(state.questAt.hq_scrap);const k=new Date(t+9*3600000);return k.getUTCHours()===4&&k.getUTCMinutes()===0})()"), left)
-    ff(max(1, left / 1000 - 60)); check('board_not_reset_before_4am', ev(pg, "!!state.questTaken.hq_scrap&&!!state.questDone.hq_scrap"))
+    check('board_take_records_time', ev(pg, "takeQuest('daily_herb')")is None and ev(pg, "state.questAt.daily_herb>0"))
+    ev(pg, "state.questDone.daily_herb=true"); left = ev(pg, "boardResetLeft('daily_herb')")
+    check('board_reset_within_a_day_at_4am', 0 < left <= 86400000 and ev(pg, "(()=>{const t=nextBoardReset(state.questAt.daily_herb);const k=new Date(t+9*3600000);return k.getUTCHours()===4&&k.getUTCMinutes()===0})()"), left)
+    ff(max(1, left / 1000 - 60)); check('board_not_reset_before_4am', ev(pg, "!!state.questTaken.daily_herb&&!!state.questDone.daily_herb"))
     ff(120)
-    check('board_reset_after_4am_retakable', ev(pg, "!state.questTaken.hq_scrap&&!state.questDone.hq_scrap&&!state.questAt.hq_scrap")and ev(pg, "takeQuest('hq_scrap')")is None)
+    check('board_reset_after_4am_retakable', ev(pg, "!state.questTaken.daily_herb&&!state.questDone.daily_herb&&!state.questAt.daily_herb")and ev(pg, "takeQuest('daily_herb')")is None)
     ev(pg, "state.questTaken={};state.questDone={};state.questAt={}")
     # --- 승급 (본부) ---
     ev(pg, "state.character.rank='F';state.character.level=2;state.questTaken={};state.questDone={};state.qprog={};state.flags.entered=true;renderProfile()")
@@ -1536,12 +1536,12 @@ with sync_playwright() as p:
     # ---------- 몬스터 드롭 / 요리 / 귀환 신호기 ----------
     ev(pg, "closeModal()")
     check('monsters_have_drops', ev(pg, "DANGER_ZONES.every(z=>z.terrains.every(t=>t.monster.drops.length>0&&t.monster.drops.every(([n,p])=>ITEMS[n]&&p>0&&p<1)))"))
-    check('beast_drop_meat_hide_magic_tissue', ev(pg, "DANGER_ZONES.every(z=>z.terrains.every(t=>t.monster.kind==='짐승'?t.monster.drops[0][0]==='짐승 고기'&&/가죽/.test(t.monster.drops[1][0]):t.monster.drops[0][0]==='이능 조직'))"))
+    check('beast_drop_meat_hide_magic_tissue', ev(pg, "DANGER_ZONES.every(z=>z.terrains.every(t=>t.monster.kind==='짐승'?t.monster.drops[0][0]===t.monster.name+' 고기'&&t.monster.drops[1][0]===t.monster.name+' 가죽':t.monster.drops[0][0]==='이능 조직'))"))
     check('recipes_valid', ev(pg, "RECIPES.every(r=>ITEMS[r.out]&&Object.keys(r.mats).every(n=>ITEMS[n]||MAT_GROUPS[n])&&r.sec>0)"))
     check('meat_recipes_restore_sp', ev(pg, "['육포','구운 고기','고기 수프','매운 고기 볶음','해물 찜','생선 구이','에너지 젤'].every(n=>ITEMS[n].use.sp>=25&&RECIPES.some(r=>r.out===n))"))
     check('new_items_sellable_below_input', ev(pg, "RECIPES.every(r=>!ITEMS[r.out].sell||ITEMS[r.out].sell<=Object.entries(r.mats).reduce((s,[n,q])=>s+((ITEMS[n]?ITEMS[n].sell:Math.min(...MAT_GROUPS[n].map(m=>ITEMS[m].sell||0)))||0)*q,0)+60)"))
     check('warp_item_in_all_shops', ev(pg, "Object.values(SHOPS).filter(s=>s.special).every(s=>s.special.some(([n])=>n==='귀환 신호기'))") and ev(pg, "shopRows('보급품 상점').some(([n])=>n==='귀환 신호기')"))
-    check('drop_on_win_adds_items', ev(pg, "(()=>{const o=Math.random;Math.random=()=>0.0001;const t=DANGER_ZONES[0].terrains[0];state.vitals.hp=100;const r=resolveAction('제1구역 숲 전투',1,0);Math.random=o;return r.items.some(([n])=>n==='짐승 고기')&&r.items.some(([n])=>n==='짐승 가죽')})()"))
+    check('drop_on_win_adds_items', ev(pg, "(()=>{const o=Math.random;Math.random=()=>0.0001;const t=DANGER_ZONES[0].terrains[0];state.vitals.hp=100;const r=resolveAction('제1구역 숲 전투',1,0);Math.random=o;return r.items.some(([n])=>n.endsWith(' 고기'))&&r.items.some(([n])=>n.endsWith(' 가죽'))})()"))
     ev(pg, "(()=>{state.active=null;state.pending=null;state.location='제1구역';enterDungeon('제1구역');addItem('귀환 신호기',1);})()")
     ev(pg, "document.querySelector('[data-act=\"item\"][data-item=\"귀환 신호기\"]')?1:0")
     check('warp_returns_to_hq_from_dungeon', ev(pg, "(()=>{const ok=useItem('귀환 신호기');return ok&&state.location==='본부'&&!state.dungeon&&countItem('귀환 신호기')===0})()"))
@@ -1711,7 +1711,7 @@ with sync_playwright() as p:
     check('trade_stops_after_3', ev(pg, "tradesLeft()")== 0 and '3회' in ev(pg, "tradeWith('상인 하나','목재',1,'약초',1)") and ev(pg, "countItem('소금')")>= 2)
     check('trade_resets_next_day', ev(pg, "(()=>{state.trades.day='2000-01-01';return tradesLeft()})()")== 3)
     ev(pg, "state.trades={day:'',n:0}")
-    ev(pg, "state.side='주위 대원';renderSide()"); pg.wait_for_timeout(50)
+    ev(pg, "state.side='상황';renderSide()"); pg.wait_for_timeout(50)
     check('nearby_row_has_trade_button', pg.locator('[data-act="trade-open"]').count() == 2)
     pg.click('[data-act="trade-open"][data-player="상인 하나"]'); pg.wait_for_timeout(80)
     check('trade_modal_shows_remaining', '교환' in text(pg, '#modalTitle') and '3회' in text(pg, '#modalBody') and pg.locator('#tradeGive').count() == 1)
@@ -1767,6 +1767,46 @@ with sync_playwright() as p:
       const before=JSON.stringify(state.inventory),m0=state.money,r=dismantleItem('정찰 배낭');
       const ok=typeof r==='string'&&JSON.stringify(state.inventory)===before&&state.money===m0;
       Object.keys(state).forEach(k=>delete state[k]);Object.assign(state,JSON.parse(bak));return ok})()"""))
+    # ---------- 2026-10-24 대량 추가 ----------
+    check('other_profile_equipment_cells', ev(pg, """(()=>{const h=otherEquipHtml({'머리':'닌자 두건','무기':'훈련용 검','얼굴':'닌자 두건','없는칸':'x','상의':'없는 아이템'});const d=document.createElement('div');d.innerHTML=h;
+      return d.querySelectorAll('.slot').length===EQUIP_SMALL.length+EQUIP_BIG.length&&d.querySelectorAll('.slot.filled').length===2&&!!d.querySelector('.slot.filled[data-tip-title="닌자 두건"]')})()"""))
+    ev(pg, "window.__pb=JSON.stringify([state.pets,state.petActive]);state.pets=[];state.petActive=-1;addPet('숲 늑대');addPet('멧돼지');setActivePet(0);")
+    check('pet_side_compact_view', ev(pg, """(()=>{const h=petCareHtml(true);return h.includes('pet-stroke')&&h.includes('pet-mood')&&!h.includes('pet-dex-grid')&&!h.includes('expZone')&&state.petActive>=0&&!h.includes('data-act="pet-send" data-i="'+state.petActive+'"')})()"""))
+    check('pet_stroke_vs_mood_texts_differ', ev(pg, """(()=>{const i=state.petActive,p=state.pets[i];p.petAt=0;const s=petStroke(i).text,m=petAskMood(i).text;return /기분을 느끼는 것 같다\\)/.test(m)&&!/기분을 느끼는 것 같다/.test(s)&&s!==m})()"""))
+    ev(pg, "[state.pets,state.petActive]=JSON.parse(window.__pb)")
+    check('beast_meat_and_hide_varied', ev(pg, """(()=>{const a=DANGER_ZONES[0].terrains[0].monsters[0].drops.map(d=>d[0]),b=DANGER_ZONES[2].terrains[0].monsters[0].drops.map(d=>d[0]);
+      return a[0]==='숲 늑대 고기'&&a[1]==='숲 늑대 가죽'&&b[1].endsWith('가죽')&&b[0]!==a[0]&&MAT_GROUPS['고기'].length>=20&&MAT_GROUPS['가죽'].includes('짐승 가죽')&&RECIPES.find(r=>r.out==='구운 고기').mats['고기']===1})()"""))
+    check('beast_meat_usable_for_cooking', ev(pg, """(()=>{const bak=JSON.stringify(state.inventory);state.inventory['재료']=[];addItem('숲 늑대 고기',2);addItem('짐승 고기',1);const rc=RECIPES.find(r=>r.out==='구운 고기'),ok=matCount('고기')===3&&canCraft(rc);state.inventory=JSON.parse(bak);return ok})()"""))
+    check('train_picks_are_random_not_in_order', ev(pg, """(()=>{const bak=JSON.stringify(state.learned);let sorted=0,runs=0;for(let k=0;k<30;k++){state.learned=[];const seq=[];for(let i=0;i<6;i++){const pool=learnableRecipes();if(!pool.length)break;const rc=pick(pool);state.learned.push(rc.out);seq.push(RECIPES.indexOf(rc))}runs++;if(seq.every((v,i)=>!i||v>seq[i-1]))sorted++}state.learned=JSON.parse(bak);return runs>0&&sorted<runs/2})()"""))
+    check('situation_tab_todo_flow', ev(pg, """(()=>{const bak=JSON.stringify([state.todos,state.todoSeq,state.sitOpen,state.side]);state.todos=[];state.todoSeq=0;
+      const e0=addTodo('   '),e1=addTodo('물 마시기');toggleTodo(1);addTodo('가죽 모으기');const a=state.todos.length===2&&state.todos[0].done&&!e1&&!!e0;
+      for(let i=0;i<40;i++)addTodo('x'+i);const cap=state.todos.length===TODO_MAX&&!!addTodo('넘침');
+      const cl=clearDoneTodos(),rm=removeTodo(state.todos[0].id);
+      state.side='상황';renderSide();const sec=document.querySelectorAll('#sideView .sit-sec').length===2&&!!document.querySelector('#todoIn');
+      state.sitOpen.todo=false;renderSide();const folded=!document.querySelector('#todoIn');
+      [state.todos,state.todoSeq,state.sitOpen,state.side]=JSON.parse(bak);renderSide();return a&&cap&&cl===1&&rm&&sec&&folded})()"""))
+    check('todo_sanitized_on_load', ev(pg, """(()=>{const s=JSON.parse(JSON.stringify(state));s.todos=[{id:1,t:'<b>a</b>',done:true},{id:1,t:'b'},{t:5},null,...Array.from({length:60},(_,i)=>({id:i+10,t:'t'+i}))];s.side='주위 대원';hardenState(s);const h=s;return h.todos.length===TODO_MAX&&new Set(h.todos.map(t=>t.id)).size===h.todos.length&&h.side==='상황'&&!h.todos.some(t=>t.t.includes('<'))})()"""))
+    check('mastery_levels_and_bonus', ev(pg, """(()=>{const bak=JSON.stringify(state.mastery);state.mastery={};const a=masteryInfo('채집').lv===1&&masteryBonus('채집').gather===0;
+      state.mastery['채집']=MASTERY_TOTAL;const m=masteryInfo('채집'),b=masteryBonus('채집');state.mastery['대장']=MASTERY_NEED(1);const c=masteryLv('대장')===2&&masteryBonus('대장').craftTime>0;
+      const up=addMastery('요리',MASTERY_NEED(1));const d=up===2&&masteryBonus('요리').heal>0;state.mastery=JSON.parse(bak);return a&&m.lv===MASTERY_MAX&&m.need===0&&b.gather>.1&&c&&d&&addMastery('없는태그',5)===0})()"""))
+    check('mastery_sanitized_on_load', ev(pg, """(()=>{const s=JSON.parse(JSON.stringify(state));s.mastery={'채집':1e12,'요리':-5,'가짜':3,'낚시':'x'};hardenState(s);const h=s;return h.mastery['채집']===MASTERY_TOTAL&&!('요리' in h.mastery)&&!('가짜' in h.mastery)&&!('낚시' in h.mastery)})()"""))
+    check('mastery_gain_from_gather_craft_farm', ev(pg, """(()=>{const bak=JSON.stringify([state.mastery,state.pending,state.crafting,state.inventory]);state.mastery={};
+      const id=Object.keys(ACTIONS).find(k=>ACTIONS[k].kind==='gather'&&ACTIONS[k].method==='낚시');state.pending={id,result:{text:'x',items:[],exp:0,money:0,hp:0,sp:0,spCost:0,buff:null,mast:['낚시',5]}};const r=claimResult();const g=(state.mastery['낚시']|0)===5*MASTERY_GAIN.gather&&Array.isArray(r.mUp);
+      state.inventory['재료']=[];state.inventory['소모품']=[];const ci=RECIPES.findIndex(x=>x.out==='구운 고기');state.crafting={index:ci,out:'구운 고기',qty:3,startAt:0,endAt:0,great:false,ready:true,used:[]};const cr=collectCraft();const c=(state.mastery['요리']|0)===3*MASTERY_GAIN.craft;
+      [state.mastery,state.pending,state.crafting,state.inventory]=JSON.parse(bak);return g&&c&&!!cr})()"""))
+    check('mastery_hurts_nothing_when_fake_gather_tag', ev(pg, """(()=>{const bak=JSON.stringify([state.mastery,state.pending]);state.mastery={};state.pending={id:Object.keys(ACTIONS).find(k=>ACTIONS[k].kind==='gather'),result:{text:'x',items:[],exp:0,money:0,hp:0,sp:0,spCost:0,buff:null,mast:['요리',9999]}};claimResult();const ok=!state.mastery['요리'];[state.mastery,state.pending]=JSON.parse(bak);return ok})()"""))
+    check('mastery_status_page3_rows_and_height', ev(pg, """(()=>{view.statusPage=0;renderStatus();const h0=document.querySelector('#statusBody .stat-grid').getBoundingClientRect().height;view.statusPage=2;renderStatus();const rows=document.querySelectorAll('#statusBody .mast-row').length,l=document.querySelector('#statusBody .mast-list').getBoundingClientRect().height,sb=document.querySelector('#statusBody');const ok=rows===TAG_NAMES.length&&l<=h0+2&&sb.scrollHeight<=sb.clientHeight+1;view.statusPage=0;renderStatus();return ok})()"""))
+    check('mastery_status_pager_has_three', pg.locator('#statusPager button').count() == 3)
+    check('ring_engrave_flow', ev(pg, """(()=>{const bak=JSON.stringify([state.inventory,state.engraves]);addItem('우정반지',1);const a=engraveItem('우정반지','민지'),n1=shownName('우정반지');const bad=engraveItem('가죽 장갑','x');const h=Object.assign(JSON.parse(JSON.stringify(state)),{engraves:{'우정반지':'<i>가나다라마바사아자차</i>','가죽 장갑':'x'}});hardenState(h);
+      const clr=engraveItem('우정반지','');const ok=a===null&&n1==='민지의 우정반지'&&!!bad&&shownName('우정반지')==='우정반지'&&Object.keys(h.engraves).join()==='우정반지'&&h.engraves['우정반지'].length<=ENGRAVE_MAX&&!h.engraves['우정반지'].includes('<')&&clr===null&&dismantleYield('우정반지')===null;[state.inventory,state.engraves]=JSON.parse(bak);return ok})()"""))
+    check('header_season_weather_altitude', ev(pg, """(()=>{const k=d=>seasonOf(Date.UTC(...d)-9*3600000+12*3600000);const a=k([2026,9,24]),b=k([2026,0,15]),c=k([2026,3,1]),d=k([2026,6,1]);
+      const sky=altitude(),bak=state.dungeon;state.dungeon={zone:'제5구역',x:3,y:4,seen:{},done:[]};const g=altitude();state.dungeon=bak;
+      return a.name==='가을'&&a.day===54&&b.name==='겨울'&&c.name==='봄'&&d.name==='여름'&&sky.sky&&sky.m>8000&&!g.sky&&g.m<5000&&document.querySelector('#hdAlt').textContent.includes('m')&&['맑음','흐림','비','눈'].includes(document.querySelector('#hdWeather').textContent)})()"""))
+    check('hq_basic_quests_once_and_five_dailies', ev(pg, """(()=>{const bak=JSON.stringify([state.questDone,state.questTaken,state.questAt]);const once=QUESTS.filter(q=>q.once).map(q=>q.id);const q=QUESTS.find(x=>x.id==='explore');
+      state.questTaken[q.id]=true;state.questDone[q.id]=true;state.questAt[q.id]=1;const r=resetBoardQuests();const kept=!!state.questDone[q.id];
+      const d=QUESTS.find(x=>x.daily);state.questTaken[d.id]=true;state.questDone[d.id]=true;state.questAt[d.id]=1;resetBoardQuests();const dr=!state.questDone[d.id];
+      [state.questDone,state.questTaken,state.questAt]=JSON.parse(bak);return once.includes('explore')&&once.includes('hq_herb')&&!once.some(i=>QUESTS.find(x=>x.id===i).daily)&&kept&&dr&&dailyQuestIds().length===5&&new Set(dailyQuestIds()).size===5&&dailyQuestIds().every(i=>QUESTS.find(x=>x.id===i).daily)})()"""))
+    check('hq_once_quest_hidden_from_board_when_done', ev(pg, """(()=>{const bak=JSON.stringify([state.questDone,state.questTaken,state.location,state.dungeon]);state.dungeon=null;state.location='본부';state.questTaken.explore=true;state.questDone.explore=true;openQuestBoard();const t=document.querySelector('#modalBody').textContent;const ok=!t.includes('첫 미궁 탐색')&&(t.match(/일일 의뢰/g)||[]).length>=5;closeModal();[state.questDone,state.questTaken,state.location,state.dungeon]=JSON.parse(bak);return ok})()"""))
     # ---------- 전투 묘사=실제 결과 / 입구 거리 난이도 / 도박 / 표시 ----------
     ev(pg, "closeModal()")
     check('battle_log_matches_result', ev(pg, """(()=>{const bak=JSON.stringify(state);const id=Object.keys(ACTIONS).find(k=>ACTIONS[k].kind==='battle'),a=ACTIONS[id];let ok=true,wins=0;
@@ -1886,7 +1926,7 @@ with sync_playwright() as p:
     ev(pg, "codexView.sort=''"); pg.click('#closeModal')
     # --- 6. 임무 리셋 오전 4시(KST) ---
     check('quest_reset_at_4am_kst', ev(pg, "nextBoardReset(Date.UTC(2026,9,21,18,0))")== ev(pg, "Date.UTC(2026,9,21,19,0)") and ev(pg, "nextBoardReset(Date.UTC(2026,9,21,20,0))")== ev(pg, "Date.UTC(2026,9,22,19,0)") and ev(pg, "nextBoardReset(Date.UTC(2026,9,21,19,0))")== ev(pg, "Date.UTC(2026,9,22,19,0)"))
-    check('quest_reset_applies_after_4am', ev(pg, """(()=>{const q=QUESTS.find(x=>x.board);const t=Date.now();state.questTaken[q.id]=true;state.questDone[q.id]=true;state.questAt[q.id]=nextBoardReset(t)-86400000-1000;const left=boardResetLeft(q.id);const n=resetBoardQuests();return n>=1&&!state.questTaken[q.id]&&left===0})()"""))
+    check('quest_reset_applies_after_4am', ev(pg, """(()=>{const q=QUESTS.find(x=>x.board&&!x.once);const t=Date.now();state.questTaken[q.id]=true;state.questDone[q.id]=true;state.questAt[q.id]=nextBoardReset(t)-86400000-1000;const left=boardResetLeft(q.id);const n=resetBoardQuests();return n>=1&&!state.questTaken[q.id]&&left===0})()"""))
     check('quest_not_reset_before_4am', ev(pg, """(()=>{const q=QUESTS.find(x=>x.board);state.questTaken[q.id]=true;state.questDone[q.id]=true;state.questAt[q.id]=Date.now();const l=boardResetLeft(q.id);resetBoardQuests();const ok=l>0&&l<=86400000&&state.questTaken[q.id];delete state.questTaken[q.id];delete state.questDone[q.id];delete state.questAt[q.id];return ok})()"""))
     # --- 7. 뽑기권 / 뽑기 ---
     check('gacha_data_valid', ev(pg, "Math.abs(GACHA_RATES.reduce((a,b)=>a+b,0)-1)<1e-9&&GACHA_RATES[0]<=.02&&GACHA_RATES.every((r,i,a)=>i===0||r>a[i-1])&&GACHA_SETS.length===3&&GACHA_SETS.every(g=>g.prizes.length===5&&g.prizes.every(p=>p.money||ITEMS[p.item[0]]))"))
@@ -2079,10 +2119,10 @@ with sync_playwright() as p:
     check('buff_count_badge_hidden', ev(pg, "(()=>{const c=document.querySelector('.buff-icon .buff-count');return !c||getComputedStyle(c).display==='none'})()") is True)
     ev(pg, "(()=>{state.buffs=[];renderBuffs(true)})()")
     # 일일 의뢰
-    check('daily_quests_defined', ev(pg, "QUESTS.filter(q=>q.daily).length") == 6 and ev(pg, "new Set([...Array(40).keys()].map(i=>dailyQuestId(Date.now()+i*86400000))).size") >= 3)
+    check('daily_quests_defined', ev(pg, "QUESTS.filter(q=>q.daily).length") == 12 and ev(pg, "new Set([...Array(40).keys()].map(i=>dailyQuestId(Date.now()+i*86400000))).size") >= 3)
     check('daily_same_within_day', ev(pg, "(()=>{const t=Date.UTC(2026,9,24,3,0,0),b=Date.UTC(2026,9,23,19,0,0);return dailyQuestId(t)===dailyQuestId(t+3600000*10)&&todayIndex(b+3600000)!==todayIndex(b-3600000)&&todayIndex(b+3600000)===todayIndex(b+3600000*20)})()") is True)
     ev(pg, "(()=>{state.location='본부';state.questTaken={};state.questDone={};openQuestBoard()})()")
-    check('board_lists_exactly_one_daily', ev(pg, "QUESTS.filter(q=>q.daily&&document.querySelector('#modalBody').textContent.includes(q.title)).length") == 1, text(pg, '#modalBody')[:100])
+    check('board_lists_exactly_five_dailies', ev(pg, "QUESTS.filter(q=>q.daily&&document.querySelector('#modalBody').textContent.includes(q.title)).length") == 5, text(pg, '#modalBody')[:100])
     ev(pg, "closeModal()")
     check('daily_quest_completable', ev(pg, """(()=>{const q=QUESTS.find(x=>x.id===dailyQuestId());state.questTaken={};state.questDone={};state.location='본부';const e=takeQuest(q.id);if(e)return e;needParts(q).forEach(n=>{if(n.type==='item')addItem(n.name,n.qty);if(n.type==='kill')state.qprog[progKey(q,0)]=n.qty});const r=completeQuest(q.id);return !!r&&!!state.questDone[q.id]})()""") is True)
     ev(pg, "(()=>{state.questTaken={};state.questDone={};state.qprog={}})()")

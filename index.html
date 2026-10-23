@@ -21,9 +21,9 @@
       <div class="brand"><small>공중도시</small><em>DEEP LAYER</em></div>
       <div class="world-meta">
         <span><span class="material-symbols-rounded" aria-hidden="true">schedule</span><b id="clock"></b></span>
-        <span><span class="material-symbols-rounded" aria-hidden="true">partly_cloudy_day</span>맑음</span>
-        <span><span class="material-symbols-rounded" aria-hidden="true">calendar_month</span>가을 · 12일차</span>
-        <span><span class="material-symbols-rounded" aria-hidden="true">my_location</span>고도 8,420m</span>
+        <span title="오늘의 날씨"><span class="material-symbols-rounded" id="hdWeatherIc" aria-hidden="true">partly_cloudy_day</span><span id="hdWeather">맑음</span></span>
+        <span title="계절"><span class="material-symbols-rounded" id="hdSeasonIc" aria-hidden="true">calendar_month</span><span id="hdSeason">가을 · 12일차</span></span>
+        <span title="현재 고도"><span class="material-symbols-rounded" aria-hidden="true">my_location</span><span id="hdAlt">고도 8,420m</span></span>
       </div>
     </div>
     <nav class="top-actions">
@@ -66,7 +66,7 @@
       </section>
 
       <section class="panel status-panel" data-panel="상태">
-        <div class="panel-title"><span class="material-symbols-rounded" aria-hidden="true">bar_chart</span> 스테이터스 <span class="spacer"></span><span class="status-pager" id="statusPager"><button data-act="status-page" data-p="0" class="on" title="능력치">1</button><button data-act="status-page" data-p="1" title="전투 능력">2</button></span><span class="point-badge hidden" id="statPoints"></span><span class="stat-save hidden" id="statSave"><button data-act="stat-commit" class="primary">저장</button><button data-act="stat-reset">취소</button></span></div>
+        <div class="panel-title"><span class="material-symbols-rounded" aria-hidden="true">bar_chart</span> 스테이터스 <span class="spacer"></span><span class="status-pager" id="statusPager"><button data-act="status-page" data-p="0" class="on" title="능력치">1</button><button data-act="status-page" data-p="1" title="전투 능력">2</button><button data-act="status-page" data-p="2" title="숙련">3</button></span><span class="point-badge hidden" id="statPoints"></span><span class="stat-save hidden" id="statSave"><button data-act="stat-commit" class="primary">저장</button><button data-act="stat-reset">취소</button></span></div>
         <div id="statusBody"></div>
       </section>
 
@@ -151,7 +151,7 @@
           <button class="active" data-side="임무">임무</button>
           <button data-side="서브잡" id="sideJobTab" class="hidden">서브잡</button>
           <button data-side="펫" id="sidePetTab" class="hidden">펫</button>
-          <button data-side="주위 대원">주위 대원</button>
+          <button data-side="상황">상황</button>
         </div>
         <div class="scroll right-view" id="sideView"></div>
       </section>

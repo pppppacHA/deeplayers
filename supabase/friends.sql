@@ -489,6 +489,7 @@ language sql security definer set search_path = public as $$
       'keywords', s.data->'character'->>'keywords',
       'ability', s.data->'character'->>'ability',
       'abilityDesc', s.data->'character'->>'abilityDesc',
+      'equipment', coalesce(s.data->'equipment', '{}'::jsonb),
       'allowFriend', coalesce(s.data->'character'->>'allowFriend', 'true'),
       'online', (s.updated_at > now() - interval '30 minutes'),
       'guild', (select g.name from public.guild_members m join public.guilds g on g.id = m.guild_id where m.user_id = s.user_id limit 1))

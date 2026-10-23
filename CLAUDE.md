@@ -191,3 +191,14 @@ STUB_ICONS=1 python3 tests/smoke.py   # 아이콘 폰트를 못 받는 환경(�
 ## 2026-10-24 분해 · 펫 교감
 - 본부 '분해'(kind `dismantle`, `openDismantle`): 소지품(착용 제외)의 장비·가방을 `dismantleItem`으로 분해. 재료=레시피 재료의 절반(내림, 최소 1종), 레시피 없는 장비(승급 가방 등)는 크기별 기본 재료, CR=판매가의 1/4(최소 2). 가방이 모자라면 아무것도 바뀌지 않고 거절, 같은 이름의 마지막 1개를 분해하면 그 이름의 강화·세공·이름도 삭제. `hidden` 아이템은 불가.
 - 펫 탭: 도감은 눌러야 펼쳐짐(`view.petDexOpen`), 함께 다니는 펫이 맨 위(`petOrder`), 동행 펫은 탐험 보내기 버튼 없음, 돌보기(간식·쓰다듬기·기분 묻기)는 개인실 또는 동행 펫이면 어디서든(`petCareErr`). 쓰다듬기=친밀도 +1, 펫마다 10분(`PET_STROKE_MS`, 저장 `petAt`). 기분 묻기/쓰다듬기는 울음소리+(기분) 한 줄(`petCry`, `petMood`).
+
+## 2026-10-24 (2) 대량 추가
+- 타인 프로필 장비: `otherEquipHtml(eq)`(칸 UI, 이름은 ITEMS·슬롯 검증), 서버 `get_profile`에 `equipment` 추가(friends.sql 재실행 필요). `itemLines(name, plain)`은 내 강화·세공 없이 설명.
+- 펫 탭 '돌보기'는 `petCareHtml(true)`(동행 펫 카드+펫 목록+탐험 남은 시간). 쓰다듬기 문구 `PET_PAT`(성격별), 기분 묻기 `PET_FEEL` — '(…한 기분을 느끼는 것 같다)'.
+- 고기·가죽: 짐승마다 `<이름> 고기/가죽`(data.js `BEAST_*`, 드롭 확률·가격은 예전과 같음), 분류 `MAT_GROUPS['고기'|'가죽'|'두꺼운 가죽']`, 레시피는 분류 이름을 쓴다. 옛 '짐승 고기/가죽'도 같은 분류.
+- 오른쪽 탭 '상황'(`state.side` 옛 '주위 대원'은 불러올 때 변환): 접히는 두 칸 `state.sitOpen`, 투두 `state.todos`(`TODO_MAX`=30, `TODO_LEN`=40).
+- 숙련 `state.mastery[태그]`(총 숙련도, `MASTERY_*`, `masteryInfo/addMastery/masteryBonus/masteryText`). 채집류는 `claimResult`(r.mast), 제작은 `collectCraft`, 농사는 `harvestPlot`. 보너스: 수확+1 확률/제작 시간/성장·수확/회복량. 상태 3페이지 `masteryPageHtml`.
+- 반지 이름 `state.engraves`(아이템 `engrave:true`, `ENGRAVE_MAX`=8, `shownName`). 소지 효과 아이템(`hold`)은 분해 불가.
+- 헤더: `seasonOf`(KST 날짜 기준 계절·일차), `altitude`(상공 ≈8,4xx m / 지상 `ZONE_ALT`+칸별 편차), 날씨는 `todayWeather`. 표시만 바뀌고 게임 효과는 날씨만 기존대로.
+- 임무: 본부 비일일 임무는 `once`(완수하면 게시판에서 사라지고 4시 리셋 안 됨), 일일 의뢰 12종 중 `dailyQuestIds()` 5개/일, `BOARD_MAX_ACTIVE`=7. 구역 캠프 임무는 예전처럼 반복.
+- 단련 레시피는 처음부터 `pick(pool)` 무작위(순서 아님) — 테스트 `train_picks_are_random_not_in_order`.

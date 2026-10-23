@@ -1073,3 +1073,22 @@ textarea#mailBody{width:100%;min-height:80px;resize:vertical}
 .pet-talk{display:block;color:var(--accent-2);font-weight:600}
 .dex-toggle{display:flex;align-items:center;gap:2px;width:100%;background:none;border:0;padding:2px 0;cursor:pointer;text-align:left}
 .dex-toggle .material-symbols-rounded{font-size:16px}
+
+.sit-sec{border:1px solid var(--line);border-radius:9px;margin-bottom:7px;background:var(--panel-2);overflow:hidden}
+.sit-head{display:flex;align-items:center;gap:4px;width:100%;padding:6px 8px;background:none;border:0;cursor:pointer;text-align:left;color:var(--text)}
+.sit-head small{margin-left:auto;color:var(--muted)}
+.sit-body{padding:2px 8px 8px}
+.todo-add{display:flex;gap:5px;margin:4px 0}.todo-add input{flex:1;min-width:0}
+.todo-row{display:flex;align-items:center;gap:4px;padding:2px 0;border-bottom:1px solid var(--line)}
+.todo-row .todo-t{flex:1;min-width:0;overflow-wrap:anywhere;font-size:calc(12.5px*var(--fs))}
+.todo-row.done .todo-t{text-decoration:line-through;color:var(--muted)}
+.todo-check{background:none;border:0;padding:0 2px;cursor:pointer;color:var(--accent-2)}
+.todo-foot{margin-top:6px;text-align:right}
+
+.mast-list{display:grid;gap:1px;align-content:space-between}
+.mast-row{display:grid;grid-template-columns:14px 50px 34px minmax(0,1fr) 54px;align-items:center;gap:4px;font-size:calc(10px*var(--fs));line-height:1.05;color:var(--text-2);white-space:nowrap;padding:0 2px}
+.mast-row .material-symbols-rounded{font-size:13px;color:var(--accent-2)}
+.mast-row b{color:var(--text);font-weight:600;overflow:hidden;text-overflow:ellipsis}
+.mast-row em{font-style:normal;color:var(--accent-2);font-variant-numeric:tabular-nums}
+.mast-row .bar{height:5px}
+.mast-row .val{text-align:right;color:var(--muted);font-variant-numeric:tabular-nums}
