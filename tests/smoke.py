@@ -523,7 +523,7 @@ with sync_playwright() as p:
     pg.click('#choices button:has-text("종합 상가")'); pg.wait_for_timeout(80)
     check('mall_tabs_5', '종합 상가' in text(pg, '#modalTitle') and ev(pg, "[...document.querySelectorAll('.shop-tabs button')].map(b=>b.textContent)")== ['무기', '장비', '재료', '농사', 'RP템', '판매'] and text(pg, '.shop-tabs button.active') == '무기')
     check('shop_equipment_shows_effect', pg.locator('.shop-row').count() == ev(pg, "shopSections('종합 상가')['무기'].length") and pg.locator('.shop-row').count() >= 3 and pg.locator('.shop-row .item-info .it-l1').count() == pg.locator('.shop-row').count() and ev(pg, "[...document.querySelectorAll('.shop-row .it-l1')].every(e=>e.textContent.trim().length>0)"))
-    check('mall_weapon_gear_split', ev(pg, "(()=>{const s=shopSections('종합 상가');return s['무기'].every(([n])=>ITEMS[n].slot==='무기')&&s['장비'].every(([n])=>ITEMS[n].tab==='장비'&&ITEMS[n].slot!=='무기')&&s['무기'].length+s['장비'].length===19&&s['무기'].some(([n])=>n==='아이스크림 소드')})()") is True)
+    check('mall_weapon_gear_split', ev(pg, "(()=>{const s=shopSections('종합 상가');return s['무기'].every(([n])=>ITEMS[n].slot==='무기')&&s['장비'].every(([n])=>ITEMS[n].tab==='장비'&&ITEMS[n].slot!=='무기')&&s['무기'].length+s['장비'].length===22&&s['무기'].some(([n])=>n==='아이스크림 소드')})()") is True)
     pg.click('.shop-tabs button:has-text("장비")'); pg.wait_for_timeout(50)
     check('mall_gear_rows_show_wear_slot', pg.locator('.shop-row .slot-tag').count() == pg.locator('.shop-row').count() and pg.locator('.slot-hint').count() == 1)
     check('mall_gear_tab_rows', pg.locator('.shop-row').count() == ev(pg, "shopSections('종합 상가')['장비'].length") and text(pg, '.shop-tabs button.active') == '장비')
@@ -578,7 +578,7 @@ with sync_playwright() as p:
     check('room_choices_6', pg.locator('#choices button').count() == 6)
 
     # ---------- 휴식(개인실, 30분): 방치형 + 버프 / 잠자기(6시간): 완전 회복 ----------
-    check('rest_30min_sleep_6h_defs', ev(pg, "ACTIONS['휴식'].sec")== 1800 and ev(pg, "ACTIONS['잠자기'].sec")== 21600 and ev(pg, "ACTIONS['잠자기'].full")== True and ev(pg, "LOCATIONS['개인실'].groups[0].items.includes('잠자기')"))
+    check('rest_30min_sleep_6h_defs', ev(pg, "ACTIONS['휴식'].sec")== 1800 and ev(pg, "ACTIONS['잠자기'].sec")== 21600 and ev(pg, "ACTIONS['잠자기'].full")== True and ev(pg, "!LOCATIONS['개인실'].groups.some(g=>g.items.includes('잠자기'))&&LOCATIONS['개인실'].groups.some(g=>g.items.includes('휴식'))"))
     ev(pg, "state.vitals.hp=50;renderBars()")
     pg.click('#choices button:has-text("휴식")'); pg.click('[data-act="action-run"]'); pg.wait_for_timeout(100)
     check('rest_running', pg.locator('#runBar').count() == 1 and ev(pg, "!!state.active"))
@@ -598,7 +598,8 @@ with sync_playwright() as p:
     ff(310)
     check('buff_expires', pg.locator('.buff-icon:not(.weather)').count() == 0 and pg.locator('.fx-list').count() == 0)
     ev(pg, "state.vitals.hp=20;state.vitals.sp=10;renderBars()")
-    pg.click('#choices button:has-text("잠자기")'); pg.wait_for_timeout(60)
+    pg.click('#choices button:has-text("휴식")'); pg.click('[data-act="rest-mode"][data-id="잠자기"]'); pg.wait_for_timeout(60)
+    check('rest_sleep_merged_choice', pg.locator('#choices button:has-text("잠자기")').count() == 0)
     check('sleep_confirm_6h', '6시간' in text(pg, '.action-confirm-inline') and '완전 회복' in text(pg, '.action-confirm-inline'))
     pg.click('[data-act="action-run"]'); pg.wait_for_timeout(100); ff(21500); check('sleep_not_done_before_6h', pg.locator('#runBar').count() == 1); ff(110)
     pg.click('[data-act="result-close"] >> nth=0'); pg.wait_for_timeout(100)
@@ -1116,7 +1117,7 @@ with sync_playwright() as p:
     check('csp_blocks_inline_script_and_plugins', "script-src 'self'" in csp and "object-src 'none'" in csp and "base-uri 'none'" in csp and "form-action 'none'" in csp and "default-src 'none'" in csp, csp)
     check('csp_inline_script_blocked', ev(pg, "(()=>{const s=document.createElement('script');s.textContent='window.__csp=1';document.body.appendChild(s);return typeof window.__csp})()")== 'undefined')
     check('csp_no_external_script_hosts', 'http' not in csp.split('script-src')[1].split(';')[0])
-    check('no_eval_or_inline_handlers_in_source', all(w not in open(str(ROOT / 'js' / f), encoding='utf-8').read() for f in ['data.js', 'core.js', 'ui.js'] for w in ['eval(', 'new Function(', 'document.write(', ' onclick=', 'javascript:']) and 'onclick=' not in open(str(ROOT / 'index.html'), encoding='utf-8').read())
+    check('no_eval_or_inline_handlers_in_source', all(w not in open(str(ROOT / 'js' / f), encoding='utf-8').read() for f in ['data.js', 'core.js', 'ui.js', 'room.js'] for w in ['eval(', 'new Function(', 'document.write(', ' onclick=', 'javascript:']) and 'onclick=' not in open(str(ROOT / 'index.html'), encoding='utf-8').read())
     err_msgs = [ev(pg, "createCharacter({name:'a',age:20,ability:'b',keywords:'',stats:{str:100,agi:0,int:0,wil:0,sen:0,luk:0}})"),
                 ev(pg, "createCharacter({name:'a',age:20,ability:'b',keywords:'',stats:{str:12,agi:12,int:12,wil:12,sen:12,luk:12}})"),
                 ev(pg, "createCharacter({name:'a',age:9,ability:'b',keywords:'',stats:{str:12,agi:0,int:0,wil:0,sen:0,luk:0}})"),

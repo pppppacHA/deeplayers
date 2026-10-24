@@ -89,6 +89,9 @@ def api(route):
             for x in M['rows']:
                 if x['id'] == body.get('p_id'): x['ack'] = True
             return route.fulfill(headers=h, body='null')
+    if '/rpc/set_room_bg' in u: server['roombg'] = body.get('p_img'); return route.fulfill(headers=h, body='null')
+    if '/rpc/get_my_room_bg' in u: return route.fulfill(headers=h, body=json.dumps(server.get('roombg') or None))
+    if '/rpc/get_room' in u: return route.fulfill(headers=h, body=json.dumps({'name': body.get('p_name'), 'room': {'wall': 'w_sky', 'items': [{'u': 1, 'f': 'bed1', 'x': 100, 'y': 300, 'z': 1}, {'u': 2, 'f': 'evil<b>', 'x': 1, 'y': 1}]}, 'bg': 'javascript:x'}))
     if '/rpc/nearby_players' in u: server.setdefault('nbcalls', []).append(body.get('p_loc')); return route.fulfill(headers=h, body=json.dumps(server.get('nearby', [])))
     if '/rpc/party_info' in u: return route.fulfill(headers=h, body=json.dumps(server['party']))
     if '/rpc/party_invite' in u: server['pcalls'].append(['invite', body]); return route.fulfill(headers=h, body=json.dumps({'ok': True}))
@@ -190,6 +193,14 @@ with sync_playwright() as p:
     server['friends'] = [{'uid': UID_H, 'name': '하늘'}]
     pg.evaluate("friendPoll()"); pg.wait_for_timeout(500)
     check('friend_uid_map_loaded', pg.evaluate("view.friendUid['하늘']") == UID_H)
+    check('friend_online_flag_false_by_default', pg.evaluate("view.friendOnline['하늘']") is False)
+    server['friends'] = [{'uid': UID_H, 'name': '하늘', 'online': True}]
+    pg.evaluate("friendPoll()"); pg.wait_for_timeout(500); pg.evaluate("openFriends(true)"); pg.wait_for_timeout(200)
+    check('friend_window_shows_real_online', '온라인' in pg.inner_text('#modalBody') and '오프라인' not in pg.inner_text('#modalBody').split('하늘')[1][:30], pg.inner_text('#modalBody')[:80])
+    server['friends'] = [{'uid': UID_H, 'name': '하늘', 'online': False}]
+    pg.evaluate("friendPoll()"); pg.wait_for_timeout(500); pg.evaluate("openFriends(true)"); pg.wait_for_timeout(200)
+    check('friend_window_shows_real_offline', '오프라인' in pg.inner_text('#modalBody'))
+    pg.evaluate("closeModal()")
     server['friends'] = [{'uid': UID_H, 'name': '하늘이'}]
     pg.evaluate("friendPoll()"); pg.wait_for_timeout(500)
     check('renamed_friend_replaces_old_name', pg.evaluate("state.friends.includes('하늘이')") and not pg.evaluate("state.friends.includes('하늘')") and pg.evaluate("state.friends.filter(n=>n.startsWith('하늘')).length") == 1, pg.evaluate("state.friends"))
@@ -388,6 +399,12 @@ with sync_playwright() as p:
     pg.evaluate("viewUser('아무개')"); pg.wait_for_timeout(300)
     check('profile_no_trade_button_for_stranger', pg.locator('[data-act="ftrade-open"][data-name="아무개"]').count() == 0)
     pg.evaluate("closeModal()")
+    pg.evaluate("defFurn('bed1','침대','침대','',{src:'data:image/gif;base64,R0lGODlhAQABAAAAACw=',w:10,h:10})")
+    pg.evaluate("peekRoom('미나')"); pg.wait_for_timeout(400)
+    check('room_peek_sanitized', '미나의 ROOM' in pg.inner_text('#modalTitle') and pg.locator('#roomItems .rm-item').count() == 1 and pg.evaluate("view.room.bg") == '' and pg.evaluate("view.room.data.wall") == 'w_sky')
+    pg.evaluate("closeModal()")
+    pg.evaluate("Cloud.setRoomBg('data:image/jpeg;base64,AAAA')"); pg.wait_for_timeout(200)
+    check('room_bg_rpc_roundtrip', server.get('roombg') == 'data:image/jpeg;base64,AAAA')
     check('loc_key_private_room_empty', pg.evaluate("(state.location='개인실',locKey())") == '' and pg.evaluate("(state.location='본부',locKey())") == '본부')
     # ---------- 대원 간 거래 (상점) ----------
     pg.evaluate("closeModal();state.market={sell:[],buy:[]};state.mseen=[];state.mail=[];state.money=1000;removeItem('목재',countItem('목재'));addItem('목재',10)")

@@ -49,6 +49,21 @@ function sanitize(s) {
 const cleanText = (v, max) => String(v ?? '').replace(/[\u0000-\u001f\u007f<>]/g, '').trim().slice(0, max);
 const intIn = (v, lo, hi, d) => Number.isFinite(+v) ? clamp(Math.floor(+v), lo, hi) : d;
 const CHAT_TABS = ['월드', '길드', '파티', '알림']; // 알림 = 공지만 받는 읽기 전용
+/* ROOM 저장 검증: 알 수 없는 가구·이상한 좌표/색/개수를 걸러낸다 (서버에서 받은 남의 방도 같은 함수로 거른다) */
+function cleanRoom(r) {
+  r = r && typeof r === 'object' ? r : {};
+  const out = defaultRoom();
+  Object.keys(ROOM_SKIN_KEY).forEach(cat => { const key = ROOM_SKIN_KEY[cat], f = furnDef(r[key]); if (f && f.cat === cat) out[key] = f.id; });
+  const seen = new Set();
+  (Array.isArray(r.items) ? r.items : []).forEach(it => {
+    const f = it && furnDef(it.f); if (!f || f.skin || out.items.length >= ROOM_MAX) return;
+    let u = intIn(it.u, 1, 9e6, 0); if (!u || seen.has(u)) { u = 1; while (seen.has(u)) u++; } seen.add(u);
+    out.items.push({ u, f: f.id, x: intIn(it.x, -300, ROOM_W, 0), y: intIn(it.y, -300, ROOM_H, 0), flip: it.flip ? 1 : 0, c: typeof it.c === 'string' && /^#[0-9a-fA-F]{6}$/.test(it.c) ? it.c.toLowerCase() : '', z: intIn(it.z, 0, 1e6, 0) });
+  });
+  out.items.sort((a, b) => a.z - b.z).forEach((it, i) => { it.z = i + 1; }); // z 를 1..n 으로 다시 매긴다 (상대 순서 유지)
+  out.zc = out.items.length;
+  return out;
+}
 function hardenState(s) {
   const c = s.character;
   c.name = cleanText(c.name, 12); c.title = TITLES.includes(c.title) ? c.title : TITLES[0];
@@ -60,6 +75,7 @@ function hardenState(s) {
   c.allowFriend = c.allowFriend !== false; c.allowGuild = c.allowGuild !== false;
   s.unlockSeen = Object.fromEntries(Object.entries(s.unlockSeen && typeof s.unlockSeen === 'object' ? s.unlockSeen : {}).filter(([k, v]) => typeof k === 'string' && k.length < 30 && v === true));
   s.profileEditAt = intIn(s.profileEditAt, 0, 4e12, 0);
+  s.room = cleanRoom(s.room);
   { const m = s.market && typeof s.market === 'object' ? s.market : {};
     s.market = {
       sell: (Array.isArray(m.sell) ? m.sell : []).filter(r => r && ITEMS[r.item] && typeof r.key === 'string' && /^[\w-]{6,40}$/.test(r.key)).slice(0, MARKET_SLOTS).map(r => { const qty = intIn(r.qty, 1, 99, 1); return { key: r.key, id: intIn(r.id, 0, 9e15, 0), item: r.item, qty, price: intIn(r.price, 1, MARKET_TOTAL_MAX, 1), got: intIn(r.got, 0, qty, 0) }; }),

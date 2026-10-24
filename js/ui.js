@@ -22,14 +22,14 @@ function addLog(text) {
   renderLogs(); save();
 }
 function modal(title, body, actions = [], small = false) {
-  hideTip();
+  hideTip(); { const rf = $('#roomFloat'); if (rf) rf.remove(); }
   $('#modalTitle').textContent = title;
   $('#modalBody').innerHTML = body;
   $('#modalActions').innerHTML = actions.join('');
-  $('#modal').classList.toggle('small', small); $('#modal').classList.remove('terminal');
+  $('#modal').classList.toggle('small', small); $('#modal').classList.remove('terminal', 'room', 'solo');
   $('#overlay').classList.add('open');
 }
-const closeModal = () => { if (view.mockTimer) { clearInterval(view.mockTimer); view.mockTimer = 0; } $('#overlay').classList.remove('open'); applyTheme(); }; // 저장하지 않은 테마 미리보기는 되돌린다
+const closeModal = () => { view.room = null; { const rf = $('#roomFloat'); if (rf) rf.remove(); } if (view.mockTimer) { clearInterval(view.mockTimer); view.mockTimer = 0; } $('#overlay').classList.remove('open'); applyTheme(); }; // 저장하지 않은 테마 미리보기는 되돌린다
 const btnClose = '<button data-act="close">닫기</button>';
 
 /* ---------- 테마 ---------- */
@@ -459,6 +459,7 @@ function renderAction() {
     if (pv.err) { resetPhase(); renderAction(); return; }
     html += `<div class="action-confirm-inline"><div class="cf-head"><strong>${esc(confirmTitle(a))}</strong>${todo ? '' : `<span class="cf-time">${icon('schedule')} ${esc(pv.time)}</span>`}</div><p>${esc(pv.desc || a.action)}</p>` +
       (a.kind === 'tame' ? baitPickHtml() : '') +
+      (view.id === '휴식' || view.id === '잠자기' ? `<div class="chips mult">${[['휴식', '30분 휴식'], ['잠자기', '6시간 잠자기']].map(([id, l]) => `<button class="chip ${id === view.id ? 'active' : ''}" data-act="rest-mode" data-id="${id}">${l}</button>`).join('')}</div>` : '') +
       (multi ? `<div class="chips mult">${MULTI_OPTIONS.map((o, i) => `<button class="chip ${i === view.mult ? 'active' : ''}" data-act="mult" data-i="${i}">${o.label}</button>`).join('')}</div>${MULTI_OPTIONS[view.mult].custom ? `<div class="row-gap custom-time"><label class="tiny" for="customMin">직접 입력</label><input id="customMin" type="number" min="${CUSTOM_MIN_MIN}" max="${CUSTOM_MIN_MAX}" step="1" value="${customMultiMin}"><span class="tiny">분 (${CUSTOM_MIN_MIN}분~${CUSTOM_MIN_MAX / 60}시간)</span></div>` : ''}` : '') +
       (todo ? '' : `${pv.odds ? `<small class="odds">확률 · ${esc(pv.odds)}</small>` : ''}<small class="gain"><b>보상</b> ${esc(pv.gain)}</small><small class="risk"><b>위험</b> ${esc(pv.cost)}</small>${pv.note ? `<small class="repeat-note">${esc(pv.note)}</small>` : ''}`) +
       `<div class="confirm-actions"><button data-act="action-cancel">${todo ? '닫기' : '취소'}</button>${todo ? '' : `<button class="primary" data-act="action-run">${esc(runLabel(a))}</button>`}</div></div>`;
@@ -1043,9 +1044,9 @@ async function friendPoll() {
       _inboxN = view.inbox.length;
     } catch (e) { /* 서버 준비 전 */ }
     try { // 서버 친구 목록(메일·교환 주소)
-      const fl = await Cloud.listFriends(); view.friendUid = {};
+      const fl = await Cloud.listFriends(); view.friendUid = {}; view.friendOnline = {};
       const names = [];
-      for (const f of fl) { const n = cleanText(f.name, 12); if (n && /^[0-9a-f-]{36}$/i.test(f.uid)) { view.friendUid[n] = f.uid; if (!names.includes(n)) names.push(n); } }
+      for (const f of fl) { const n = cleanText(f.name, 12); if (n && /^[0-9a-f-]{36}$/i.test(f.uid)) { view.friendUid[n] = f.uid; view.friendOnline[n] = f.online === true; if (!names.includes(n)) names.push(n); } }
       // 서버 친구 목록이 기준이다: 친구가 닉네임을 바꿔도 옛 이름이 따로 남지 않는다
       if (names.join('\n') !== state.friends.join('\n')) { state.friends = names.slice(0, FRIEND_MAX); save(); changed = true; }
     } catch (e) { /* 서버 준비 전 */ }
@@ -1095,7 +1096,7 @@ function openFriends(noPoll) {
   Object.keys(view.avatars).forEach(k => { if (!view.avatars[k]) delete view.avatars[k]; }); // 못 찾았던 이름은 창을 열 때 다시 물어본다
   renderMailBadge();
   const on = Cloud.enabled && Cloud.user(), master = !!(state.guild && state.guild.master) && guildOnline();
-  const list = state.friends.map(n => { const uid = (view.friendUid || {})[n]; return `<div class="nearby-row"><div class="round-avatar" data-user="${esc(n)}">${avatarOf(n)}</div><div class="grow"><strong data-user="${esc(n)}">${esc(n)}</strong><small>${esc((samplePlayer(n) || ['', '온라인'])[1])}</small></div><div class="row-btns">` +
+  const list = state.friends.map(n => { const uid = (view.friendUid || {})[n]; return `<div class="nearby-row"><div class="round-avatar" data-user="${esc(n)}">${avatarOf(n)}</div><div class="grow"><strong data-user="${esc(n)}">${esc(n)}</strong><small class="${on && (view.friendOnline || {})[n] ? 'st-on' : on ? 'st-off' : ''}">${esc(on ? ((view.friendOnline || {})[n] === undefined ? '확인 중…' : view.friendOnline[n] ? '온라인' : '오프라인') : (samplePlayer(n) || ['', '온라인'])[1])}</small></div><div class="row-btns">` +
     `<button data-act="friend-mail" data-name="${esc(n)}">메일</button>` +
     (on ? `<button data-act="party-invite" data-uid="${esc(uid || '')}" data-name="${esc(n)}" ${uid && (!PARTY.id || partyLeader()) ? '' : 'disabled'} title="${!PARTY.id || partyLeader() ? '파티에 초대합니다 (2~4명)' : '파티장만 초대할 수 있어요'}">파티 초대</button>` : '') +
     `<button data-act="friend-guild-invite" data-name="${esc(n)}" ${master && uid ? '' : 'disabled'} title="${master ? '길드에 초대합니다' : '길드장만 초대할 수 있어요'}">길드 초대</button>` +
@@ -1305,7 +1306,7 @@ const A = {
       toast(`캠프 관리인이 물건을 받아 들고 한참을 들여다보더니, 뽑기권 ${r.tickets}장을 건넸습니다.`); addLog(`분실물을 전달하고 뽑기권 ${r.tickets}장을 받았습니다.`);
       if (r.gift) toast(`그리고 감사의 표시로 「${r.gift}」을(를) 받았습니다.`); awardTitles(); renderProfile(); renderInventory(); renderAction(); sfx('levelup');
     }
-    else if (a.kind === 'enhance') openEnhance(); else if (a.kind === 'dismantle') openDismantle(); else if (a.kind === 'market') openMarket('사기'); else if (a.kind === 'storage') { view.storSel = null; openStorage(); } else if (a.kind === 'promo') openPromo(); else if (a.kind === 'farm') openFarm(); else if (a.kind === 'pet') openPets(); else if (a.kind === 'subjob') { view.quitAsk = false; openJob(); }
+    else if (a.kind === 'enhance') openEnhance(); else if (a.kind === 'dismantle') openDismantle(); else if (a.kind === 'market') openMarket('사기'); else if (a.kind === 'room') openRoom(); else if (a.kind === 'storage') { view.storSel = null; openStorage(); } else if (a.kind === 'promo') openPromo(); else if (a.kind === 'farm') openFarm(); else if (a.kind === 'pet') openPets(); else if (a.kind === 'subjob') { view.quitAsk = false; openJob(); }
     else if (a.kind === 'travel') { // 시간이 걸리지 않는 이동은 묻지 않고 바로 간다. 이동장치에서 지상으로 내려가는 1분짜리만 묻는다
       if (LOCATIONS[a.to].danger && state.location === '이동장치') askAction(el.dataset.choice); else doTravel(a.to);
     }
@@ -1613,6 +1614,7 @@ const A = {
   },
   mult: el => { view.mult = +el.dataset.i; renderAction(); const e = $('#customMin'); if (e) { e.focus(); e.select(); } },
   'action-cancel': () => { resetPhase(); renderAction(); },
+  'rest-mode': el => { if (['휴식', '잠자기'].includes(el.dataset.id)) { view.id = el.dataset.id; renderAction(); } },
   'action-run': () => {
     const a = ACTIONS[view.id];
     if (a.kind === 'travel') {
@@ -2002,10 +2004,10 @@ const A = {
   'codex-sub': el => { codexView.sub = el.dataset.sub || null; $('#codexRoot').innerHTML = codexHtml(); },
   'logout-ok': () => { closeModal(); if (Cloud.enabled && Cloud.user()) { if (_cloudTimer) { clearTimeout(_cloudTimer); _cloudTimer = 0; cloudAutoPush().finally(() => A['cloud-logout']()); } else A['cloud-logout'](); } else toast('서버 인증 기능은 아직 연결되지 않았습니다.'); },
 };
-function otherEquipHtml(eq) { // 다른 대원의 착용 장비 (서버가 준 {칸: 이름}을 걸러서 내 장비 탭과 같은 칸 UI로)
+function otherEquipHtml(eq, who) { // 다른 대원의 착용 장비 (서버가 준 {칸: 이름}을 걸러서 내 장비 탭과 같은 칸 UI로)
   const safe = {}; if (eq && typeof eq === 'object') EQUIP_SMALL.concat(EQUIP_BIG).forEach(sl => { const n = eq[sl]; if (typeof n === 'string' && ITEMS[n] && ITEMS[n].tab === '장비' && ITEMS[n].slot === sl && !ITEMS[n].hidden) safe[sl] = n; });
   const cell = (sl, big) => { const n = safe[sl], it = n && ITEMS[n]; return `<div class="slot ${big ? 'big' : ''} ${it ? 'filled' : ''}" ${it ? `data-tip-title="${esc(n)}" data-tip-desc="${esc(itemLines(n, true).filter(Boolean).join('\n'))}"` : `data-tip-title="${esc(sl)} · 비어 있음" data-tip-desc=""`} aria-label="${esc(sl)}">${it ? icon(it.icon) : `<span class="slot-label">${esc(sl)}</span>`}</div>`; };
-  return `<div class="choice-label">착용 장비</div><div class="equip-wrap other-equip"><div class="equip-grid">${EQUIP_SMALL.map(s => cell(s)).join('')}</div><div class="equip-big">${EQUIP_BIG.map(s => cell(s, true)).join('')}</div></div>`;
+  return `<div class="choice-label equip-head"><span>착용 장비</span>${who ? roomPeekBtn(who) : ''}</div><div class="equip-wrap other-equip"><div class="equip-grid">${EQUIP_SMALL.map(s => cell(s)).join('')}</div><div class="equip-big">${EQUIP_BIG.map(s => cell(s, true)).join('')}</div></div>`;
 }
 async function viewUser(name) { // 이름·아이콘을 누르면 그 대원의 프로필을 보여준다 (나는 내 프로필)
   if (name === '나' || name === state.character.name) { view.profEdit = false; openProfile(); return; }
@@ -2016,7 +2018,7 @@ async function viewUser(name) { // 이름·아이콘을 누르면 그 대원의 
     const kw = pr ? String(pr.keywords || '').split(',').map(t => t.trim()).filter(Boolean).map(t => '#' + cleanText(t, 10)).join(' ') : '';
     modal('프로필', `<div class="user-card"><div class="round-avatar big">${avatarOf(name)}</div><div class="uc-name">${pr && pr.title ? `<span class="title-chip">${esc(cleanText(pr.title, 20))}</span>` : ''}<strong>${esc(name)}</strong></div>${pr ? `<div class="uc-ability"><b>${icon('bolt')} 이능력 · ${esc(cleanText(pr.ability, 20) || '미설정')}</b><p>${esc(cleanText(pr.abilityDesc, 300) || '이능력 설명이 없습니다.')}</p>${abilityStatChips({ mainStat: STAT_DEFS.some(d => d.key === pr.mainStat) ? pr.mainStat : '', subStat: STAT_DEFS.some(d => d.key === pr.subStat) && pr.subStat !== pr.mainStat ? pr.subStat : '' })}</div>` : ''}</div>` +
       `<div class="user-grid">${cell('상태', st)}${r ? cell('레벨', 'Lv.' + intIn(r.level, 1, MAX_LEVEL, 1)) + cell('등급', ('FEDCBAS'.includes(r.rank) ? r.rank : 'F') + '등급') : ''}${pr ? cell('나이', intIn(pr.age, 0, 999, 0) + '세') : ''}${cell('관계', has ? '친구' : '친구 아님')}${pr ? cell('길드', pr.guild ? cleanText(pr.guild, 12) : '-') : ''}</div>` +
-      (kw ? `<div class="char-tags">${esc(kw)}</div>` : '') + (pr && pr.equipment ? otherEquipHtml(pr.equipment) : pr ? '<p class="tiny">장비 정보는 서버에 supabase/friends.sql 최신본을 실행하면 보여요.</p>' : '') +
+      (kw ? `<div class="char-tags">${esc(kw)}</div>` : '') + (pr && pr.equipment ? otherEquipHtml(pr.equipment, name) : pr ? '<p class="tiny">장비 정보는 서버에 supabase/friends.sql 최신본을 실행하면 보여요.</p>' : '') +
       (pr ? '' : (Cloud.enabled && Cloud.user() ? `<p class="tiny">${esc(note || '자세한 프로필을 불러오는 중…')}</p>` : '<p class="tiny">서버에 로그인하면 이능력 등 자세한 프로필을 볼 수 있어요.</p>')),
       [btnClose, (PARTY.members.some(m => m.name === name) || (view.nearby || []).some(p => p.name === name)) ? `<button class="primary" data-act="ftrade-open" data-name="${esc(name)}">교환</button>` : '', uid && chatOnline() && (!PARTY.id || partyLeader()) && !PARTY.members.some(m => m.name === name) ? `<button data-act="party-invite" data-uid="${esc(uid)}" data-name="${esc(name)}">파티 초대</button>` : '', !has && uid ? `<button class="primary" data-act="friend-req" data-uid="${esc(uid)}" data-name="${esc(name)}">친구 신청</button>` : ''].filter(Boolean));
     view.userShown = name;
