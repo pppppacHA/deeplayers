@@ -117,6 +117,7 @@ function hardenState(s) {
   { const ct = s.settings.chatTabs && typeof s.settings.chatTabs === 'object' ? s.settings.chatTabs : {}; const o = Object.fromEntries(CHAT_TABS.map(k => [k, ct[k] !== false])); s.settings.chatTabs = CHAT_TABS.some(k => o[k]) ? o : Object.fromEntries(CHAT_TABS.map(k => [k, true])); }
   s.follow = s.follow === true; s.partyMove = s.partyMove === true;
   s.lounge = Object.fromEntries(Object.entries(s.lounge && typeof s.lounge === 'object' ? s.lounge : {}).filter(([k]) => QMARKS[k]).map(([k, v]) => [k, intIn(v, 0, 9999, 0)]));
+  ['장비', '소모품', '재료'].forEach(t => (s.inventory[t] || []).forEach(cleanStackMk)); // 제작자 표 검증 (합계 ≤ 수량)
   { // 옛 제작자 표시(이름마다 하나)는 지금 가진 그 이름의 물건(이름 없는 것)·착용 중인 장비·창고에 그대로 붙이고 지운다
     const old = Object.fromEntries(Object.entries(s.madeBy && typeof s.madeBy === 'object' ? s.madeBy : {}).filter(([k, v]) => ITEMS[k] && typeof v === 'string' && v).map(([k, v]) => [k, cleanText(v, MK_LEN)]));
     s.equipMk = Object.fromEntries(Object.entries(s.equipMk && typeof s.equipMk === 'object' ? s.equipMk : {}).filter(([sl, v]) => s.equipment[sl] && typeof v === 'string' && v).map(([sl, v]) => [sl, cleanText(v, MK_LEN)]));

@@ -1425,7 +1425,7 @@ with sync_playwright() as p:
     pg.screenshot(path=str(SHOTS / 'mail_picker.png'))
     check('mail_picker_opens_inventory_grid', pg.locator('#mailPicker:not(.hidden)').count() == 1 and pg.locator('#mailGrid .slot').count() >= 12 and pg.locator('#mailTabs button').count() == 4)
     pg.click('#mailTabs button:has-text("재료")'); pg.click('#mailGrid [data-act="mail-att"][data-item="목재"]'); pg.click('#mailGrid [data-act="mail-att"][data-item="목재"]'); pg.click('#mailGrid [data-act="mail-att"][data-item="목재"]'); pg.click('[data-act="mail-pick-close"]'); pg.fill('#mailSubject', '선물'); pg.fill('#mailBody', '목재 보내요')
-    check('mail_attach_click_adds_and_removes', ev(pg, "view.mailAtt['목재']")== 3 and pg.locator('#mailItems .slot').count() == 1)
+    check('mail_attach_click_adds_and_removes', ev(pg, "view.mailAtt['목재\\u0001']")== 3 and pg.locator('#mailItems .slot').count() == 1)
     pg.click('#mailItems [data-act="mail-att-del"]'); pg.click('[data-act="mail-pick-open"]'); pg.click('#mailGrid [data-act="mail-att"][data-item="목재"]'); pg.click('[data-act="mail-pick-close"]')
     pg.click('[data-act="mail-send"]'); pg.wait_for_timeout(80)
     check('mail_with_items_uses_shipper', ev(pg, "countItem('운송장치')")== 1 and ev(pg, "countItem('목재')")== 2)
