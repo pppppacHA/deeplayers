@@ -91,8 +91,10 @@ function allBuffs() {
   return list;
 }
 /* 아이템 툴팁 문장: 설명 + 서브잡 태그 + 판매가 */
-const itemTip = name => itemLines(name).filter(Boolean).join('\n'); // 이름으로 부른다
-const itemInfoHtml = name => { const [a, b] = itemLines(name); return `<span class="it-l1">${esc(a)}</span>${b ? `<span class="it-l2">${esc(b)}</span>` : ''}`; };
+const itemTip = (name, mk) => itemLines(name, false, mk).filter(Boolean).join('\n'); // 이름으로 부른다 (mk: 그 제작자 것)
+const entryMk = s => (s && s.mk ? Object.keys(s.mk)[0] : '') || ''; // 장비 한 칸의 제작자
+const mkShort = mk => (mk ? mk.split(' ').slice(-1)[0] : '이름 없음'); // 칸 안에 짧게: 만든 사람 이름
+const itemInfoHtml = (name, mk) => { const [a, b] = itemLines(name, false, mk); return `<span class="it-l1">${esc(a)}</span>${b ? `<span class="it-l2">${esc(b)}</span>` : ''}`; };
 function renderBuffs(force) {
   const list = allBuffs(), sig = list.map(b => b.id + b.endAt).join();
   if (!force && sig === renderBuffs.sig) return;
@@ -172,7 +174,7 @@ function renderLeftTab() {
 }
 function equipSlotHtml(slot, big) {
   const n = state.equipment[slot], it = n && ITEMS[n];
-  const title = it ? shownName(n) : `${slot} · 비어 있음`, desc = it ? itemTip(n) : '눌러서 착용 가능한 아이템을 확인합니다.';
+  const title = it ? shownName(n) : `${slot} · 비어 있음`, desc = it ? itemTip(n, (state.equipMk || {})[slot] || '') : '눌러서 착용 가능한 아이템을 확인합니다.';
   return `<button class="slot clickable ${big ? 'big' : ''} ${it ? 'filled' : ''} ${view.equipSlot === slot ? 'selected' : ''}" data-act="equip-slot" data-slot="${esc(slot)}" data-tip-title="${esc(title)}" data-tip-desc="${esc(desc)}" aria-label="${esc(slot)}">${it ? icon(it.icon) : `<span class="slot-label">${esc(slot)}</span>`}</button>`;
 }
 /* 장비 칸 아래: 선택한 칸에 착용 가능한 아이템 (소지품과 같은 칸 UI) */
@@ -180,7 +182,7 @@ function renderEquipPick() {
   const slot = view.equipSlot, box = $('#equipPick');
   if (!slot) { box.innerHTML = '<p class="tiny pick-hint">장비 칸을 누르면 착용 가능한 아이템이 여기에 표시됩니다.</p>'; return; }
   const cur = state.equipment[slot], list = state.inventory['장비'].filter(s => ITEMS[s.n].slot === slot);
-  const cells = list.map(s => `<button class="slot clickable filled" data-act="pick-equip" data-item="${esc(s.n)}" data-tip-title="${esc(shownName(s.n))}" data-tip-desc="${esc(itemTip(s.n))}" aria-label="${esc(s.n)}">${icon(ITEMS[s.n].icon)}</button>`);
+  const cells = list.map(s => { const mk = entryMk(s); return `<button class="slot clickable filled" data-act="pick-equip" data-item="${esc(s.n)}" data-mk="${esc(mk)}" data-tip-title="${esc(shownName(s.n))}" data-tip-desc="${esc(itemTip(s.n, mk))}" aria-label="${esc(s.n)}">${icon(ITEMS[s.n].icon)}${mk ? `<span class="mk-label">${esc(mkShort(mk))}</span>` : ''}</button>`; });
   while (cells.length < 6) cells.push('<div class="slot" aria-label="빈 슬롯"></div>');
   box.innerHTML = `<div class="pick-head"><b>${esc(slot)}</b><span class="tiny">${cur ? `착용 중: ${esc(cur)}` : '착용 중인 장비 없음'}</span><span class="spacer"></span>${cur ? `<button data-act="unequip" data-slot="${esc(slot)}">해제</button>` : ''}</div>` +
     `<div class="inv-grid">${cells.join('')}</div>${list.length ? '' : '<div class="empty">착용 가능한 아이템이 없습니다.</div>'}`;
@@ -206,7 +208,9 @@ function renderInventory() {
   $('#inventoryGrid').innerHTML = Array.from({ length: count }, (_, i) => {
     const s = items[start + i], it = s && ITEMS[s.n];
     return it
-      ? `<button class="slot clickable filled" data-act="item" data-item="${esc(s.n)}" data-tip-title="${esc(shownName(s.n))}" data-tip-desc="${esc(itemTip(s.n))}" aria-label="${esc(s.n)}">${icon(it.icon)}${s.q > 1 ? `<span class="qty">${s.q}</span>` : ''}</button>`
+      ? (it.tab === '장비'
+        ? (() => { const mk = entryMk(s); return `<button class="slot clickable filled" data-act="item" data-item="${esc(s.n)}" data-mk="${esc(mk)}" data-tip-title="${esc(shownName(s.n))}" data-tip-desc="${esc(itemTip(s.n, mk))}" aria-label="${esc(s.n)}">${icon(it.icon)}${mk ? `<span class="mk-label">${esc(mkShort(mk))}</span>` : ''}</button>`; })()
+        : `<button class="slot clickable filled ${s.mk ? 'has-mk' : ''}" data-act="item" data-item="${esc(s.n)}" data-tip-title="${esc(shownName(s.n))}" data-tip-desc="${esc(itemTip(s.n))}" aria-label="${esc(s.n)}">${icon(it.icon)}${s.mk ? '<span class="mk-dot" aria-hidden="true"></span>' : ''}${s.q > 1 ? `<span class="qty">${s.q}</span>` : ''}</button>`)
       : '<div class="slot" aria-label="빈 슬롯"></div>';
   }).join('');
   $('#invPage').textContent = `${state.page} / ${pages}`;
@@ -1228,23 +1232,29 @@ function openFriends(noPoll) {
   if (!noPoll) friendPoll();
 }
 /* 메일 첨부: 소지품 칸(장비/소모품/재료 탭 · 페이지)에서 눌러 담는다. view.mailAtt = { 이름: 수량 } */
-const mailAttList = () => Object.entries(view.mailAtt || {}).filter(([n, q]) => q > 0 && ITEMS[n]);
+const vKey = (n, mk) => n + '\u0001' + (mk || ''), vSplit = k => { const [n, mk] = String(k).split('\u0001'); return [n, mk || '']; }; // 이름+제작자 한 칸
+const mailAttList = () => Object.entries(view.mailAtt || {}).map(([k, q]) => { const [n, mk] = vSplit(k); return ilRow(n, q, mk); }).filter(([n, q]) => q > 0 && ITEMS[n]); // [[이름, 수량, 제작자?]]
+function invVariants(tab) { // 소지품 순서대로, 제작자가 다르면 따로 한 칸 [{ n, mk, q }]
+  const seen = new Set(), out = [];
+  (tab ? [tab] : ['장비', '소모품', '재료']).flatMap(t => state.inventory[t]).forEach(s => { if (seen.has(s.n)) return; seen.add(s.n); itemVariants(s.n).forEach(v => out.push({ n: s.n, mk: v.mk, q: v.q })); });
+  return out;
+}
 function renderMailAttach() {
   if (!$('#mailGrid')) return;
   const tab = view.mailInvTab || null, att = view.mailAtt || (view.mailAtt = {});
-  const stacks = (tab ? [tab] : ['장비', '소모품', '재료']).flatMap(t => state.inventory[t]).filter(s => s.n !== MAIL_SHIP_ITEM);
+  const stacks = invVariants(tab).filter(s => s.n !== MAIL_SHIP_ITEM);
   const pages = Math.max(1, Math.ceil(stacks.length / PAGE_SIZE)), pg = clamp(view.mailInvPage || 1, 1, pages); view.mailInvPage = pg;
   const cnt = Math.max(12, Math.min(PAGE_SIZE, stacks.length - (pg - 1) * PAGE_SIZE));
   $('#mailTabs').innerHTML = [['', '전체'], ['장비', '장비'], ['소모품', '소모품'], ['재료', '재료']].map(([v, l]) => `<button class="${(tab || '') === v ? 'active' : ''}" data-act="mail-inv-tab" data-tab="${v}">${l}</button>`).join('');
   $('#mailGrid').innerHTML = Array.from({ length: cnt }, (_, k) => {
     const st = stacks[(pg - 1) * PAGE_SIZE + k], it = st && ITEMS[st.n];
     if (!it) return '<div class="slot" aria-label="빈 슬롯"></div>';
-    const left = countItem(st.n) - (att[st.n] || 0);
-    return `<button class="slot clickable filled" data-act="mail-att" data-item="${esc(st.n)}" data-tip-title="${esc(st.n)}" data-tip-desc="${esc(itemTip(st.n))}" aria-label="${esc(st.n)}" ${left < 1 ? 'disabled' : ''}>${icon(it.icon)}${st.q > 1 ? `<span class="qty">${st.q}</span>` : ''}</button>`;
+    const vk = vKey(st.n, st.mk), left = st.q - (att[vk] || 0);
+    return `<button class="slot clickable filled" data-act="mail-att" data-key="${esc(vk)}" data-item="${esc(st.n)}" data-tip-title="${esc(st.n)}" data-tip-desc="${esc(itemTip(st.n, st.mk))}" aria-label="${esc(st.n)}" ${left < 1 ? 'disabled' : ''}>${icon(it.icon)}${st.mk ? `<span class="mk-label">${esc(mkShort(st.mk))}</span>` : ''}${st.q > 1 ? `<span class="qty">${st.q}</span>` : ''}</button>`;
   }).join('');
   $('#mailPage').textContent = `${pg} / ${pages}`; $('#mailPrev').disabled = pg === 1; $('#mailNext').disabled = pg === pages;
   const list = mailAttList(), total = list.reduce((a, [, q]) => a + q, 0);
-  $('#mailItems').innerHTML = list.length ? list.map(([n, q]) => `<button class="slot clickable filled" data-act="mail-att-del" data-item="${esc(n)}" data-tip-title="${esc(n)}" data-tip-desc="누르면 하나 뺍니다." aria-label="${esc(n)} 빼기">${icon(ITEMS[n].icon)}<span class="qty">${q}</span></button>`).join('') : '<small class="tiny">아래 소지품을 눌러 담으세요.</small>';
+  $('#mailItems').innerHTML = list.length ? list.map(([n, q, mk]) => `<button class="slot clickable filled" data-act="mail-att-del" data-key="${esc(vKey(n, mk))}" data-item="${esc(n)}" data-tip-title="${esc(n)}" data-tip-desc="${esc((mk ? `제작 · ${mk}\n` : '') + '누르면 하나 뺍니다.')}" aria-label="${esc(n)} 빼기">${icon(ITEMS[n].icon)}${mk ? `<span class="mk-label">${esc(mkShort(mk))}</span>` : ''}<span class="qty">${q}</span></button>`).join('') : '<small class="tiny">아래 소지품을 눌러 담으세요.</small>';
   $('#mailAttInfo').textContent = `첨부 ${list.length}/${MAIL_ITEM_KINDS}종 · ${total}/${MAIL_ITEM_TOTAL}개${list.length ? ` · 운송장치 1개 사용 (보유 ${countItem(MAIL_SHIP_ITEM)}개)` : ''}`;
 }
 function renderMailBadge() { // 메일 / 친구(신청·교환 제안) / 길드(초대·가입 신청) 아이콘에 새 소식 점을 단다
@@ -1274,7 +1284,7 @@ function openMail(keepScroll) {
   const open = view.mailOpen && state.mail.find(m => m.id === view.mailOpen && mailDelivered(m));
   if (open) {
     body = `<div class="result mail-view"><strong>${esc(open.subject)}</strong><small>${esc(open.from)} · ${new Date(open.at).toLocaleDateString('ko-KR')} · ${open.kept ? '보존됨' : `${mailDaysLeft(open)}일 뒤 사라짐`}</small><p>${esc(open.body)}</p>` +
-      (open.items.length ? `<div class="reward-list">${chipList(open.items.map(([n, q]) => `${n} ×${q}`))}</div>` : '') + '</div>';
+      (open.items.length ? `<div class="reward-list">${chipList(open.items.map(([n, q, mk]) => `${n} ×${q}${mk ? ` (제작 · ${mk})` : ''}`))}</div>` : '') + '</div>';
     modal('메일', body, [`<button data-act="mail-back">목록</button>`, `<button data-act="mail-reply" data-id="${open.id}">${icon('reply')} 답장</button>`, `<button data-act="mail-keep" data-id="${open.id}">${open.kept ? '보존 해제' : `보존 (${keptCount()}/${MAIL_KEEP_MAX})`}</button>`, `<button data-act="mail-delete" data-id="${open.id}">삭제</button>`,
       open.items.length ? `<button class="primary" data-act="mail-claim" data-id="${open.id}" ${open.got ? 'disabled' : ''}>${open.got ? '수령 완료' : '첨부 받기'}</button>` : btnClose], true);
     return;
@@ -1828,20 +1838,24 @@ const A = {
     toast(`${r.out} ${r.got}개 제작 완료${r.great ? ' (대성공! +1)' : ''}`); masteryNote(r.mUp); renderBag();
   },
   item: el => {
-    const name = el.dataset.item, it = ITEMS[name], have = countItem(name), canEquip = it.slot && state.inventory['장비'].some(s => s.n === name);
-    modal(shownName(name), `<div class="nearby-row"><div class="round-avatar">${icon(it.icon)}</div><div class="grow"><strong>${esc(shownName(name))}</strong><small>${it.slot ? esc(it.slot) + ' 장비' : esc(it.tab)} · 보유 ${countItem(name)}개</small></div></div><p class="detail-desc item-info">${itemInfoHtml(name)}</p>` +
+    const name = el.dataset.item, it = ITEMS[name]; if (!it) return;
+    let mk = el.dataset.mk; // undefined = 아직 안 고름
+    const vs = itemVariants(name); if (mk === undefined || !vs.some(v => v.mk === mk)) mk = vs.length ? vs[0].mk : ''; // 처음에는 이름 없는 것(없으면 첫 제작자 것)을 고른 채로 연다
+    const have = countItem(name, mk), canEquip = it.slot && state.inventory['장비'].some(s => s.n === name && entryMk(s) === mk), mka = `data-mk="${esc(mk)}"`;
+    modal(shownName(name), `<div class="nearby-row"><div class="round-avatar">${icon(it.icon)}</div><div class="grow"><strong>${esc(shownName(name))}</strong><small>${it.slot ? esc(it.slot) + ' 장비' : esc(it.tab)} · 보유 ${have}개${countItem(name) > have ? ` (전체 ${countItem(name)}개)` : ''}</small>${mk ? `<small class="mk-line">${icon('draw')} 제작 · ${esc(mk)}</small>` : ''}</div></div><p class="detail-desc item-info">${itemInfoHtml(name, mk)}</p>` +
       (it.use && !it.use.warp ? `<p class="use-gain" id="useGain">${icon('healing')} 사용하면 <b>${esc(useGainText(name, 1))}</b>${useFull(name, 1) ? ' <small>(이미 가득 차서 오르지 않아요)</small>' : ''}</p>` : '') +
+      (vs.length > 1 && it.tab !== '장비' ? `<div class="choice-label">만든 사람 고르기</div><div class="inv-grid vpick-grid">${variantCells(name, vs, 'item', mk)}</div>` : '') + // 제작자가 섞여 있으면 여기서 골라 쓴다
       ((it.mods || state.enchants[name]) ? `<div class="buffs">${[...(it.mods ? modText(it.mods) : []), ...(state.enchants[name] ? [`세공 · ${enchantText(state.enchants[name])}`] : [])].map(b => `<span class="buff">${esc(b)}</span>`).join('')}</div>` : ''),
-      [btnClose, `<button class="danger" data-act="drop-open" data-item="${esc(name)}">${icon('delete')} 버리기</button>`, ...(it.engrave ? [`<button class="primary" data-act="engrave-open" data-item="${esc(name)}">${icon('edit')} 이름 새기기</button>`] : []), ...(it.use ? [(it.use.warp || have < 2 ? '' : `<select id="useQty" data-item="${esc(name)}" aria-label="사용 개수" title="사용할 개수">${Array.from({ length: Math.min(have, MAX_BATCH) }, (_, k) => `<option value="${k + 1}">${k + 1}</option>`).join('')}</select>`) + `<button class="primary" data-act="use" data-item="${esc(name)}">사용</button>`] : []), ...(canEquip ? [`<button class="primary" data-act="equip" data-item="${esc(name)}">장착</button>`] : [])], true);
+      [btnClose, `<button class="danger" data-act="drop-open" data-item="${esc(name)}" ${mka}>${icon('delete')} 버리기</button>`, ...(it.engrave ? [`<button class="primary" data-act="engrave-open" data-item="${esc(name)}">${icon('edit')} 이름 새기기</button>`] : []), ...(it.use ? [(it.use.warp || have < 2 ? '' : `<select id="useQty" data-item="${esc(name)}" aria-label="사용 개수" title="사용할 개수">${Array.from({ length: Math.min(have, MAX_BATCH) }, (_, k) => `<option value="${k + 1}">${k + 1}</option>`).join('')}</select>`) + `<button class="primary" data-act="use" data-item="${esc(name)}" ${mka}>사용</button>`] : []), ...(canEquip ? [`<button class="primary" data-act="equip" data-item="${esc(name)}" ${mka}>장착</button>`] : [])], true);
   },
   'drop-open': el => { // 버리기: 개수를 고르고 한 번 더 묻는다
-    const name = el.dataset.item, have = ITEMS[name] ? countItem(name) : 0; if (!have) { closeModal(); return; }
+    const name = el.dataset.item, mk = el.dataset.mk, have = ITEMS[name] ? countItem(name, mk) : 0; if (!have) { closeModal(); return; }
     const opts = Array.from({ length: Math.min(have, 99) }, (_, k) => `<option value="${k + 1}">${k + 1}</option>`).join('') + (have > 99 ? `<option value="${have}">${have}</option>` : '');
     modal('버리기', `<p class="detail-desc">「${esc(shownName(name))}」을(를) 버립니다. 버린 물건은 <b>되돌릴 수 없어요.</b> (보유 ${have}개)</p><div class="row-gap"><label class="tiny" for="dropQty">버릴 개수</label><select id="dropQty">${opts}</select></div>`,
-      ['<button data-act="close">취소</button>', `<button class="danger" data-act="drop-do" data-item="${esc(name)}">버리기</button>`], true);
+      ['<button data-act="close">취소</button>', `<button class="danger" data-act="drop-do" data-item="${esc(name)}" ${mk === undefined ? '' : `data-mk="${esc(mk)}"`}>버리기</button>`], true);
   },
   'drop-do': el => {
-    const name = el.dataset.item, n = $('#dropQty') ? intIn($('#dropQty').value, 1, 9999, 1) : 1, r = discardItem(name, n);
+    const name = el.dataset.item, n = $('#dropQty') ? intIn($('#dropQty').value, 1, 9999, 1) : 1, r = discardItem(name, n, el.dataset.mk);
     if (typeof r === 'string') { toast(r); sfx('error'); closeModal(); return; }
     closeModal(); renderBag(); renderBars(); renderProfile(); renderAction(); sfx('click'); toast(`${shownName(name)} ×${r.qty}을(를) 버렸습니다.`);
   },
@@ -1850,14 +1864,14 @@ const A = {
     const err = useErr(name), n = $('#useQty') ? intIn($('#useQty').value, 1, MAX_BATCH, 1) : 1;
     if (err) { toast(err); sfx('error'); return; }
     const gainTxt = ITEMS[name].use.warp ? '' : useGainText(name, n);
-    if (useItem(name, n)) {
+    if (useItem(name, n, el.dataset.mk)) {
       closeModal(); resetPhase(); renderBars(); renderBag(); renderMapHead(); renderMap(); renderAction(); renderSide(); save();
       toast(ITEMS[name].use.warp ? '귀환 신호기로 본부에 돌아왔습니다.' : `${name}을(를) ${n > 1 ? n + '개 ' : ''}사용했습니다. (${gainTxt})`);
     }
   },
   'equip-slot': el => { view.equipSlot = view.equipSlot === el.dataset.slot ? null : el.dataset.slot; renderEquip(); },
-  'pick-equip': el => equipChange(ITEMS[el.dataset.item].slot, el.dataset.item, '장착했습니다.'),
-  equip: el => equipChange(ITEMS[el.dataset.item].slot, el.dataset.item, '장착했습니다.'),
+  'pick-equip': el => equipChange(ITEMS[el.dataset.item].slot, el.dataset.item, '장착했습니다.', el.dataset.mk),
+  equip: el => equipChange(ITEMS[el.dataset.item].slot, el.dataset.item, '장착했습니다.', el.dataset.mk),
   unequip: el => equipChange(el.dataset.slot, null, '해제했습니다.'),
 
   /* 오른쪽 패널 / 게시판 / 채팅 */
@@ -1921,10 +1935,11 @@ const A = {
   'mk-search': () => { view.mkQ = cleanText(($('#mkQ') || {}).value, 20); marketBrowse(); },
   'mk-refresh': () => marketBrowse(),
   'mk-list': async () => {
-    const name = ($('#mkItem') || {}).value, qty = intIn(($('#mkQty') || {}).value, 1, 99, 0), price = intIn(($('#mkPrice') || {}).value, 1, MARKET_TOTAL_MAX, 0);
-    const e = marketLocalList(name, qty, price); if (typeof e === 'string') { toast(e); sfx('error'); return; }
+    const [name, mk] = vSplit(($('#mkItem') || {}).value || ''), qty = intIn(($('#mkQty') || {}).value, 1, 99, 0), price = intIn(($('#mkPrice') || {}).value, 1, MARKET_TOTAL_MAX, 0);
+    if (!ITEMS[name]) return;
+    const e = marketLocalList(name, qty, price, mk); if (typeof e === 'string') { toast(e); sfx('error'); return; }
     renderBag(); sfx('ok'); view.mkTab = '내 목록'; renderMarket();
-    try { const r = await Cloud.marketList(e.key, e.item, e.qty, e.price); if (r && r.ok === false) { state.market.sell = state.market.sell.filter(x => x !== e); marketGiveBack(e, e.qty, 'r' + e.key.slice(-6)); save(); renderBag(); toast(r.msg === 'full' ? '서버에 올라간 물건이 너무 많아요. 먼저 정리해 주세요.' : '거래 등록이 거절돼 물건을 돌려받았어요.'); sfx('error'); } else if (r && r.ok) e.id = intIn(r.id, 1, 9e15, 0); save(); }
+    try { const r = await Cloud.marketList(e.key, e.item, e.qty, e.price, e.mk || ''); if (r && r.ok === false) { state.market.sell = state.market.sell.filter(x => x !== e); marketGiveBack(e, e.qty, 'r' + e.key.slice(-6)); save(); renderBag(); toast(r.msg === 'full' ? '서버에 올라간 물건이 너무 많아요. 먼저 정리해 주세요.' : '거래 등록이 거절돼 물건을 돌려받았어요.'); sfx('error'); } else if (r && r.ok) e.id = intIn(r.id, 1, 9e15, 0); save(); }
     catch (x) { toast('서버와 연결하지 못했어요. 연결되면 자동으로 올라갑니다.'); }
     if (isMkOpen()) renderMarket(true);
   },
@@ -1937,7 +1952,7 @@ const A = {
   'mk-buy': async el => {
     const id = intIn(el.dataset.id, 1, 9e15, 0), x = (view.mkList || []).find(r => r.id === id); if (!x) return;
     const qty = intIn(($('#mkN' + id) || {}).value, 1, x.qty, 1);
-    const s = marketBuyStart(id, x.item, qty, x.price); if (typeof s === 'string') { toast(s); sfx('error'); return; }
+    const s = marketBuyStart(id, x.item, qty, x.price, x.mk || ''); if (typeof s === 'string') { toast(s); sfx('error'); return; }
     renderProfile(); let res = 'retry';
     try { res = marketBuyResult(s.req, await Cloud.marketBuy(id, qty, s.req)); } catch (e) { /* 결과를 모르면 pending 으로 남긴다 */ }
     renderBag(); renderProfile();
@@ -1946,14 +1961,14 @@ const A = {
     else { toast(res === 'short' ? '남은 개수가 모자라 CR을 돌려받았어요. 목록을 새로 불러옵니다.' : '이미 팔려서 CR을 돌려받았어요.'); sfx('error'); }
     if (res !== 'retry') marketBrowse(); else if (isMkOpen()) renderMarket(true);
   },
-  'storage-pick': el => { const n = el.dataset.name, side = el.dataset.side === 'stor' ? 'stor' : 'bag'; view.storSel = view.storSel && view.storSel.name === n && view.storSel.side === side ? null : { side, name: n }; openStorage(true); },
+  'storage-pick': el => { const n = el.dataset.name, mk = el.dataset.mk || '', side = el.dataset.side === 'stor' ? 'stor' : 'bag', same = view.storSel && view.storSel.name === n && view.storSel.side === side && (view.storSel.mk || '') === mk; view.storSel = same ? null : { side, name: n, mk }; openStorage(true); },
   'storage-put': el => {
-    const n = el.dataset.name, err = ITEMS[n] ? storeItem(n, el.dataset.qty) : '알 수 없는 아이템입니다.';
+    const n = el.dataset.name, err = ITEMS[n] ? storeItem(n, el.dataset.qty, el.dataset.mk || '') : '알 수 없는 아이템입니다.';
     if (err) { toast(err); sfx('error'); openStorage(true); return; }
     renderBag(); renderInventory(); renderProfile(); renderAction(); sfx('ok'); openStorage(true);
   },
   'storage-take': el => {
-    const n = el.dataset.name, r = ITEMS[n] ? takeStored(n, el.dataset.qty) : '알 수 없는 아이템입니다.';
+    const n = el.dataset.name, r = ITEMS[n] ? takeStored(n, el.dataset.qty, el.dataset.mk || '') : '알 수 없는 아이템입니다.';
     if (typeof r === 'string') { toast(r); sfx('error'); openStorage(true); return; }
     if (r.got < intIn(el.dataset.qty, 1, STORAGE_STACK, 1)) toast('가방이 가득 차 일부만 꺼냈습니다.');
     renderBag(); renderInventory(); renderProfile(); renderAction(); sfx('ok'); openStorage(true);
@@ -2030,13 +2045,14 @@ const A = {
   'mail-inv-tab': el => { view.mailInvTab = el.dataset.tab || null; view.mailInvPage = 1; renderMailAttach(); },
   'mail-inv-page': el => { view.mailInvPage = (view.mailInvPage || 1) + +el.dataset.d; renderMailAttach(); },
   'mail-att': el => {
-    const n = el.dataset.item, att = view.mailAtt || (view.mailAtt = {}), list = mailAttList(), total = list.reduce((a, [, q]) => a + q, 0);
-    if (!att[n] && list.length >= MAIL_ITEM_KINDS) { toast(`첨부는 종류 ${MAIL_ITEM_KINDS}개까지예요.`); sfx('error'); return; }
+    const k = el.dataset.key, [n, mk] = vSplit(k), att = view.mailAtt || (view.mailAtt = {}), list = mailAttList(), total = list.reduce((a, [, q]) => a + q, 0);
+    if (!ITEMS[n]) return;
+    if (!att[k] && list.length >= MAIL_ITEM_KINDS) { toast(`첨부는 종류 ${MAIL_ITEM_KINDS}개까지예요.`); sfx('error'); return; }
     if (total >= MAIL_ITEM_TOTAL) { toast(`첨부는 합계 ${MAIL_ITEM_TOTAL}개까지예요.`); sfx('error'); return; }
-    if ((att[n] || 0) >= countItem(n)) { sfx('error'); return; }
-    att[n] = (att[n] || 0) + 1; renderMailAttach();
+    if ((att[k] || 0) >= countItem(n, mk)) { sfx('error'); return; }
+    att[k] = (att[k] || 0) + 1; renderMailAttach();
   },
-  'mail-att-del': el => { const att = view.mailAtt || {}, n = el.dataset.item; if (att[n]) att[n]--; if (!att[n]) delete att[n]; renderMailAttach(); },
+  'mail-att-del': el => { const att = view.mailAtt || {}, k = el.dataset.key; if (att[k]) att[k]--; if (!att[k]) delete att[k]; renderMailAttach(); },
   'mail-send': async () => {
     const items = mailAttList();
     const to = $('#mailTo').value, subject = $('#mailSubject').value, body = $('#mailBody').value, online = Cloud.enabled && Cloud.user();
@@ -2051,7 +2067,7 @@ const A = {
         const r = await Cloud.sendMail(uid, cleanText(subject, 30), cleanText(body, 300), sent);
         if (!r || !r.ok) throw new Error(r && r.msg);
       } catch (e) {
-        if (sent.length) { addItem(MAIL_SHIP_ITEM, 1); sent.forEach(([n, q]) => addItem(n, q)); }
+        if (sent.length) { addItem(MAIL_SHIP_ITEM, 1); sent.forEach(([n, q, mk]) => addItem(n, q, mk || '')); }
         renderBag(); save(); sfx('error');
         toast(e && e.message === 'full' ? '상대의 메일함이 가득 차서 보낼 수 없어요.' : e && e.message === 'not_friend' ? '서버에서 친구로 확인되지 않아요.' : '메일을 보내지 못했어요. 서버에 friends.sql 을 실행했는지 확인해 주세요.'); return;
       }
@@ -2065,8 +2081,8 @@ const A = {
     if (!pm && !(view.nearby || []).some(p => p.name === el.dataset.name)) { toast('교환은 파티원이나 같은 칸에 있는 대원과만 할 수 있어요.'); sfx('error'); return; }
     liveTradeStart(el.dataset.name);
   },
-  'lt-plus': el => ltEdit(el.dataset.name, intIn(el.dataset.qty, 1, 99, 1)),
-  'lt-minus': el => ltEdit(el.dataset.name, -intIn(el.dataset.qty, 1, 99, 1)),
+  'lt-plus': el => ltEdit(el.dataset.name, intIn(el.dataset.qty, 1, 99, 1), el.dataset.mk || ''),
+  'lt-minus': el => ltEdit(el.dataset.name, -intIn(el.dataset.qty, 1, 99, 1), el.dataset.mk || ''),
   'lt-confirm': () => ltConfirm(),
   'lt-cancel': () => ltCancel(),
   'lt-answer': el => ltAnswer(el.dataset.accept === '1'),
@@ -2194,8 +2210,13 @@ document.addEventListener('click', e => {
   if (el && !el.disabled && A[el.dataset.act]) A[el.dataset.act](el, e);
 });
 
-function equipChange(slot, name, doneText) {
-  const prev = state.equipment[slot], res = changeEquipment(slot, name);
+/* 같은 칸에 제작자가 다른 것이 섞여 있을 때: 소지품처럼 네모 칸으로 보여 주고 하나를 고른다 */
+function variantCells(name, vs, act, sel) {
+  const it = ITEMS[name];
+  return vs.map(v => `<button class="slot clickable filled vpick ${v.mk ? 'has-mk' : ''} ${v.mk === sel ? 'selected' : ''}" data-act="${act}" data-item="${esc(name)}" data-mk="${esc(v.mk)}" aria-pressed="${v.mk === sel}" data-tip-title="${esc(shownName(name))}" data-tip-desc="${esc(itemTip(name, v.mk))}" aria-label="${esc(`${name} · ${v.mk || '이름 없음'}`)}">${icon(it.icon)}<span class="mk-label">${esc(mkShort(v.mk))}</span>${v.q > 1 ? `<span class="qty">${v.q}</span>` : ''}</button>`).join('');
+}
+function equipChange(slot, name, doneText, mk) {
+  const prev = state.equipment[slot], res = changeEquipment(slot, name, mk);
   if (res === 'space') { toast('인벤토리 공간이 부족해 변경할 수 없습니다.'); return; }
   if (!res) return;
   closeModal(); renderBag(); renderBuffs(true); save();
@@ -2219,7 +2240,7 @@ async function marketSync() { // 내가 올린 것·처리 중인 구매를 서�
       const r = marketBuyResult(b.req, await Cloud.marketBuy(b.id, b.qty, b.req)); if (r === 'ok') toast(`${b.item} ×${b.qty} 구매가 처리됐어요.`); else if (r !== 'retry') toast('이미 팔려서 CR을 돌려받았어요.');
     }
     if (state.market.sell.length) {
-      for (const e of state.market.sell.filter(x => !x.id)) { try { const r = await Cloud.marketList(e.key, e.item, e.qty, e.price); if (r && r.ok === false && r.msg) { state.market.sell = state.market.sell.filter(x => x !== e); marketGiveBack(e, e.qty, 'r' + e.key.slice(-6)); toast('거래 등록이 거절돼 물건을 돌려받았어요.'); } } catch (x) { /* 다음에 다시 */ } }
+      for (const e of state.market.sell.filter(x => !x.id)) { try { const r = await Cloud.marketList(e.key, e.item, e.qty, e.price, e.mk || ''); if (r && r.ok === false && r.msg) { state.market.sell = state.market.sell.filter(x => x !== e); marketGiveBack(e, e.qty, 'r' + e.key.slice(-6)); toast('거래 등록이 거절돼 물건을 돌려받았어요.'); } } catch (x) { /* 다음에 다시 */ } }
       const out = marketSettleSell(await Cloud.marketMine());
       out.sold.forEach(s => { toast(`${s.item} ×${s.qty}이(가) 팔렸어요! +${s.net} CR`); addLog(`거래: ${s.item} ×${s.qty} 판매 (+${s.net} CR)`); sfx('ok'); });
       out.back.forEach(s => toast(`${s.item} ×${s.qty} 거래가 끝나 물건을 돌려받았어요.`));
@@ -2230,7 +2251,7 @@ async function marketSync() { // 내가 올린 것·처리 중인 구매를 서�
 }
 async function marketBrowse() {
   view.mkList = null; if (isMkOpen()) renderMarket(true);
-  try { const r = await Cloud.marketBrowse(view.mkQ || ''); view.mkList = (Array.isArray(r) ? r : []).slice(0, 300).map(x => ({ id: intIn(x && x.id, 1, 9e15, 0), mine: !!(x && x.mine === true), item: x && x.item, qty: intIn(x && x.qty, 1, 99, 1), price: intIn(x && x.price, 1, MARKET_TOTAL_MAX, 1) })).filter(x => x.id && ITEMS[x.item]); }
+  try { const r = await Cloud.marketBrowse(view.mkQ || ''); view.mkList = (Array.isArray(r) ? r : []).slice(0, 300).map(x => ({ id: intIn(x && x.id, 1, 9e15, 0), mine: !!(x && x.mine === true), item: x && x.item, mk: x && typeof x.mk === 'string' ? cleanText(x.mk, MK_LEN) : '', qty: intIn(x && x.qty, 1, 99, 1), price: intIn(x && x.price, 1, MARKET_TOTAL_MAX, 1) })).filter(x => x.id && ITEMS[x.item]); }
   catch (e) { view.mkList = []; view.mkErr = true; }
   if (isMkOpen()) renderMarket(true);
 }
@@ -2239,17 +2260,16 @@ function marketHtml() {
   const tabs = `<div class="tabs flush">${['사기', '팔기', '내 목록'].map(t => `<button class="${t === tab ? 'active' : ''}" data-act="mk-tab" data-tab="${t}">${t}${t === '내 목록' && state.market.sell.length ? ` ${state.market.sell.length}` : ''}</button>`).join('')}</div>`;
   let body;
   if (tab === '사기') {
-    const rows = view.mkList == null ? '<div class="empty">불러오는 중…</div>' : view.mkList.map(x => `<div class="shop-row"><span class="shop-ic">${icon(ITEMS[x.item].icon)}</span><div class="grow"><strong>${esc(shownName(x.item))} <span class="tiny">남은 ${x.qty}개</span></strong><small class="tiny">개당 ${x.price} CR${tradeValue(x.item) ? ` (상점 시세 ${tradeValue(x.item)} CR)` : ''}</small></div>${x.mine ? '<em class="tag" title="내가 올린 상품이에요. 내 목록에서 취소할 수 있어요.">내 상품</em>' : `<input type="number" class="mk-n" id="mkN${x.id}" min="1" max="${x.qty}" value="1" aria-label="살 개수"><button class="primary" data-act="mk-buy" data-id="${x.id}">구매</button>`}</div>`).join('') || `<div class="empty">${view.mkErr ? '서버에 연결하지 못했어요.' : '올라온 물건이 없어요.'}</div>`;
+    const rows = view.mkList == null ? '<div class="empty">불러오는 중…</div>' : view.mkList.map(x => `<div class="shop-row"><span class="shop-ic">${icon(ITEMS[x.item].icon)}</span><div class="grow"><strong>${esc(shownName(x.item))} <span class="tiny">남은 ${x.qty}개</span></strong>${x.mk ? `<small class="mk-line">제작 · ${esc(x.mk)}</small>` : ''}<small class="tiny">개당 ${x.price} CR${tradeValue(x.item) ? ` (상점 시세 ${tradeValue(x.item)} CR)` : ''}</small></div>${x.mine ? '<em class="tag" title="내가 올린 상품이에요. 내 목록에서 취소할 수 있어요.">내 상품</em>' : `<input type="number" class="mk-n" id="mkN${x.id}" min="1" max="${x.qty}" value="1" aria-label="살 개수"><button class="primary" data-act="mk-buy" data-id="${x.id}">구매</button>`}</div>`).join('') || `<div class="empty">${view.mkErr ? '서버에 연결하지 못했어요.' : '올라온 물건이 없어요.'}</div>`;
     body = `<div class="mk-search"><input id="mkQ" maxlength="20" placeholder="물건 이름 검색" value="${esc(view.mkQ || '')}"><button data-act="mk-search">검색</button><button data-act="mk-refresh">새로고침</button></div><div class="shop-list">${rows}</div>`;
   } else if (tab === '팔기') {
-    const bag = {}; Object.values(state.inventory).flat().forEach(s => { bag[s.n] = (bag[s.n] || 0) + s.q; });
-    const names = Object.keys(bag).filter(n => ITEMS[n] && !ITEMS[n].hidden && n !== MAIL_SHIP_ITEM).sort((x, y) => ITEMS[x].tab.localeCompare(ITEMS[y].tab) || x.localeCompare(y));
-    const sel = names.includes(view.mkItem) ? view.mkItem : names[0];
-    body = names.length ? `<div class="mk-sell"><label>물건<select id="mkItem">${names.map(n => `<option value="${esc(n)}" ${n === sel ? 'selected' : ''}>${esc(shownName(n))} (×${bag[n]})</option>`).join('')}</select></label>` +
-      `<label>수량<input id="mkQty" type="number" min="1" max="${Math.min(99, bag[sel])}" value="1"></label><label>개당 가격(CR)<input id="mkPrice" type="number" min="1" max="${marketUnitMax(sel)}" value="${Math.max(1, tradeValue(sel))}"></label>` +
+    const vs = invVariants().filter(v => ITEMS[v.n] && !ITEMS[v.n].hidden && v.n !== MAIL_SHIP_ITEM).sort((x, y) => ITEMS[x.n].tab.localeCompare(ITEMS[y.n].tab) || x.n.localeCompare(y.n)), keys = vs.map(v => vKey(v.n, v.mk));
+    const selK = keys.includes(view.mkItem) ? view.mkItem : keys[0], selV = vs[keys.indexOf(selK)], sel = selV && selV.n; // 제작자가 다르면 따로 고른다
+    body = vs.length ? `<div class="mk-sell"><label>물건<select id="mkItem">${vs.map((v, i) => `<option value="${esc(keys[i])}" ${keys[i] === selK ? 'selected' : ''}>${esc(shownName(v.n))}${v.mk ? ` · ${esc(v.mk)}` : ''} (×${v.q})</option>`).join('')}</select></label>` +
+      `<label>수량<input id="mkQty" type="number" min="1" max="${Math.min(99, selV.q)}" value="1"></label><label>개당 가격(CR)<input id="mkPrice" type="number" min="1" max="${marketUnitMax(sel)}" value="${Math.max(1, tradeValue(sel))}"></label>` +
       `<p class="tiny">상점 시세 ${tradeValue(sel)} CR · 개당 최대 ${marketUnitMax(sel)} CR · 한 건 전체 ${MARKET_TOTAL_MAX} CR까지 · 사는 대원이 원하는 개수만큼 나눠 살 수 있고, 팔린 만큼 수수료 ${Math.round(MARKET_FEE * 100)}%를 뗍니다. 올린 물건은 소지품에서 빠지고, 취소하거나 3일이 지나면 돌아옵니다. (동시 ${MARKET_SLOTS}건)</p><button class="primary" data-act="mk-list">올리기</button></div>` : '<div class="empty">팔 수 있는 소지품이 없어요.</div>';
   } else if (tab === '내 목록') {
-    const rows = state.market.sell.map(e => `<div class="shop-row"><span class="shop-ic">${icon(ITEMS[e.item].icon)}</span><div class="grow"><strong>${esc(shownName(e.item))} <span class="tiny">×${e.qty}</span></strong><small class="tiny">개당 ${e.price} CR · ${e.id ? `판매 중${e.got ? ` (${e.got}개 팔림)` : ''}` : '등록 중… (연결되면 올라가요)'}</small></div>${e.id ? `<button data-act="mk-cancel" data-id="${e.id}">취소</button>` : ''}</div>`).join('') || '<div class="empty">올려 둔 물건이 없어요.</div>';
+    const rows = state.market.sell.map(e => `<div class="shop-row"><span class="shop-ic">${icon(ITEMS[e.item].icon)}</span><div class="grow"><strong>${esc(shownName(e.item))} <span class="tiny">×${e.qty}</span></strong>${e.mk ? `<small class="mk-line">제작 · ${esc(e.mk)}</small>` : ''}<small class="tiny">개당 ${e.price} CR · ${e.id ? `판매 중${e.got ? ` (${e.got}개 팔림)` : ''}` : '등록 중… (연결되면 올라가요)'}</small></div>${e.id ? `<button data-act="mk-cancel" data-id="${e.id}">취소</button>` : ''}</div>`).join('') || '<div class="empty">올려 둔 물건이 없어요.</div>';
     body = rows + (state.market.buy.length ? `<p class="tiny">처리 중인 구매 ${state.market.buy.length}건 — 결과가 확인되면 바로 소지품에 들어옵니다.</p>` : '');
   }
   return `<div id="mkRoot">${tabs}${body}</div>`;
@@ -2747,19 +2767,19 @@ async function liveTradeStart(name) {
     sfx('error'); toast({ not_near: '상대가 같은 칸에 없어요. 교환은 파티원이나 같은 칸의 대원과만 할 수 있어요.', offline: '상대가 접속 중이 아니에요. 교환은 상대가 접속해 있을 때만 할 수 있어요.', busy: '상대가 다른 교환 중이에요.', busy_me: '아직 끝나지 않은 교환이 있어요. 잠시 뒤 다시 시도해 주세요.', bad: '교환을 신청할 수 없는 상대예요.' }[e && e.message] || '교환을 신청하지 못했어요.');
   }
 }
-async function ltEdit(name, delta) { // 교환대에 올리기(+) / 내리기(−)
+async function ltEdit(name, delta, mk = '') { // 교환대에 올리기(+) / 내리기(−). mk = 제작자('' = 이름 없는 것)
   const v = view.lt; if (!v || v.status !== 'open' || view.ltAct || !ITEMS[name]) return;
   view.ltAct = true;
   try {
     if (delta > 0) { // 내 기기에서 먼저 빼고 서버에 알린다 (끊기면 다음 확인 때 다시 보낸다)
-      const r = benchRaise(v.id, name, delta); if (typeof r === 'string') { toast(r); sfx('error'); return; }
+      const r = benchRaise(v.id, name, delta, mk); if (typeof r === 'string') { toast(r); sfx('error'); return; }
       renderBag(); sfx('click');
       const res = await Cloud.liveTradeSet(v.id, r, 0); if (res && res.view) await ltApply(res.view);
     } else { // 서버가 받아들인 뒤에 돌려받는다
-      const have = benchQty(name), m = Math.min(-delta, have); if (!m) return;
+      const have = benchQty(name, mk), m = Math.min(-delta, have); if (!m) return;
       const err = benchLowerOk(name, m); if (err) { toast(err); sfx('error'); return; }
-      const next = benchNext(name, -m), res = await Cloud.liveTradeSet(v.id, next, 0);
-      if (res && res.ok) { benchLower(name, m, next); renderBag(); sfx('click'); }
+      const next = benchNext(name, -m, mk), res = await Cloud.liveTradeSet(v.id, next, 0);
+      if (res && res.ok) { benchLower(name, m, next, mk); renderBag(); sfx('click'); }
       if (res && res.view) await ltApply(res.view);
     }
   } catch (e) { toast('서버와 연결하지 못했어요. 잠시 뒤 다시 시도해 주세요.'); sfx('error'); }
@@ -2786,13 +2806,13 @@ async function ltCancel() {
 }
 function liveHtml(v) {
   if (v.status === 'invited') return `<div id="ltRoot" class="lt-wait"><p class="detail-desc"><b>${esc(v.name)}</b> 대원이 수락하기를 기다리는 중이에요… (3분 안에 답이 없으면 자동으로 끝나요)</p></div>`;
-  const mine = benchList(), their = v.their, bagNames = {};
-  Object.values(state.inventory).flat().forEach(s => { if (s.n !== MAIL_SHIP_ITEM) bagNames[s.n] = (bagNames[s.n] || 0) + s.q; });
+  const mine = benchList(), their = v.their, bagV = invVariants().filter(x => x.n !== MAIL_SHIP_ITEM).sort((a, b) => ITEMS[a.n].tab.localeCompare(ITEMS[b.n].tab) || a.n.localeCompare(b.n));
+  const mkTag = mk => (mk ? ` <small class="mk-line">· ${esc(mk)}</small>` : ''), mka = mk => `data-mk="${esc(mk || '')}"`;
   const col = (title, list, own, ok) => `<div class="lt-col"><div class="lt-head"><b>${esc(title)}</b>${ok ? '<span class="lt-ok">교환 확인 ✔</span>' : ''}</div>` +
-    (list.map(([n, q]) => `<div class="lt-item">${icon(ITEMS[n].icon)}<span>${esc(shownName(n))} ×${q}</span>${own ? `<button data-act="lt-minus" data-name="${esc(n)}" data-qty="1">−1</button><button data-act="lt-minus" data-name="${esc(n)}" data-qty="${q}">내리기</button>` : ''}</div>`).join('') || '<div class="lt-empty">비어 있음</div>') + '</div>';
-  const pick = Object.keys(bagNames).sort((a, b) => ITEMS[a].tab.localeCompare(ITEMS[b].tab) || a.localeCompare(b)).map(n => {
-    const full = benchQty(n) >= 99 || (!benchQty(n) && mine.length >= 5);
-    return `<div class="lt-item">${icon(ITEMS[n].icon)}<span>${esc(shownName(n))} ×${bagNames[n]}</span><button data-act="lt-plus" data-name="${esc(n)}" data-qty="1" ${full ? 'disabled' : ''}>+1</button>${bagNames[n] > 1 ? `<button data-act="lt-plus" data-name="${esc(n)}" data-qty="${Math.min(bagNames[n], 99 - benchQty(n))}" ${full ? 'disabled' : ''}>전부</button>` : ''}</div>`;
+    (list.map(([n, q, mk]) => `<div class="lt-item">${icon(ITEMS[n].icon)}<span>${esc(shownName(n))} ×${q}${mkTag(mk)}</span>${own ? `<button data-act="lt-minus" data-name="${esc(n)}" ${mka(mk)} data-qty="1">−1</button><button data-act="lt-minus" data-name="${esc(n)}" ${mka(mk)} data-qty="${q}">내리기</button>` : ''}</div>`).join('') || '<div class="lt-empty">비어 있음</div>') + '</div>';
+  const pick = bagV.map(({ n, mk, q }) => {
+    const bq = benchQty(n, mk), full = bq >= 99 || (!bq && mine.length >= 5);
+    return `<div class="lt-item">${icon(ITEMS[n].icon)}<span>${esc(shownName(n))} ×${q}${mkTag(mk)}</span><button data-act="lt-plus" data-name="${esc(n)}" ${mka(mk)} data-qty="1" ${full ? 'disabled' : ''}>+1</button>${q > 1 ? `<button data-act="lt-plus" data-name="${esc(n)}" ${mka(mk)} data-qty="${Math.min(q, 99 - bq)}" ${full ? 'disabled' : ''}>전부</button>` : ''}</div>`;
   }).join('') || '<div class="lt-empty">올릴 소지품이 없어요.</div>';
   return `<div id="ltRoot"><p class="tiny">서로 물건을 올린 뒤 <b>둘 다 '교환'</b>을 누르면 바뀝니다. 누른 뒤 누구든 물건을 바꾸면 확인이 풀려요. 올린 물건은 내 소지품에서 빠져 있고, 취소하면 돌아옵니다. (15분 동안 아무 변화가 없으면 자동 취소)</p>` +
     `<div class="lt-grid">${col('내 교환대', mine, true, v.my_ok)}${col(`${v.name}의 교환대`, their, false, v.their_ok)}</div>` +
@@ -2900,20 +2920,22 @@ function openStorage(keepScroll) {
   const st0 = keepScroll === true && $('#modalBody') ? $('#modalBody').scrollTop : 0;
   const bag = {}; Object.values(state.inventory).flat().forEach(s => { bag[s.n] = (bag[s.n] || 0) + s.q; });
   const bagNames = Object.keys(bag).filter(n => ITEMS[n]).sort((x, y) => ITEMS[x].tab.localeCompare(ITEMS[y].tab) || x.localeCompare(y));
+  const bagV = bagNames.flatMap(n => itemVariants(n).map(v => [n, v.mk, v.q])); // 제작자가 다르면 따로 고른다
   const sq = storQ(), stor = storageList().filter(([n]) => !sq || `${n} ${shownName(n)}`.toLowerCase().includes(sq));
-  let sel = view.storSel; // { side: 'bag' | 'stor', name }
-  if (!sel || !ITEMS[sel.name] || (sel.side === 'bag' ? !bag[sel.name] : !state.storage[sel.name])) sel = view.storSel = null;
-  const cell = (side, n, q) => `<button class="slot clickable filled ${sel && sel.side === side && sel.name === n ? 'selected' : ''}" data-act="storage-pick" data-side="${side}" data-name="${esc(n)}" data-tip-title="${esc(shownName(n))} ×${q}" data-tip-desc="${esc(itemTip(n))}" aria-label="${esc(n)}">${icon(ITEMS[n].icon)}<span class="qty">${q}</span></button>`;
+  const storV = n => storedVariants(n).map(v => [n, v.mk, v.q]), vq = (side, n, mk) => side === 'bag' ? countItem(n, mk) : (storedVariants(n).find(v => v.mk === mk) || { q: 0 }).q;
+  let sel = view.storSel; // { side: 'bag' | 'stor', name, mk }
+  if (!sel || !ITEMS[sel.name] || !vq(sel.side, sel.name, sel.mk || '')) sel = view.storSel = null;
+  const cell = (side, n, q, mk = '') => `<button class="slot clickable filled ${sel && sel.side === side && sel.name === n && (sel.mk || '') === mk ? 'selected' : ''}" data-act="storage-pick" data-side="${side}" data-name="${esc(n)}" data-mk="${esc(mk)}" data-tip-title="${esc(shownName(n))} ×${q}" data-tip-desc="${esc(itemTip(n, mk))}" aria-label="${esc(n)}">${icon(ITEMS[n].icon)}${mk ? `<span class="mk-label">${esc(mkShort(mk))}</span>` : ''}<span class="qty">${q}</span></button>`;
   const grid = (cells, min) => { const c = cells.slice(); while (c.length < min) c.push('<div class="slot" aria-label="빈 칸"></div>'); return `<div class="inv-grid stor-grid">${c.join('')}</div>`; };
-  const btns = (act, n, max) => [1, 10].filter(q => q < max).map(q => `<button data-act="${act}" data-name="${esc(n)}" data-qty="${q}">${q}</button>`).join('') + `<button data-act="${act}" data-name="${esc(n)}" data-qty="${max}">${max > 1 ? '전부' : '1'}</button>`;
-  const storHtml = view.storList = () => { const sq2 = storQ(); return grid(storageList().filter(([n]) => !sq2 || `${n} ${shownName(n)}`.toLowerCase().includes(sq2)).map(([n, q]) => cell('stor', n, q)), 18); };
+  const btns = (act, n, max, mk) => [1, 10].filter(q => q < max).map(q => `<button data-act="${act}" data-name="${esc(n)}" data-mk="${esc(mk)}" data-qty="${q}">${q}</button>`).join('') + `<button data-act="${act}" data-name="${esc(n)}" data-mk="${esc(mk)}" data-qty="${max}">${max > 1 ? '전부' : '1'}</button>`;
+  const storHtml = view.storList = () => { const sq2 = storQ(); return grid(storageList().filter(([n]) => !sq2 || `${n} ${shownName(n)}`.toLowerCase().includes(sq2)).flatMap(([n]) => storV(n)).map(([n, mk, q]) => cell('stor', n, q, mk)), 18); };
   let bar = '<p class="tiny stor-hint">옮길 물건의 칸을 눌러 고르세요. 소지품에서 고르면 창고로, 창고에서 고르면 소지품으로 옮깁니다.</p>';
   if (sel) {
-    const n = sel.name, put = sel.side === 'bag', max = put ? Math.min(bag[n], STORAGE_STACK) : state.storage[n];
-    bar = `<div class="stor-bar"><span class="grow">${icon(ITEMS[n].icon)} <b>${esc(shownName(n))}</b> <span class="tiny">${put ? `소지품 ${bag[n]}개${state.storage[n] ? ` · 창고 ${state.storage[n]}개` : ''} → 창고로` : `창고 ${state.storage[n]}개 → 소지품으로`}</span></span><span class="stor-btns">${btns(put ? 'storage-put' : 'storage-take', n, max)}</span></div>`;
+    const n = sel.name, mk = sel.mk || '', put = sel.side === 'bag', max = put ? Math.min(countItem(n, mk), STORAGE_STACK) : vq('stor', n, mk);
+    bar = `<div class="stor-bar"><span class="grow">${icon(ITEMS[n].icon)} <b>${esc(shownName(n))}</b>${mk ? ` <span class="tiny mk-line">제작 · ${esc(mk)}</span>` : ''} <span class="tiny">${put ? `소지품 ${countItem(n, mk)}개${state.storage[n] ? ` · 창고 ${state.storage[n]}개` : ''} → 창고로` : `창고 ${vq('stor', n, mk)}개 → 소지품으로`}</span></span><span class="stor-btns">${btns(put ? 'storage-put' : 'storage-take', n, max, mk)}</span></div>`;
   }
   modal('개인실 창고', `<p class="tiny">창고 <b>${storageKinds()} / ${STORAGE_KINDS}</b>종 · 가방 ${usedSlots()} / ${bagCapacity()} · 한 종류에 ${STORAGE_STACK}개까지. 창고에 둔 물건은 소지품이 아니라서 소지 효과(반지 등)가 없어요.</p>` +
-    `<div class="choice-label">소지품</div>${grid(bagNames.map(n => cell('bag', n, bag[n])), 18)}${bar}` +
+    `<div class="choice-label">소지품</div>${grid(bagV.map(([n, mk, q]) => cell('bag', n, q, mk)), 18)}${bar}` +
     `<div class="choice-label">창고 <small class="tiny">${storageKinds()} / ${STORAGE_KINDS}종</small></div><div class="search-row stor-search"><input id="storQ" type="search" maxlength="20" placeholder="창고에서 검색" aria-label="창고 검색" autocomplete="off" value="${esc(view.storQ || '')}"></div><div id="storBox">${storHtml()}</div>`, [btnClose], true);
   $('#modalBody').scrollTop = st0;
 }

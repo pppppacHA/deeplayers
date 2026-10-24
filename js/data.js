@@ -5,7 +5,8 @@
 
 /* ---------- 상수 ---------- */
 const SAVE_KEY = 'deeplayer-ui';
-const SAVE_VERSION = 8;        // 저장 구조가 바뀌면 올린다 (이전 버전 저장은 무시됨)
+const SAVE_VERSION = 8;
+const MK_LEN = 30;              // 제작자 표시 글자 수 (불러오기 검증에서 쓰므로 data.js 에 둔다)        // 저장 구조가 바뀌면 올린다 (이전 버전 저장은 무시됨)
 const DEFAULT_LOCATION = '본부';
 const BASE_BAG_CAPACITY = 24;  // 기본 가방 칸 수 (장비/소모품/재료 합계)
 const PAGE_SIZE = 24;          // 인벤토리 한 페이지 칸 수

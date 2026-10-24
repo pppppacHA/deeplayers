@@ -511,7 +511,7 @@ with sync_playwright() as p:
     check('market_total_cap_and_qty', pg.evaluate("marketListCheck('목재',100,1)") is not None and pg.evaluate("marketListCheck('목재',11,1)") is not None and pg.evaluate("marketListCheck('없는템',1,1)") is not None and pg.evaluate("marketListCheck('목재',2,MARKET_TOTAL_MAX)") is not None)
     pg.evaluate("openMarket('팔기')"); pg.wait_for_timeout(400)
     check('market_window_tabs', pg.locator('#mkRoot .tabs button').count() == 3 and pg.locator('#mkItem').count() == 1)
-    pg.select_option('#mkItem', '목재'); pg.wait_for_timeout(100)
+    pg.select_option('#mkItem', '목재\x01'); pg.wait_for_timeout(100)
     pg.fill('#mkQty', '3'); pg.fill('#mkPrice', str(um)); pg.click('[data-act="mk-list"]'); pg.wait_for_timeout(700)
     check('market_list_moves_item_and_syncs', pg.evaluate("countItem('목재')") == 7 and len(server['mk']['rows']) == 1 and server['mk']['rows'][0]['qty'] == 3 and server['mk']['rows'][0]['price'] == um and pg.evaluate("state.market.sell[0].id") == server['mk']['rows'][0]['id'], server['mk']['rows'])
     check('market_my_list_shows_entry', '판매 중' in pg.inner_text('#mkRoot'))

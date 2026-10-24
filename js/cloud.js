@@ -59,7 +59,12 @@ const Cloud = (() => {
     async ackTrade(id) { await call('/rest/v1/rpc/ack_trade', { p_id: id }, await token()); },
     async announceRank(rank) { return await call('/rest/v1/rpc/announce_rank', { p_rank: rank }, await token()); },
     /* 실시간 교환 */
-    async marketList(key, item, qty, price) { return await call('/rest/v1/rpc/market_list', { p_ckey: key, p_item: item, p_qty: qty, p_price: price }, await token()); },
+    async marketList(key, item, qty, price, mk) { // 제작자 표시가 있을 때만 p_mk 를 보낸다. 서버가 아직 옛 SQL이면 표시 없이 다시 올린다
+      const b = { p_ckey: key, p_item: item, p_qty: qty, p_price: price };
+      if (!mk) return await call('/rest/v1/rpc/market_list', b, await token());
+      try { return await call('/rest/v1/rpc/market_list', { ...b, p_mk: mk }, await token()); }
+      catch (e) { if (/market_list|PGRST|function/i.test(String(e && e.message))) return await call('/rest/v1/rpc/market_list', b, await token()); throw e; }
+    },
     async marketBrowse(q) { return await call('/rest/v1/rpc/market_browse', { p_q: q || '' }, await token()); },
     async marketMine() { return await call('/rest/v1/rpc/market_mine', {}, await token()); },
     async marketBuy(id, qty, req) { return await call('/rest/v1/rpc/market_buy', { p_id: id, p_qty: qty, p_req: req }, await token()); },
