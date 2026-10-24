@@ -25,7 +25,7 @@ body[data-theme="light"]{
   --toast-bg:#222222; --toast-text:#ffffff;
   --story-bg:#0d0d0d; --story-text:#ececec;
   --term-bg:#f7f7f7; --term-text:#1c1c1c; --term-dim:#707070; --term-line:#d6d6d6; --term-mine:#000000; --bezel:#e4e4e4; --bezel-line:#c8c8c8;
-  --tone-safe:#2b2b2b; --tone-forest:#3f9a62; --tone-sea:#2f7fc4; --tone-volcano:#cf5a3a; --tone-canyon:#b9742f; --tone-snow:#4a8fb8; --tone-jungle:#2f9e5b;
+  --tone-safe:#2b2b2b; --tone-forest:#3f9a62; --tone-sea:#2f7fc4; --tone-volcano:#cf5a3a; --tone-canyon:#b9742f; --tone-snow:#4a8fb8; --tone-jungle:#2f9e5b; --tone-desert:#c99a2e;
   --bb-bg:#f1f1f2; --bb-border:#c4c6ca; --bb-text:#2e3138; --bb-sub:#7a7e86; --bb-live:#d63a3a; --bb-glow:#ffffff;
   --cur-default:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 26 26'><path d='M3 2 L3 21 L8 16.5 L11.5 24 L15 22.4 L11.6 15.2 L18.5 15 Z' fill='%23222222' stroke='%23ffffff' stroke-width='2' stroke-linejoin='round'/></svg>") 2 1,auto;
   --cur-pointer:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 26 26'><path d='M3 2 L3 21 L8 16.5 L11.5 24 L15 22.4 L11.6 15.2 L18.5 15 Z' fill='%23000000' stroke='%23ffffff' stroke-width='2' stroke-linejoin='round'/></svg>") 2 1,auto;
@@ -50,7 +50,7 @@ body[data-theme="dark"]{
   --toast-bg:#ececec; --toast-text:#111111;
   --story-bg:#0d0d0d; --story-text:#ececec;
   --term-bg:#101010; --term-text:#e6e6e6; --term-dim:#9a9a9a; --term-line:#2e2e2e; --term-mine:#ffffff; --bezel:#1f1f1f; --bezel-line:#333333;
-  --tone-safe:#e6e6e6; --tone-forest:#5fc489; --tone-sea:#5aa6f0; --tone-volcano:#f08a62; --tone-canyon:#e0a060; --tone-snow:#8fd0f0; --tone-jungle:#5fd08a;
+  --tone-safe:#e6e6e6; --tone-forest:#5fc489; --tone-sea:#5aa6f0; --tone-volcano:#f08a62; --tone-canyon:#e0a060; --tone-snow:#8fd0f0; --tone-jungle:#5fd08a; --tone-desert:#e8c46a;
   --bb-bg:#15171a; --bb-border:#34373d; --bb-text:#dcdfe4; --bb-sub:#8d9199; --bb-live:#ff6b6b; --bb-glow:#0008;
   --cur-default:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 26 26'><path d='M3 2 L3 21 L8 16.5 L11.5 24 L15 22.4 L11.6 15.2 L18.5 15 Z' fill='%23ececec' stroke='%23111111' stroke-width='2' stroke-linejoin='round'/></svg>") 2 1,auto;
   --cur-pointer:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 26 26'><path d='M3 2 L3 21 L8 16.5 L11.5 24 L15 22.4 L11.6 15.2 L18.5 15 Z' fill='%23ffffff' stroke='%23111111' stroke-width='2' stroke-linejoin='round'/></svg>") 2 1,auto;

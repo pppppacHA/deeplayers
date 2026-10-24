@@ -285,7 +285,7 @@ function applyMapTransform() { $('#mapWorld').style.transform = state.dungeon ? 
 const matTerrains = (z, q) => z.terrains.map((t, i) => [t, i]).filter(([t]) => [...t.gather, t.rare, ...t.monsters.map(m => m.name)].some(n => n && n.toLowerCase().includes(q))).map(([t, i]) => i); // 재료나 출몰 몬스터 이름으로 찾는다
 /* 지도 칸 설명: 같은 지형이라도 칸마다 나타나는 재료·몬스터는 다르므로, 칸 좌표를 주면 그 칸에 실제로 나타나는 것만 보여 준다 (검색·범례는 지형 전체) */
 function tileMats(z, t, x, y, seed) {
-  const gids = tileGatherIds(z, x, y, seed).map(id => ACTIONS[id] && ACTIONS[id].items && ACTIONS[id].items[0]).filter(Boolean);
+  const sp = x === undefined ? null : spotAt(z, x, y), gids = [...(sp ? sp.fish : []), ...tileGatherIds(z, x, y, seed).map(id => ACTIONS[id] && ACTIONS[id].items && ACTIONS[id].items[0]).filter(Boolean)];
   const bm = ACTIONS[tileBattleId(z, t, x, y, seed)];
   return `[채집] ${gids.length ? gids.join(' · ') : '없음'}${t.rare ? ` [희귀] ${t.rare}` : ''} [출몰] ${bm && bm.monster ? bm.monster.name : t.monster.name}`;
 }
@@ -322,12 +322,12 @@ function renderDungeon() {
     if (ch === '.') return '<div class="tile void"></div>';
     if (!d.seen[`${x},${y}`]) return '<div class="tile unseen"></div>';
     if (ch === '#') return '<div class="tile wall"></div>';
-    const ti = terrainIndex(ch), info = tileInfo(z, ch), me = d.x === x && d.y === y;
+    const ti = terrainIndex(ch), info = tileInfo(z, ch, x, y), me = d.x === x && d.y === y;
     const evDone = ch === 'E' && d.done.includes(eventIndex(z, x, y)), going = dest && dest[0] === x && dest[1] === y;
-    const glyph = me ? '<i class="pawn"></i>' : ch === 'S' ? icon('logout') : ch === 'C' ? icon('camping') : ch === 'E' ? icon(evDone ? 'check' : 'priority_high') : ti >= 0 ? icon(z.terrains[ti].icon) : '';
+    const glyph = me ? '<i class="pawn"></i>' : ch === 'S' ? icon('logout') : ch === 'C' ? icon('camping') : ch === 'E' ? icon(evDone ? 'check' : 'priority_high') : ch === '?' ? icon('question_mark') : info.spot ? icon('phishing') : ti >= 0 ? icon(z.terrains[ti].icon) : '';
     const hl = ti >= 0 && mq && matTerrains(z, mq).includes(ti); if (hl) hlCount++;
     const unv = !me && !(state.visited[d.zone] || {})[`${x},${y}`]; // 보이기만 하고 밟아 본 적 없는 칸은 흑백
-    const cls = `tile floor ${unv ? 'unvisited' : ''} ${hl ? 'hl' : ''} ${ti >= 0 ? 't' + ti : ''} ${ch === 'C' ? 'camp' : ''} ${ch === 'E' ? 'ev' : ''} ${evDone ? 'done' : ''} ${ch === 'S' ? 'start' : ''} ${me ? 'me' : ''} ${going ? 'going' : ''}`;
+    const cls = `tile floor ${unv ? 'unvisited' : ''} ${hl ? 'hl' : ''} ${ti >= 0 ? 't' + ti : ''} ${ch === 'C' ? 'camp' : ''} ${info.spot ? 'spot' : ''} ${ch === 'E' ? 'ev' : ''} ${ch === '?' ? 'qm' : ''} ${evDone ? 'done' : ''} ${ch === 'S' ? 'start' : ''} ${me ? 'me' : ''} ${going ? 'going' : ''}`;
     const tip = `data-tip-title="${esc(info.name)}" data-tip-desc="${esc(info.desc + (info.terrain ? ' ' + tileMats(z, info.terrain, x, y, d.seed) : ''))}"`;
     return me ? `<div class="${cls}" ${tip}>${glyph}</div>` : `<button class="${cls} adj" data-act="tile" data-x="${x}" data-y="${y}" ${tip} aria-label="${esc(info.name)}">${glyph}</button>`;
   }).join('')).join('');
@@ -341,7 +341,7 @@ function renderMapHead() {
   const loc = LOCATIONS[state.location], d = state.dungeon;
   let desc = loc.desc, meta = loc.meta.join(' / ');
   if (d) {
-    const z = zoneOf(d.zone), info = tileInfo(z, tileOf(z, d.x, d.y));
+    const z = zoneOf(d.zone), info = tileInfo(z, tileOf(z, d.x, d.y), d.x, d.y);
     desc = `${info.name} — ${info.desc}`;
     meta = `${loc.meta[0]} / 미궁 · ${info.name}`;
   }
@@ -405,7 +405,7 @@ function previewOf(id, mi) {
   if (a.kind !== 'step') return actionPreview(id, mi);
   const m = state.dungeon && view.target ? planMove(...view.target) : { err: '이동할 수 없습니다.' };
   if (m.err) return m;
-  const z = zoneOf(state.dungeon.zone), info = tileInfo(z, tileOf(z, ...view.target));
+  const z = zoneOf(state.dungeon.zone), info = tileInfo(z, tileOf(z, ...view.target), ...view.target);
   return { time: `${fmtDur(m.sec)} (${m.steps}칸${m.rough ? ` · 험난한 지형 ${m.rough}칸 포함` : ''})`, gain: `${info.name} 도착`, cost: `기력 -${m.sp}`, desc: `${info.name} — ${info.desc}` };
 }
 /* 본부 전광판: 들어올 때마다 리코가 읽어 주는 문구가 바뀐다 (이벤트 문구가 있으면 그것만) */
@@ -450,7 +450,7 @@ function renderAction() {
   const d = state.dungeon;
   const lastCard = (state.results || []).map((r, i) => `<div class="last-result"><div class="lr-head"><strong>${icon('assignment_turned_in')} 결과 · ${esc(r.t)}</strong><button data-act="result-close" data-i="${i}" aria-label="닫기">${icon('close')}</button></div><p>${esc(r.text)}</p>` +
     `<div class="reward-list">${chipList(r.gain)}${r.loss.map(c => `<span class="reward-chip bad">${esc(c)}</span>`).join('')}</div></div>`).join('');
-  const tinfo = d && tileInfo(zoneOf(d.zone), tileOf(zoneOf(d.zone), d.x, d.y));
+  const tinfo = d && tileInfo(zoneOf(d.zone), tileOf(zoneOf(d.zone), d.x, d.y), d.x, d.y);
   let html = d ? `<h3>${icon('explore')} ${esc(loc.name)} · ${esc(tinfo.name)}</h3><p>${esc(tinfo.desc)}</p><p class="tiny">가고 싶은 타일을 누르면 이동 확인창이 뜹니다. 한 칸에 ${DUNGEON_STEP_SEC / 60}분 · 기력 ${DUNGEON_STEP_SP}이 듭니다.</p>`
     : `<h3>${esc(loc.name)}</h3><p>${loc.danger ? '입장하면 타일 미궁을 탐색할 수 있습니다.' : '행동을 선택하면 예상 시간과 보상을 먼저 확인할 수 있습니다.'}</p>`;
   if (!d && state.location === '본부' && view.phase !== 'confirm') html += billboardHtml(); else if (state.location !== '본부') view.bbOn = false;
@@ -599,7 +599,7 @@ function renderSituation() { // '상황' 탭: 접을 수 있는 두 칸 — 주�
   const pn = new Set(pm.map(m => m.name)), np = (view.nearby || []).filter(p => !pn.has(p.name));
   const nearSrv = np.map(p => `<div class="nearby-row"><div class="round-avatar" data-user="${esc(p.name)}">${avatarOf(p.name)}</div><div class="grow"><strong data-user="${esc(p.name)}">${esc(p.name)}</strong><small>같은 칸 · 접속 중</small></div><button data-act="ftrade-open" data-name="${esc(p.name)}">교환</button></div>`).join('');
   const nearAll = NEARBY_PLAYERS.length + pm.length + np.length;
-  const partyBody = partyOn() ? (PARTY.id ? `<div class="party-list">${PARTY.members.map(m => `<div class="party-row"><span>${icon(m.leader ? 'workspace_premium' : 'person')}</span><b data-user="${esc(m.name)}">${esc(m.name)}</b>${m.leader ? '<em class="tag">파티장</em>' : ''}${partyLeader() && m.uid !== Cloud.userUid ? `<button data-act="party-kick" data-uid="${esc(m.uid)}" data-name="${esc(m.name)}" title="파티에서 내보냅니다">내보내기</button>` : ''}</div>`).join('')}</div>${partyLeader() ? '' : `<div class="party-follow"><button class="${state.follow ? 'primary' : ''}" data-act="follow-toggle" aria-pressed="${state.follow}">${icon('directions_walk')} 동행 모드 ${state.follow ? '켜짐' : '꺼짐'}</button><small>${esc(state.follow ? (view.followMsg || '파티장을 기다리는 중이에요.') : '켜면 파티장이 움직일 때 자동으로 따라가요.')}${paceSec() < stepSec() - .5 ? esc(` · 이동 속도를 파티에서 가장 빠른 사람에 맞춰 한 칸 ${Math.round(paceSec())}초`) : ''}</small></div>`}<div class="party-foot"><small>${PARTY.members.length}/4명 · 파티원은 항상 주위 대원이에요</small><button data-act="party-leave">나가기</button></div>` : '<div class="empty">파티가 없습니다. 친구 창이나 대원 프로필에서 초대해 보세요. (2~4명)</div>')
+  const partyBody = partyOn() ? (PARTY.id ? `<div class="party-list">${PARTY.members.map(m => `<div class="party-row"><span>${icon(m.leader ? 'workspace_premium' : 'person')}</span><b data-user="${esc(m.name)}">${esc(m.name)}</b>${m.leader ? '<em class="tag">파티장</em>' : ''}${partyLeader() && m.uid !== Cloud.userUid ? `<button data-act="party-kick" data-uid="${esc(m.uid)}" data-name="${esc(m.name)}" title="파티에서 내보냅니다">내보내기</button>` : ''}</div>`).join('')}</div>${partyLeader() ? `<div class="party-follow"><button class="${state.partyMove ? 'primary' : ''}" data-act="partymove-toggle" aria-pressed="${state.partyMove}">${icon('groups')} 파티 이동 ${state.partyMove ? '켜짐' : '꺼짐'}</button><small>${esc(state.partyMove ? '동행 모드를 켠 파티원이 내가 움직이면 따라와요.' : '켜야 동행 모드를 켠 파티원이 함께 움직여요.')}${paceSec() < stepSec() - .5 ? esc(` · 이동 속도를 파티에서 가장 빠른 사람에 맞춰 한 칸 ${Math.round(paceSec())}초`) : ''}</small></div>` : `<div class="party-follow"><button class="${state.follow ? 'primary' : ''}" data-act="follow-toggle" aria-pressed="${state.follow}">${icon('directions_walk')} 동행 모드 ${state.follow ? '켜짐' : '꺼짐'}</button><small>${esc(state.follow ? (view.followMsg || '파티장을 기다리는 중이에요.') : '켜 두면 파티장이 파티 이동을 켰을 때 따라가요.')}${paceSec() < stepSec() - .5 ? esc(` · 이동 속도를 파티에서 가장 빠른 사람에 맞춰 한 칸 ${Math.round(paceSec())}초`) : ''}</small></div>`}<div class="party-foot"><small>${PARTY.members.length}/4명 · 파티원은 항상 주위 대원이에요</small><button data-act="party-leave">나가기</button></div>` : '<div class="empty">파티가 없습니다. 친구 창이나 대원 프로필에서 초대해 보세요. (2~4명)</div>')
     + (PARTY.invites.length ? `<div class="party-inv">${PARTY.invites.map(r => `<div class="party-row"><span>${icon('mail')}</span><b>${esc(r.name)}</b><small>의 파티 초대</small><button class="primary" data-act="party-answer" data-id="${r.id}" data-ok="1">수락</button><button data-act="party-answer" data-id="${r.id}" data-ok="0">거절</button></div>`).join('')}</div>` : '') : '<div class="empty">파티는 서버에 로그인하면 쓸 수 있어요.</div>';
   const near = nearP + nearSrv + (NEARBY_PLAYERS.length ? '' : (nearP || nearSrv) ? '' : '<div class="empty">주위에 다른 대원이 없습니다.</div>') + NEARBY_PLAYERS.map(([n, s]) => `<div class="nearby-row"><div class="round-avatar">${icon('person')}</div><div class="grow"><strong>${esc(n)}</strong><small>${esc(LOCATIONS[state.location].name)} · ${esc(s)}</small></div><button data-act="player" data-player="${esc(n)}">정보</button><button data-act="trade-open" data-player="${esc(n)}">교환</button></div>`).join('');
   const doneN = state.todos.filter(t => t.done).length;
@@ -883,9 +883,10 @@ function openSettings() {
 }
 
 /* ---------- 도감: 구역 / 아이템 / 몬스터 / 레시피 (서브 분류 칩) ---------- */
-const CODEX_TABS = ['구역', '아이템', '몬스터', '펫', '레시피'];
+const CODEX_BASE_TABS = ['구역', '아이템', '몬스터', '펫', '레시피'];
+const codexTabs = () => Object.keys(state.journals || {}).length ? [...CODEX_BASE_TABS, '저널'] : CODEX_BASE_TABS; // 저널은 하나라도 얻은 뒤에야 탭이 보인다 (히든)
 const CODEX_ITEM_SUBS = ['장비', '요리', '낚시', '소모품', '재료']; // 도감 아이템 분류 (소모품은 요리를 뺀 나머지)
-const CODEX_SUBS = { '구역': ['공중', '지상', '지형'], '아이템': CODEX_ITEM_SUBS, '몬스터': MONSTER_KINDS, '펫': [], '레시피': [] };
+const CODEX_SUBS = { '구역': ['공중', '지상', '지형'], '아이템': CODEX_ITEM_SUBS, '몬스터': MONSTER_KINDS, '펫': [], '레시피': [], '저널': [] };
 const codexView = { tab: '구역', sub: null };
 const defaultGuildName = () => `${state.character.name}의 길드`.slice(0, GUILD_NAME_MAX);
 /* 아이템 획득처: 데이터에서 한 번만 계산해 둔다 */
@@ -928,6 +929,7 @@ function codexEntries(tab) {
   if (tab === '아이템') return Object.entries(ITEMS).filter(([n, it]) => !it.hidden || c.items[n]).map(([n, it]) => ({ sub: codexItemSub(n), icon: it.icon, name: n, desc: it.desc + (FISH_SIZE[n] ? ` (크기 ${FISH_SIZE[n][0]}~${FISH_SIZE[n][1]}cm)` : ''), src: sourceText(n), best: FISH_SIZE[n] ? (state.fishBest[n] ? `최고 기록 ${state.fishBest[n]}cm` : '아직 기록이 없어요') : '', known: c.items[n] }));
   if (tab === '펫') return Object.entries(PET_SPECIES).map(([id, sp]) => { const p = state.pets.find(x => x.id === id); // 지금 데리고 있는 펫만 '발견'으로 보인다
     return { sub: '', icon: sp.icon || 'pets', name: p ? `${petName(p)}${p.name ? ` (${sp.name})` : ''}` : sp.name, desc: p ? `고향 ${sp.zone} · 친밀도 ${p.bond}/100 · 동행 시 이동 시간 -${Math.round(petBuff(p) * 100)}%` : '', where: p ? '' : sp.zone, known: !!p }; });
+  if (tab === '저널') return DANGER_ZONES.filter(z => QMARKS[z.id]).map(z => ({ sub: '', icon: 'menu_book', name: `${QMARKS[z.id].name} 탐험록 · ${z.id}`, desc: QMARKS[z.id].journal, known: !!(state.journals || {})[z.id], journal: true }));
   if (tab === '몬스터') return DANGER_ZONES.flatMap(z => z.terrains.flatMap(t => t.monsters.map(m => ({ sub: m.kind, icon: m.kind === '짐승' ? 'pets' : 'bug_report', name: m.name,
     desc: `${m.desc} (HP ${m.hp} · 공격 ${m.atk})`, where: `${z.name} · ${t.name}`, known: c.monsters[m.name] }))));
   return RECIPES.map(rc => ({ sub: '', icon: ITEMS[rc.out].icon, name: rc.out, desc: Object.entries(rc.mats).map(([n, q]) => `${n} ×${q}`).join(' + '), known: recipeKnown(rc), badge: recipeKnown(rc) ? (c.recipes[rc.out] ? '제작 완료' : '미제작') : (rankAtLeast(rc.rank) ? '단련으로 습득 가능' : `${rc.rank}등급부터 단련으로 습득`) }));
@@ -943,13 +945,13 @@ function codexFiltered() { // 현재 탭·분류·정렬·검색을 적용한 �
 function codexListHtml(list) {
   if (!list.length) return `<div class="empty">${codexView.q ? '검색 결과가 없어요. 아직 발견하지 못한 항목은 검색되지 않아요.' : '항목이 없습니다.'}</div>`;
   return list.map(e => e.known
-      ? `<div class="nearby-row"><div class="round-avatar">${icon(e.icon)}</div><div class="grow"><strong>${esc(e.name)}</strong><small>${esc(e.desc)}${e.where ? ` · 서식지 ${esc(e.where)}` : ''}</small>${e.src ? `<small class="src">획득: ${esc(e.src)}</small>` : ''}${e.best ? `<small class="src best">${icon('emoji_events')} ${esc(e.best)}</small>` : ''}</div>${e.badge ? `<span class="tag ${e.badge === '제작 완료' ? 'ok' : ''}">${e.badge}</span>` : e.sub ? `<span class="tag">${esc(e.sub)}</span>` : ''}</div>`
+      ? `<div class="nearby-row"><div class="round-avatar">${icon(e.icon)}</div><div class="grow"><strong>${esc(e.name)}</strong><small${e.journal ? ' class="journal"' : ''}>${esc(e.desc)}${e.where ? ` · 서식지 ${esc(e.where)}` : ''}</small>${e.src ? `<small class="src">획득: ${esc(e.src)}</small>` : ''}${e.best ? `<small class="src best">${icon('emoji_events')} ${esc(e.best)}</small>` : ''}</div>${e.badge ? `<span class="tag ${e.badge === '제작 완료' ? 'ok' : ''}">${e.badge}</span>` : e.sub ? `<span class="tag">${esc(e.sub)}</span>` : ''}</div>`
       : `<div class="nearby-row unknown"><div class="round-avatar">${icon('help')}</div><div class="grow"><strong>???</strong><small>아직 발견하지 못했습니다.</small></div>${e.sub ? `<span class="tag">${esc(e.sub)}</span>` : ''}</div>`).join('');
 }
 const codexCountText = list => codexView.tab === '레시피' ? `${list.length}종` : `발견 ${list.filter(e => e.known).length} / ${list.length}`;
 function codexHtml() {
   const { tab, sub } = codexView, list = codexFiltered();
-  return `<div class="tabs flush">${CODEX_TABS.map(t => `<button class="${t === tab ? 'active' : ''}" data-act="codex-tab" data-codex="${t}">${t}</button>`).join('')}</div>` +
+  return `<div class="tabs flush">${codexTabs().map(t => `<button class="${t === tab ? 'active' : ''}" data-act="codex-tab" data-codex="${t}">${t}</button>`).join('')}</div>` +
     (CODEX_SUBS[tab].length ? `<div class="chips">${['', ...CODEX_SUBS[tab]].map(x => `<button class="chip ${x === (sub || '') ? 'active' : ''}" data-act="codex-sub" data-sub="${x}">${x || '전체'}</button>`).join('')}</div>` : '') +
     `<div class="search-row codex-search"><input id="codexQ" type="search" maxlength="20" placeholder="도감에서 검색 (발견한 항목)" aria-label="도감 검색" autocomplete="off" value="${esc(codexView.q || '')}"></div>` +
     `<div class="codex-bar"><p class="tiny codex-count" id="codexCount">${codexCountText(list)}</p><span class="codex-sort"><button class="${codexView.sort === 'name' ? '' : 'active'}" data-act="codex-sort" data-sort="">기본순</button><button class="${codexView.sort === 'name' ? 'active' : ''}" data-act="codex-sort" data-sort="name">가나다순</button></span></div><div class="codex-list" id="codexList">${codexListHtml(list)}</div>`;
@@ -999,7 +1001,7 @@ async function partySync(quiet) { // 서버에서 내 파티와 받은 초대를
   if (!PARTY.members.length) PARTY.id = 0;
   PARTY.invites = (pi && Array.isArray(pi.incoming) ? pi.incoming : []).slice(0, 10).map(r => ({ id: sid9(r.id), name: cleanText(r.name, 12) })).filter(r => r.id && r.name);
   view.partyUid = {}; PARTY.members.forEach(m => { view.partyUid[m.name] = m.uid; });
-  if (state.follow && (!PARTY.id || partyLeader())) { state.follow = false; save(); } // 파티가 없거나 내가 파티장이면 동행은 꺼진다
+  if ((state.follow && (!PARTY.id || partyLeader())) || (state.partyMove && (!PARTY.id || !partyLeader()))) { state.follow = false; state.partyMove = false; save(); } // 파티가 없거나 내가 파티장이면 동행은 꺼진다
   if (before !== PARTY.id) { view.placeSent = ''; view.followMsg = ''; }
   if (PARTY.invites.length > Math.max(view.partyInvN || 0, 0) && !quiet) toast(`파티 초대가 ${PARTY.invites.length}건 와 있어요. (상황 탭에서 확인)`);
   view.partyInvN = PARTY.invites.length;
@@ -1009,12 +1011,14 @@ async function partySync(quiet) { // 서버에서 내 파티와 받은 초대를
 }
 /* ---- 파티 동행: 파티원이 켜면 파티장이 움직일 때 따라간다 (각자 정상 기력·시간) ---- */
 const FOLLOW_GAP_MS = 2500, FOLLOW_RETRY_MS = 30000;
+function partyFlag() { return !!(PARTY.id && (partyLeader() ? state.partyMove : state.follow)); } // 서버에 알리는 fol: 파티장은 '파티 이동', 파티원은 '동행'
 function followLeader() { return PARTY.members.find(m => m.leader); }
 function followTick() {
   if (!state.created || !state.follow || !PARTY.id || partyLeader() || view.phase !== 'idle') return;
   if (nowMs() < (view.followAt || 0)) return;
   const L = followLeader();
   if (!L || !L.online) { view.followMsg = '파티장이 접속 중이 아니에요.'; return; }
+  if (!L.fol) { view.followMsg = '파티장이 파티 이동을 켜면 따라가요.'; return; }
   const r = followStep(L.place);
   view.followAt = nowMs() + FOLLOW_GAP_MS;
   if (r.err) { view.followMsg = r.err; view.followAt = nowMs() + FOLLOW_RETRY_MS; if (view.followErr !== r.err) { view.followErr = r.err; toast(`동행을 이어가지 못했어요: ${r.err}`); sfx('error'); if (state.side === '상황') renderSituation(); } return; }
@@ -1026,8 +1030,8 @@ function followTick() {
 }
 async function partyPlacePush() { // 내 위치·이동 시간·동행 여부가 바뀔 때만 서버에 올린다 (파티원은 파티장 위치와 가장 빠른 이동 시간을 이 값으로 안다)
   if (!partyOn() || !PARTY.id || !state.created || view.placeBusy) return;
-  const p = placeNow(), spd = Math.round(stepSec()), key = `${p}|${spd}|${state.follow ? 1 : 0}`; if (key === view.placeSent) return;
-  view.placeBusy = true; try { await Cloud.setPlace(p, spd, state.follow); view.placeSent = key; } catch (e) { /* 서버 준비 전: 다음에 다시 */ } view.placeBusy = false;
+  const p = placeNow(), spd = Math.round(stepSec()), key = `${p}|${spd}|${partyFlag() ? 1 : 0}`; if (key === view.placeSent) return;
+  view.placeBusy = true; try { await Cloud.setPlace(p, spd, partyFlag()); view.placeSent = key; } catch (e) { /* 서버 준비 전: 다음에 다시 */ } view.placeBusy = false;
 }
 async function partyDo(fn, okMsg) { // 파티 요청 공통 처리
   if (!partyOn()) { toast('파티는 서버에 로그인해야 쓸 수 있어요.'); sfx('error'); return false; }
@@ -1337,7 +1341,7 @@ const A = {
     }
     else if (a.kind === 'enter') { enterDungeon(a.zone); resetPhase(); renderMapHead(); renderMap(); renderAction(); renderSide(); }
     else if (a.kind === 'leave') { leaveDungeon(); resetPhase(); renderMapHead(); renderMap(); renderAction(); }
-    else if (a.kind === 'investigate' || a.kind === 'gamble' || (a.kind === 'leisure' && leisureTaken())) { // 시간이 걸리지 않는 행동은 누르면 바로 실행한다 (여가는 버프를 받은 뒤에만)
+    else if (a.kind === 'investigate' || a.kind === 'gamble' || a.kind === 'lounge' || (a.kind === 'leisure' && leisureTaken())) { // 시간이 걸리지 않는 행동은 누르면 바로 실행한다 (여가는 버프를 받은 뒤에만)
       const msg = startAction(el.dataset.choice);
       if (msg) { toast(msg); sfx('error'); return; }
       renderBars(); renderAction(); sfx('ok');
@@ -1435,10 +1439,16 @@ const A = {
     el.disabled = false; if (ok) addLog(`${name} 대원에게 파티 초대를 보냈습니다.`);
   },
   'party-answer': async el => { const id = +el.dataset.id, yes = el.dataset.ok === '1'; el.disabled = true; await partyDo(() => Cloud.partyAnswer(id, yes), yes ? '파티에 들어왔어요.' : '초대를 거절했어요.'); renderChat(); },
+  'partymove-toggle': () => {
+    if (!PARTY.id || !partyLeader()) { toast('파티장만 쓸 수 있어요.'); sfx('error'); return; }
+    state.partyMove = !state.partyMove; view.placeSent = ''; save(); sfx('click');
+    toast(state.partyMove ? '파티 이동을 켰어요. 동행 모드인 파티원이 따라옵니다.' : '파티 이동을 껐어요.');
+    renderSituation(); partyPlacePush();
+  },
   'follow-toggle': () => {
     if (!PARTY.id || partyLeader()) { toast('파티원일 때만 쓸 수 있어요. (파티장은 따라가는 쪽이 아니에요)'); sfx('error'); return; }
     state.follow = !state.follow; view.followAt = 0; view.followErr = ''; view.followMsg = ''; save(); sfx('click');
-    toast(state.follow ? '동행 모드를 켰어요. 파티장이 움직이면 따라갑니다.' : '동행 모드를 껐어요.');
+    toast(state.follow ? '동행 모드를 켰어요. 파티장이 파티 이동을 켜면 따라갑니다.' : '동행 모드를 껐어요.');
     renderSituation(); if (state.follow) followTick();
   },
   'party-leave': () => askConfirm('파티 나가기', '파티에서 나갈까요? 파티장이 나가면 다음 사람이 파티장이 되고, 혼자 남으면 파티가 사라져요.', '나가기', 'party-leave-do', {}, closeModal),
@@ -1686,7 +1696,9 @@ const A = {
     sfx(r.ups ? 'levelup' : 'ok');
     if (r.lost.length) toast(`가방이 가득 차 ${r.lost.map(([n, q]) => `${n} ${q}개`).join(', ')}을(를) 얻지 못했습니다.`);
     if (r.ups) toast(`레벨 업! Lv.${state.character.level} · 스탯 포인트 +${r.ups}`);
+    if (r.result.journal) { sfx('levelup'); modal('저널을 획득했습니다', `<p class="detail-desc">저널을 획득했습니다. 도감을 확인해주세요.</p>`, ['<button class="primary" data-act="open-codex-journal">도감 열기</button>', btnClose], true); }
   },
+  'open-codex-journal': () => { closeModal(); codexView.tab = '저널'; codexView.sub = null; codexView.q = ''; openSystem('도감'); },
 
   /* 스탯 / 제작 / 아이템 */
   'stat-up': el => { const k = el.dataset.stat, d = view.statDraft = view.statDraft || {}; if (!(k in state.stats)) return; if (state.statPoints - Object.values(d).reduce((a, b) => a + b, 0) < 1) return; d[k] = (d[k] || 0) + 1; renderStatus(); },

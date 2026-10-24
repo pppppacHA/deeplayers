@@ -105,7 +105,9 @@ function hardenState(s) {
   if (!['light', 'dark'].includes(s.settings.customBase)) s.settings.customBase = 'light';
   s.settings.guildAlert = s.settings.guildAlert !== false;
   { const ct = s.settings.chatTabs && typeof s.settings.chatTabs === 'object' ? s.settings.chatTabs : {}; const o = Object.fromEntries(CHAT_TABS.map(k => [k, ct[k] !== false])); s.settings.chatTabs = CHAT_TABS.some(k => o[k]) ? o : Object.fromEntries(CHAT_TABS.map(k => [k, true])); }
-  s.follow = s.follow === true;
+  s.follow = s.follow === true; s.partyMove = s.partyMove === true;
+  s.lounge = Object.fromEntries(Object.entries(s.lounge && typeof s.lounge === 'object' ? s.lounge : {}).filter(([k]) => QMARKS[k]).map(([k, v]) => [k, intIn(v, 0, 9999, 0)]));
+  s.journals = Object.fromEntries(Object.entries(s.journals && typeof s.journals === 'object' ? s.journals : {}).filter(([k, v]) => QMARKS[k] && v).map(([k]) => [k, 1]));
   if (s.side === '주위 대원') s.side = '상황'; // 탭 이름이 바뀌었다
   if (!['임무', '서브잡', '펫', '상황'].includes(s.side)) s.side = '임무';
   { const m = {}; TAG_NAMES.forEach(t => { const v = s.mastery && s.mastery[t]; if (Number.isFinite(v) && v > 0) m[t] = Math.min(MASTERY_TOTAL, Math.floor(v)); }); s.mastery = m; }
@@ -791,8 +793,8 @@ const PACE_MIN_SEC = 10; // 서버에서 받은 이동 시간이 이보다 짧�
 /* 함께 움직이는 파티(파티장 + 동행을 켠 파티원, 접속 중)에서는 가장 빠른 사람의 칸당 시간에 맞춘다. 더 느려지는 일은 없다 */
 function paceSec() {
   const mine = stepSec(); if (!PARTY.id || PARTY.members.length < 2) return mine;
-  const me = PARTY.members.find(m => m.uid && m.uid === Cloud.userUid); if (!((me && me.leader) || state.follow)) return mine;
-  let best = mine; PARTY.members.forEach(m => { if (m === me || !m.online || !(m.leader || m.fol) || !(m.spd >= PACE_MIN_SEC && m.spd <= DUNGEON_STEP_SEC)) return; best = Math.min(best, m.spd); });
+  const me = PARTY.members.find(m => m.uid && m.uid === Cloud.userUid); const L = PARTY.members.find(m => m.leader), lOn = me && me.leader ? state.partyMove : !!(L && L.online && L.fol); if (!(me && me.leader ? state.partyMove : state.follow && lOn)) return mine; // 파티장이 파티 이동을 켠 동안만
+  let best = mine; PARTY.members.forEach(m => { if (m === me || !m.online || !(m.leader ? m.fol : (m.fol && lOn)) || !(m.spd >= PACE_MIN_SEC && m.spd <= DUNGEON_STEP_SEC)) return; best = Math.min(best, m.spd); });
   return best;
 }
 function entranceOf(zoneId) { const z = zoneOf(zoneId); let x = 0, y = 0; z.map.forEach((row, ry) => { const cx = row.indexOf('S'); if (cx >= 0) { x = cx; y = ry; } }); return [x, y]; }
@@ -863,6 +865,7 @@ function actionPreview(id, mi = 0) {
   if (a.kind === 'enter') return { time: '즉시', gain: '타일 지도 탐색 시작 (타일 1칸 이동 = 3분 · 기력 1)', cost: '없음' };
   if (a.kind === 'leave') return { time: '즉시', gain: '구역 지도로 돌아감', cost: '없음' };
   if (a.kind === 'gamble') { const g = GAMBLES[id]; return { time: '즉시', gain: `성공(${pct(GAMBLE_WIN)}): ${[g.good.money ? `CR +${g.good.money}` : '', ...(g.good.items || []).map(([n, q]) => `${n} ×${q}`), g.good.exp ? `EXP +${g.good.exp}` : '', g.good.hp ? `HP +${g.good.hp}` : '', g.good.buff || ''].filter(Boolean).join(' · ')}`, cost: `기력 -${sp} · 실패(${pct(1 - GAMBLE_WIN)}): ${[g.bad.money ? `CR ${g.bad.money}` : '', g.bad.hp ? `HP ${g.bad.hp}` : '', g.bad.buff || ''].filter(Boolean).join(' · ')} (1시간에 한 번)` }; }
+  if (a.kind === 'lounge') return { time: '즉시', gain: '이 자리에서 머물며 시간을 보낸다. 시간대(낮/밤)에 따라 다른 풍경을 볼 수 있다.', cost: '없음' };
   if (a.kind === 'investigate') return { time: '즉시', gain: `이 지형의 정보 확인 · 무작위 아이템 발견 가능 · 도감 등록`, cost: `기력 -${sp} (이 칸은 12시간에 한 번)`, odds: `재료 발견 ${pct(INVEST_ITEM)} · 희귀 ${pct(.05 + effects().rare)} · 함정으로 다칠 확률 ${pct(INVEST_HURT)}` };
   return { time: '-', gain: '없음', cost: '없음' };
 }
@@ -913,7 +916,7 @@ function tileGatherIds(z, x, y, seed) {
 function startAction(id, mi = 0, baitName = null) {
   const a = ACTIONS[id];
   if (a.kind === 'todo') return '아직 구현되지 않은 기능입니다.';
-  if (!['gather', 'battle', 'rest', 'investigate', 'gamble', 'tame', 'train', 'leisure'].includes(a.kind)) return '시작할 수 없는 행동입니다.';
+  if (!['gather', 'battle', 'rest', 'investigate', 'gamble', 'tame', 'train', 'leisure', 'lounge'].includes(a.kind)) return '시작할 수 없는 행동입니다.';
   if (!state.created) return '먼저 캐릭터를 만드세요.';
   if (state.active || state.pending) return '이미 진행 중이거나 결과 확인이 필요한 행동이 있습니다.';
   const lg = levelGate(id);
@@ -926,6 +929,16 @@ function startAction(id, mi = 0, baitName = null) {
     const first = !leisureTaken(), r = { text: leisureText(id), items: [], exp: first ? 5 : 0, money: 0, hp: 0, sp: 0, spCost: 0, buff: null };
     if (first) { state.leisure = { day: todayIndex(), id }; r.buff = a.buff; r.text += ` 【${BUFFS[a.buff].desc.split('. ')[1]} · 8시간】`; }
     else r.text += ' (오늘의 여가 버프는 이미 받았어요. 분위기만 즐겼습니다.)';
+    state.pending = { id, result: r };
+    save();
+    return null;
+  }
+  if (a.kind === 'lounge') { // '?' 칸: 낮/밤에 따라 다른 묘사. LOUNGE_NEED번째에 저널을 얻는다
+    const d = state.dungeon, q = QMARKS[a.zone];
+    if (!d || d.zone !== a.zone || tileOf(zoneOf(a.zone), d.x, d.y) !== '?') return '이곳에서만 할 수 있어요.';
+    const n = state.lounge[a.zone] = Math.min(9999, (state.lounge[a.zone] | 0) + 1), night = isNightNow();
+    const r = { text: pick(night ? q.vnight : q.vday), items: [], exp: 0, money: 0, hp: 0, sp: 0, spCost: 0, buff: null };
+    if (n >= LOUNGE_NEED && !state.journals[a.zone]) { state.journals[a.zone] = 1; r.text += `\n\n바닥에 낡은 수첩 한 권이 떨어져 있는 걸 발견했다. 누군가의 탐험록이다. 도감에 기록해 두었다.`; r.journal = a.zone; }
     state.pending = { id, result: r };
     save();
     return null;
@@ -1329,7 +1342,7 @@ function resolveAction(id, cycles = 1, spPaid = 0, act = null) {
   }
   if (a.kind === 'gather' && a.method === '낚시') { // 낚은 물고기마다 크기(cm)가 정해진다. 큰 순서로 몇 마리만 보여 준다
     const sizes = [];
-    Object.entries(bag).forEach(([n, q]) => { const rg = FISH_SIZE[n]; if (!rg) return; for (let k = 0; k < Math.min(q, 40); k++) { const u = (Math.random() + Math.random()) / 2, big = chance(.03) ? 1.15 : 1; sizes.push([n, Math.round((rg[0] + (rg[1] - rg[0]) * u) * big * 10) / 10]); } });
+    Object.entries(bag).forEach(([n, q]) => { const rg = FISH_SIZE[n]; if (!rg) return; for (let k = 0; k < Math.min(q, 40); k++) { const u = a.spot ? Math.max(Math.random(), (Math.random() + Math.random()) / 2) : (Math.random() + Math.random()) / 2, big = chance(a.spot ? SPOT_BIG : .03) ? 1.15 : 1; sizes.push([n, Math.round((rg[0] + (rg[1] - rg[0]) * u) * big * 10) / 10]); } });
     sizes.sort((x, y) => y[1] - x[1]);
     const best = {}; sizes.forEach(([n, cm]) => { if (!best[n]) best[n] = cm; });
     r.fish = Object.entries(best);
@@ -1500,11 +1513,14 @@ function tileOf(z, x, y) { return (z.map[y] || '')[x]; }
 const terrainIndex = ch => 'abcde'.indexOf(ch);
 
 /* 타일 정보 { name, desc, terrain } */
-function tileInfo(z, ch) {
-  const ti = terrainIndex(ch);
+const spotAt = (z, x, y) => { const s = FISH_SPOTS[z.id]; return s && s.x === x && s.y === y ? s : null; };
+const isNightNow = () => { const h = new Date(nowMs() + 9 * 3600e3).getUTCHours(); return h < 6 || h >= 18; }; // 한국 시간 18시~06시는 밤
+function tileInfo(z, ch, x, y) {
+  const ti = terrainIndex(ch), sp = x === undefined ? null : spotAt(z, x, y);
+  if (sp && ti >= 0) return { name: sp.name, desc: sp.desc + ' (큰 물고기가 잡힐 확률 +) ' + z.terrains[ti].desc, terrain: z.terrains[ti], spot: sp };
   if (ti >= 0) { const t = z.terrains[ti]; return { name: t.name, desc: t.desc + (t.rough && ROUGH_EXTRA_SEC[t.rough] ? ` (험난한 지형: 이 칸에 들어갈 때 이동 시간 +${ROUGH_EXTRA_SEC[t.rough] / 60}분)` : ''), terrain: t }; }
   return { S: { name: '입구', desc: '구역으로 돌아갈 수 있는 입구입니다.' }, C: { name: '안전 캠프', desc: '지상 속 안전지대입니다. 안전하게 쉴 수 있습니다.' },
-    E: { name: '이벤트 지점', desc: '무언가 일어날 것 같은 장소입니다.' } }[ch];
+    E: { name: '이벤트 지점', desc: '무언가 일어날 것 같은 장소입니다.' }, '?': z.id && QMARKS[z.id] ? { name: QMARKS[z.id].name, desc: isNightNow() ? QMARKS[z.id].night : QMARKS[z.id].day } : { name: '?', desc: '' } }[ch];
 }
 /* E 칸의 번호(읽는 순서) */
 const eventIndex = (z, x, y) => z.map.slice(0, y).join('').split('E').length - 1 + z.map[y].slice(0, x).split('E').length - 1;
@@ -1527,9 +1543,10 @@ function leaveDungeon() { state.dungeon = null; state.location = '이동장치';
 function currentGroups() {
   if (!state.dungeon) return LOCATIONS[state.location].groups;
   const z = zoneOf(state.dungeon.zone), ch = tileOf(z, state.dungeon.x, state.dungeon.y), ti = terrainIndex(ch);
-  if (ti >= 0) { const t = z.terrains[ti]; return [{ label: t.name, items: [t.actions[0], ...tileGatherIds(z, state.dungeon.x, state.dungeon.y, state.dungeon.seed), tileBattleId(z, t, state.dungeon.x, state.dungeon.y, state.dungeon.seed), ...(tameShown(z, state.dungeon.x, state.dungeon.y, state.dungeon.seed) ? [t.tameId] : [])] }]; }
+  if (ti >= 0) { const t = z.terrains[ti]; const sp = spotAt(z, state.dungeon.x, state.dungeon.y); return [{ label: sp ? sp.name : t.name, items: [t.actions[0], ...(sp ? sp.ids : []), ...tileGatherIds(z, state.dungeon.x, state.dungeon.y, state.dungeon.seed), tileBattleId(z, t, state.dungeon.x, state.dungeon.y, state.dungeon.seed), ...(tameShown(z, state.dungeon.x, state.dungeon.y, state.dungeon.seed) ? [t.tameId] : [])] }]; }
   if (ch === 'C') return [{ label: '안전 캠프', items: ['캠프 휴식', '임무 수주', '상점', '모닥불 주사위', ...(lostHeld().length ? ['분실물 전달'] : [])] }];
   if (ch === 'S') return [{ label: '입구', items: ['퇴장'] }];
+  if (ch === '?' && QMARKS[z.id]) return [{ label: QMARKS[z.id].name, items: [`${z.id} 시간을 보낸다`] }];
   return [];
 }
 /* 타일 이동 계획: 지금 칸에서 (tx,ty)까지 벽을 피한 최단 경로. { path:[[x,y]..], steps, sec, sp } / { err } */
