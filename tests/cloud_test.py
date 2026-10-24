@@ -118,7 +118,12 @@ def api(route):
     if '/rpc/list_notices' in u: return route.fulfill(headers=h, body=json.dumps(sorted(server['notices'], key=lambda r: -r['id'])))
     if '/rpc/delete_notice' in u: server['ndel'].append(body.get('p_id')); server['notices'] = [r for r in server['notices'] if r['id'] != body.get('p_id')]; return route.fulfill(headers=h, body='null')
     if '/rpc/is_admin' in u: return route.fulfill(headers=h, body='true')
+    if '/rpc/save_head' in u:
+        if server.get('nohead'): return route.fulfill(status=404, headers=h, body=json.dumps({'message': 'Could not find the function public.save_head'}))
+        server['heads'] = server.get('heads', 0) + 1; d = server['data']
+        return route.fulfill(headers=h, body=json.dumps(None if d is None else {'rev': server['rev'], 'dev': str((d or {}).get('__dev') or ''), 'created': bool((d or {}).get('created'))}))
     if '/rpc/pull_save' in u:
+        server['pulls'] = server.get('pulls', 0) + 1
         return route.fulfill(headers=h, body=json.dumps(None if server['data'] is None else {'rev': server['rev'], 'data': server['data'], 'at': '2026-10-21T03:00:00Z'}))
     if '/rpc/push_save' in u:
         if body['p_rev'] != server['rev']: return route.fulfill(headers=h, body=json.dumps({'ok': False, 'rev': server['rev']}))
@@ -632,6 +637,23 @@ with sync_playwright() as p:
     pg.evaluate("cloudSync(true)"); pg.wait_for_timeout(1500)
     check('auto_sync_always_uses_server', pg.evaluate("state.money") == 3131 and pg.locator('[data-act="cloud-keep-local"]').count() == 0, pg.evaluate("state.money"))
     check('replaced_local_progress_kept', json.loads(pg.evaluate("localStorage.getItem('deeplayer-replaced')") or '{}').get('money') == 1234)
+    # ── 요청 줄이기: 같은 버전이면 세이브 전체를 받지 않는다 (save_head), 서버에 없으면 예전 방식
+    pg.evaluate("document.querySelector('#tutorial') && document.querySelector('#tutorial').classList.add('hidden')")
+    p0, h0 = server.get('pulls', 0), server.get('heads', 0); pg.evaluate("cloudSync(true)"); pg.wait_for_timeout(600)
+    check('sync_same_rev_uses_head_only', server.get('heads', 0) == h0 + 1 and server.get('pulls', 0) == p0, [server.get('heads'), h0, server.get('pulls'), p0])
+    server['rev'] += 1; server['data']['money'] = 4242; pg.evaluate("cloudSync(true)"); pg.wait_for_timeout(1500)
+    check('sync_newer_rev_pulls_full', pg.evaluate("state.money") == 4242 and server.get('pulls', 0) == p0 + 1, [pg.evaluate("state.money"), server.get('pulls'), p0])
+    pg.evaluate("document.querySelector('#tutorial') && document.querySelector('#tutorial').classList.add('hidden')")
+    server['nohead'] = True; p1 = server.get('pulls', 0); pg.evaluate("cloudSync(true)"); pg.wait_for_timeout(600)
+    check('sync_without_head_rpc_falls_back', server.get('pulls', 0) == p1 + 1 and pg.evaluate("_noHead") is True)
+    server['nohead'] = False
+    check('poll_mode_idle_after_5min', pg.evaluate("(()=>{const b=_lastInput;_lastInput=Date.now()-6*60*1000;const m=pollMode();_lastInput=b;return m})()") == 'idle' and pg.evaluate("pollMode()") == 'active')
+    check('idle_polls_less_often', pg.evaluate("Object.values(POLLS).every(p=>{const a=typeof p[1]==='function'?p[1]():p[1];return p[2]>=a&&(p[3]===null||p[3]>=p[2])})"))
+    n0 = len(server.get('nbcalls', [])); pg.evaluate("(()=>{view.nbSent=locKey();_pollAt.nearby=Date.now();pollTick()})()"); pg.wait_for_timeout(300)
+    n1 = len(server.get('nbcalls', [])); pg.evaluate("(()=>{view.nbSent='제9구역:0,0';_pollAt.nearby=0;Object.keys(POLLS).forEach(k=>{if(k!=='nearby')_pollAt[k]=Date.now()});pollTick()})()"); pg.wait_for_timeout(300)
+    check('location_sent_only_when_changed', n1 == n0 and len(server.get('nbcalls', [])) == n0 + 1, [n0, n1, len(server.get('nbcalls', []))])
+    h1 = server.get('heads', 0); pg.evaluate("(()=>{const b=_lastInput;_lastInput=Date.now()-6*60*1000;Object.keys(POLLS).forEach(k=>{_pollAt[k]=Date.now()-61000});view.nbSent=locKey();pollTick();_lastInput=b})()"); pg.wait_for_timeout(300)
+    check('idle_skips_sync_before_3min', server.get('heads', 0) == h1)
     pg.evaluate("document.querySelector('#tutorial') && document.querySelector('#tutorial').classList.add('hidden')")
     # ── 메일: 서버 보관함에서 지우기 전에 서버 저장에 먼저 올리고, 중복 없이 한 번만 받는다
     server['inmail'] = [{'id': 77, 'name': '미나', 'subject': '폰으로 온 메일', 'body': '안녕', 'items': []}]; server['mack'].clear(); np0 = len(server['pushes'])

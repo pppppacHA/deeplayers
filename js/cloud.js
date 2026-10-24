@@ -98,6 +98,8 @@ const Cloud = (() => {
     async chatFetch(channel, after) { return (await call('/rest/v1/rpc/chat_fetch', { p_channel: channel, p_after: after || 0 }, await token())) || []; },
     async isAdmin() { return (await call('/rest/v1/rpc/is_admin', {}, await token())) === true; },
     /* → { rev, data, at } | null(서버에 세이브 없음) */
+    async myItemMailCount() { return await call('/rest/v1/rpc/my_item_mail_count', {}, await token()); }, // 내가 보낸 아이템 메일 중 서버에 남은 수
+    async head() { return await call('/rest/v1/rpc/save_head', {}, await token()); }, // { rev, dev, created } 만 (가벼운 확인)
     async pull(keepRev) { const j = await call('/rest/v1/rpc/pull_save', {}, await token()); if (j && !keepRev) { const s = rd(); if (s) { s.rev = j.rev; wr(s); } } return j; },
     /* 이 기기가 마지막으로 서버와 맞춘 버전 */
     rev() { const s = rd(); return s && Number.isFinite(s.rev) ? s.rev : 0; },

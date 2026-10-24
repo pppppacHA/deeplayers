@@ -33,7 +33,7 @@ function sanitize(s) {
   });
   ['장비', '소모품', '재료'].forEach(tab => {
     const list = Array.isArray(s.inventory[tab]) ? s.inventory[tab] : [];
-    s.inventory[tab] = list.filter(x => x && ITEMS[x.n] && ITEMS[x.n].tab === tab && x.q > 0);
+    s.inventory[tab] = list.map(x => x && LEGACY_ITEMS[x.n] ? { ...x, n: LEGACY_ITEMS[x.n] } : x).filter(x => x && ITEMS[x.n] && ITEMS[x.n].tab === tab && x.q > 0);
   });
   hardenState(s);
   if (s.active && !ACTIONS[s.active.id]) s.active = null;
@@ -65,6 +65,12 @@ function cleanRoom(r) {
   out.zc = out.items.length;
   return out;
 }
+function petHungerOf(p) { // 저장 검증: 배부름 필드 (없던 옛 펫은 마지막 먹이 시각으로 계산)
+  const t = Date.now();
+  if (Number.isFinite(p.full) && Number.isFinite(p.fullAt)) return { full: clamp(p.full, 0, PET_FULL_MAX), fullAt: Math.min(p.fullAt, t), decayAt: Number.isFinite(p.decayAt) ? Math.min(p.decayAt, t) : t };
+  const left = Number.isFinite(p.fedAt) ? PET_FED_MS - (t - p.fedAt) : 0;
+  return { full: left > 0 ? Math.round(PET_FULL_MAX * left / PET_FED_MS) : 0, fullAt: t, decayAt: t };
+}
 function hardenState(s) {
   const c = s.character;
   c.name = cleanText(c.name, 12); c.title = TITLES.includes(c.title) ? c.title : TITLES[0];
@@ -84,9 +90,12 @@ function hardenState(s) {
     };
     s.mseen = (Array.isArray(s.mseen) ? s.mseen : []).filter(x => typeof x === 'string' && /^[sc]\d{1,16}$/.test(x)).slice(-60); }
   { const b = s.bench, items = b && typeof b === 'object' ? cleanItemList(b.items, 5) : []; s.bench = items.length && Number.isFinite(+b.id) && +b.id > 0 ? { id: intIn(b.id, 1, 9e15, 1), items } : null; s.ltSeen = (Array.isArray(s.ltSeen) ? s.ltSeen : []).map(x => intIn(x, 1, 9e15, 0)).filter(Boolean).slice(-20); }
-  { const st = {}; let kinds = 0; if (s.storage && typeof s.storage === 'object') Object.keys(s.storage).forEach(n => { const q = intIn(s.storage[n], 0, STORAGE_STACK, 0); if (ITEMS[n] && q > 0 && kinds < STORAGE_KINDS) { st[n] = q; kinds++; } }); s.storage = st; }
+  { const st = {}; let kinds = 0; if (s.storage && typeof s.storage === 'object') Object.keys(s.storage).forEach(n0 => { const n = LEGACY_ITEMS[n0] || n0, q = intIn(s.storage[n0], 0, STORAGE_STACK, 0); if (ITEMS[n] && q > 0 && (st[n] || kinds < STORAGE_KINDS)) { if (!st[n]) kinds++; st[n] = Math.min(STORAGE_STACK, (st[n] || 0) + q); } }); s.storage = st; }
   { const lz = s.leisure && typeof s.leisure === 'object' ? s.leisure : {}; s.leisure = { day: intIn(lz.day, -1, 1e7, -1), id: LEISURE_IDS.includes(lz.id) ? lz.id : '' }; }
-  s.deaths = intIn(s.deaths, 0, 99999, 0);
+  s.rescueAt = Object.fromEntries(Object.entries(s.rescueAt && typeof s.rescueAt === 'object' ? s.rescueAt : {}).filter(([k, v]) => DANGER_ZONES.some(z => z.id === k) && Number.isFinite(v)));
+  if (s.dungeon) s.dungeon.rs = Object.fromEntries(Object.entries(s.dungeon.rs && typeof s.dungeon.rs === 'object' ? s.dungeon.rs : {}).filter(([k]) => /^-?\d{1,3},-?\d{1,3}$/.test(k)).map(([k]) => [k, 1]));
+  s.deaths = intIn(s.deaths, 0, 99999, 0); s.lostCount = intIn(s.lostCount, 0, 999999, 0); s.mailItemSent = intIn(s.mailItemSent, 0, 999999, 0);
+  s.statPeak = Object.fromEntries(STAT_DEFS.map(d => [d.key, intIn((s.statPeak || {})[d.key], 0, 9999, 0)]));
   s.tickets = intIn(s.tickets, 0, 9999, 0); s.questCount = intIn(s.questCount, 0, 999999, 0); s.actMs = Number.isFinite(s.actMs) ? clamp(s.actMs, 0, 1e12) : 0;
   { const g = s.gacha && typeof s.gacha === 'object' ? s.gacha : {}; s.gacha = { pat: intIn(g.pat, 0, GACHA_SETS.length - 1, 0), pulls: intIn(g.pulls, 0, 999999, 0), wins: intIn(g.wins, 0, 999999, 0) }; }
   s.money = intIn(s.money, 0, 999999999, 0); s.statPoints = intIn(s.statPoints, 0, 99, 0);
@@ -108,6 +117,7 @@ function hardenState(s) {
   { const ct = s.settings.chatTabs && typeof s.settings.chatTabs === 'object' ? s.settings.chatTabs : {}; const o = Object.fromEntries(CHAT_TABS.map(k => [k, ct[k] !== false])); s.settings.chatTabs = CHAT_TABS.some(k => o[k]) ? o : Object.fromEntries(CHAT_TABS.map(k => [k, true])); }
   s.follow = s.follow === true; s.partyMove = s.partyMove === true;
   s.lounge = Object.fromEntries(Object.entries(s.lounge && typeof s.lounge === 'object' ? s.lounge : {}).filter(([k]) => QMARKS[k]).map(([k, v]) => [k, intIn(v, 0, 9999, 0)]));
+  s.madeBy = Object.fromEntries(Object.entries(s.madeBy && typeof s.madeBy === 'object' ? s.madeBy : {}).filter(([k, v]) => ITEMS[k] && typeof v === 'string' && v).map(([k, v]) => [k, cleanText(v, 30)]));
   s.journals = Object.fromEntries(Object.entries(s.journals && typeof s.journals === 'object' ? s.journals : {}).filter(([k, v]) => QMARKS[k] && v).map(([k]) => [k, 1]));
   if (s.side === '주위 대원') s.side = '상황'; // 탭 이름이 바뀌었다
   if (!['임무', '서브잡', '펫', '상황'].includes(s.side)) s.side = '임무';
@@ -134,7 +144,7 @@ function hardenState(s) {
   s.questAt = Object.fromEntries(Object.entries(s.questAt && typeof s.questAt === 'object' ? s.questAt : {}).filter(([k, v]) => known(k) && Number.isFinite(v)));
   const fp = Array.isArray(s.farm && s.farm.plots) ? s.farm.plots : [];
   s.farm = { plots: Array.from({ length: 6 }, (_, i) => { const p = fp[i]; return p && CROPS[p.crop] && Number.isFinite(p.at) ? { crop: p.crop, at: p.at } : null; }) };
-  s.pets = (Array.isArray(s.pets) ? s.pets : []).filter(p => p && PET_SPECIES[p.id]).map(p => ({ id: p.id, lv: intIn(p.lv, 1, PET_MAX_LV, 1), pxp: intIn(p.pxp, 0, 99999, 0), acc: PET_ACC[p.acc] ? p.acc : '', bond: intIn(p.bond, 0, 100, PET_BOND_START), fedAt: Number.isFinite(p.fedAt) ? p.fedAt : 0, petAt: Number.isFinite(p.petAt) ? p.petAt : 0, name: cleanText(p.name, PET_NAME_MAX), pers: PET_PERS[p.pers] ? p.pers : pick(PET_PERS_LIST), exp: p.exp && DANGER_ZONES.some(z => z.id === p.exp.zone) && Number.isFinite(p.exp.at) ? { zone: p.exp.zone, at: p.exp.at, ms: Number.isFinite(p.exp.ms) ? clamp(p.exp.ms, 3600000, PET_EXP_MS) : PET_EXP_MS } : null }))
+  s.pets = (Array.isArray(s.pets) ? s.pets : []).filter(p => p && PET_SPECIES[p.id]).map(p => ({ id: p.id, lv: intIn(p.lv, 1, PET_MAX_LV, 1), pxp: intIn(p.pxp, 0, 99999, 0), acc: PET_ACC[p.acc] ? p.acc : '', bond: intIn(p.bond, 0, 100, PET_BOND_START), fedAt: Number.isFinite(p.fedAt) ? p.fedAt : 0, ...petHungerOf(p), petAt: Number.isFinite(p.petAt) ? p.petAt : 0, name: cleanText(p.name, PET_NAME_MAX), pers: PET_PERS[p.pers] ? p.pers : pick(PET_PERS_LIST), exp: p.exp && DANGER_ZONES.some(z => z.id === p.exp.zone) && Number.isFinite(p.exp.at) ? { zone: p.exp.zone, at: p.exp.at, ms: Number.isFinite(p.exp.ms) ? clamp(p.exp.ms, 3600000, PET_EXP_MS) : PET_EXP_MS } : null }))
     .filter((p, i, a) => a.findIndex(q => q.id === p.id) === i).slice(0, Object.keys(PET_SPECIES).length);
   if (s.pets[s.petActive] && s.pets[s.petActive].exp) s.petActive = -1;
   s.petActive = intIn(s.petActive, -1, s.pets.length - 1, -1);
@@ -161,7 +171,7 @@ function hardenState(s) {
   if (s.active && s.active.id === '타일 이동' && s.active.cum && !(Array.isArray(s.active.cum) && s.active.cum.length === (s.active.path || []).length && s.active.cum.every(Number.isFinite))) delete s.active.cum;
   s.logs = (Array.isArray(s.logs) ? s.logs : []).filter(l => l && typeof l.text === 'string').map(l => ({ time: cleanText(l.time, 10), text: cleanText(l.text, 400) })).slice(0, 100);
   if (s.crafting && (!RECIPES[s.crafting.index] || !Number.isFinite(s.crafting.endAt))) s.crafting = null;
-  if (s.crafting) { s.crafting.out = RECIPES[s.crafting.index].out; s.crafting.qty = intIn(s.crafting.qty, 1, MAX_BATCH, 1); s.crafting.great = !!s.crafting.great; s.crafting.ready = !!s.crafting.ready; s.crafting.used = (Array.isArray(s.crafting.used) ? s.crafting.used : []).filter(u => Array.isArray(u) && ITEMS[u[0]]).map(u => [u[0], intIn(u[1], 1, 9999, 1)]).slice(0, 12); }
+  if (s.crafting) { s.crafting.out = RECIPES[s.crafting.index].out; s.crafting.qty = intIn(s.crafting.qty, 1, MAX_BATCH, 1); s.crafting.great = !!s.crafting.great; s.crafting.ready = !!s.crafting.ready; s.crafting.used = (Array.isArray(s.crafting.used) ? s.crafting.used : []).map(u => Array.isArray(u) && LEGACY_ITEMS[u[0]] ? [LEGACY_ITEMS[u[0]], u[1]] : u).filter(u => Array.isArray(u) && ITEMS[u[0]]).map(u => [u[0], intIn(u[1], 1, 9999, 1)]).slice(0, 12); }
   if (!['장비', '음식', '약', '재료'].includes(s.craftTab)) s.craftTab = null;
   if (s.active && s.active.id === '구역 이동' && !(LOCATIONS[s.active.to] && LOCATIONS[s.active.to].danger && !s.dungeon && Number.isFinite(s.active.endAt))) s.active = null;
   if (s.active && s.active.id === '타일 이동' && !(s.dungeon && Array.isArray(s.active.path) && s.active.path.length)) s.active = null;
@@ -206,7 +216,7 @@ document.addEventListener('visibilitychange', () => { if (document.hidden && _sa
 /* ---------- 인벤토리 ---------- */
 const bagCapacityFor = eq => (eq['가방'] && ITEMS[eq['가방']].capacity) || BASE_BAG_CAPACITY;
 const bagCapacity = () => bagCapacityFor(state.equipment);
-const countItem = name => state.inventory[ITEMS[name].tab].filter(s => s.n === name).reduce((a, s) => a + s.q, 0);
+const countItem = name => !ITEMS[name] ? 0 : state.inventory[ITEMS[name].tab].filter(s => s.n === name).reduce((a, s) => a + s.q, 0);
 
 /* 가방 칸은 장비/소모품/재료 전체가 공유한다 */
 const usedSlots = (inv = state.inventory) => Object.values(inv).reduce((a, l) => a + l.length, 0);
@@ -854,7 +864,7 @@ function leisureText(id, rnd = Math.random) {
 function actionPreview(id, mi = 0) {
   const a = ACTIONS[id], fx = effects(), sp = spOf(a), opt = multiOpt(mi);
   if (a.kind === 'leisure') { const sn = STAT_DEFS.find(d => d.key === LEISURE[id].stat).name; return { time: '즉시', gain: leisureTaken() ? '오늘은 이미 버프를 받았습니다. 분위기만 즐깁니다.' : `${sn} +2 버프 (8시간) · EXP +5`, cost: '없음 (버프는 하루 한 번 · 한국 시간 오전 4시에 초기화 · 한 번 받으면 바꿀 수 없음)' }; }
-  const multi = (a.kind === 'gather' || a.kind === 'battle') && opt.sec > 0;
+  const multi = (a.kind === 'gather' || a.kind === 'battle') && opt.sec > 0 && !(a.kind === 'battle' && state.vitals.hp <= HP_RETREAT); // HP가 바닥이면 전투는 한 번만
   const cMin = multi ? Math.floor(opt.sec / (a.kind === 'gather' ? GATHER_SEC : MAX_CYCLE)) : 1, cMax = multi ? Math.floor(opt.sec / (a.kind === 'gather' ? GATHER_SEC : MIN_CYCLE)) : 1;
   const rng = (lo, hi, f = x => x) => lo === hi ? `${f(lo)}` : `${f(lo)}~${f(hi)}`;
   const costs = [], per = multi ? ` (${rng(cMin, cMax)}회 반복)` : '';
@@ -871,11 +881,13 @@ function actionPreview(id, mi = 0) {
       return { time, gain: `${a.items.join(' / ')} 회당 1~3개 · EXP +6/회 (총 ${rng(cMin * 6, cMax * 6)})`, cost: costs.join(' · '), note, odds };
     }
     const m = monsterOf(a);
-    costs.push('전투 피해로 HP 감소', '패배 시 부상(민첩 -2)', `HP ${HP_RETREAT} 이하가 되면 중단`);
+    { const db = foeDebuff(m.name); costs.push('전투 피해로 HP 감소', `패배 시 ${db}(${BUFFS[db].desc.split('. ').pop()})`, `HP ${HP_RETREAT} 이하가 되면 중단`); }
+    if (state.vitals.hp <= HP_RETREAT) costs.push(`⚠ HP가 ${HP_RETREAT} 이하입니다. 이 상태로 싸우면 한 번만 싸우고, 지면 사망해 클론으로 재탄생합니다`);
     const bo = battleOdds(m), rep = repeatChance(n0 + 1);
     const odds = `승리 약 ${bo.win}% · 다칠 확률 약 ${bo.hurt}% (1회 최대 HP -${m.hpCap || BATTLE_HP_CAP}) · 재료 ${pct(BATTLE_MAT * rep)} · ${m.drops.map(([n, p]) => `${n} ${pct(p * rep)}`).join(' · ')}`;
     return { time, gain: `승리 시 EXP +${m.exp} · CR +${m.cr} · 재료 (회당)`, cost: costs.join(' · '), note, odds };
   }
+  if (a.kind === 'rescue') { const m = state.dungeon ? rescueFoe() : null; return { time: '즉시', gain: m ? `이기면 감사의 보수: ${m.rare ? `희귀 재료(${m.rare}) 또는 ` : ''}CR 약 ${Math.round(m.cr * (3 + 4 * m.d))} · EXP +${15 + Math.round(25 * m.d)}` : '이기면 감사의 보수', cost: `기력 -${sp} · 지면 HP -${RESCUE_HP[0]}~${RESCUE_HP[1]} (깊은 곳일수록 크게, 죽지는 않음)`, note: m ? `상대: ${m.name} (체력 ${m.hp} · 공격 ${m.atk})` : '' }; }
   if (a.kind === 'tame') return { time: '10분', gain: `성공하면 펫을 얻음 (성공 확률 약 ${Math.round(tameChance() * 100)}% · 감각이 높을수록 유리 · 펫 사료를 먹이면 +${Math.round(TAME_FOOD_BONUS * 100)}%p) · EXP +12`, cost: `기력 -${sp} · 먹이 1개(직접 고른 작물/펫 사료) 소모 · 실패하면 HP 손실 가능` };
   if (a.kind === 'train') { const n = learnableRecipes().length; return { time: '25분', gain: `새 제작 레시피 1종을 무작위로 습득 · EXP +${TRAIN_EXP}`, cost: `기력 -${sp}`, note: n ? `지금 배울 수 있는 레시피 ${n}종 (승급하면 후보가 늘어납니다)` : '지금은 더 배울 수 있는 레시피가 없습니다.' }; }
   if (a.kind === 'rest') return { time: a.sec >= 3600 ? `${a.sec / 3600}시간` : a.sec >= 120 ? `${a.sec / 60}분` : '1분', gain: a.full ? 'HP · 기력 완전 회복 · 충분한 휴식(의지 +2, 5분)' : `HP +30 · 기력 +${a.restSp ?? REST_SP} · 충분한 휴식(의지 +2, 5분)`, cost: '없음' };
@@ -920,6 +932,18 @@ function tameShown(z, x, y, seed) {
   return seededRng((seed || 1) * 17 + x * 6271 + y * 9127 + z.n * 7919)() < TAME_APPEAR;
 }
 /* 칸마다 나타나는 몬스터: 이 지형의 몬스터 중 하나 (같은 칸은 같은 결과) */
+function rescueShown(z, x, y, seed) { // 이 칸에 구조를 기다리는 대원이 있다
+  const t = z.terrains[terrainIndex(tileOf(z, x, y))], d = state.dungeon;
+  if (!t || !state.created) return false;
+  if ((state.rescueAt[z.id] || 0) + RESCUE_COOLDOWN_MS > nowMs()) return false;
+  if (d && d.zone === z.id && (d.rs || {})[`${x},${y}`]) return false;
+  return seededRng((seed || 1) * 23 + x * 4517 + y * 7883 + z.n * 104723)() < RESCUE_APPEAR;
+}
+function rescueFoe() { // 지금 칸에서 구조할 때 상대 (그 칸에 나오는 몬스터, 깊을수록 강하다)
+  const d = state.dungeon, z = zoneOf(d.zone), t = z.terrains[terrainIndex(tileOf(z, d.x, d.y))], a = ACTIONS[tileBattleId(z, t, d.x, d.y, d.seed)], base = (a && monsterBase(a)) || t.monster, dd = curDifficulty();
+  return { name: base.name, kind: base.kind, atk: Math.max(1, Math.round(base.atk * (1 + .6 * dd))), hp: Math.round(base.hp * (1.4 + 1.6 * dd)), cr: base.cr, d: dd, rare: t.rare, terrain: t };
+}
+const rescueHpLoss = dd => clamp(Math.round(RESCUE_HP[0] + (RESCUE_HP[1] - RESCUE_HP[0]) * dd + (Math.random() * 2 - 1)), RESCUE_HP[0], RESCUE_HP[1]);
 function tileBattleId(z, t, x, y, seed) { const r = seededRng((seed || 1) * 17 + x * 6151 + y * 92821 + z.n * 7919); return t.battleIds[Math.floor(r() * t.battleIds.length)]; }
 function tileGatherIds(z, x, y, seed) {
   const t = z.terrains[terrainIndex(tileOf(z, x, y))];
@@ -934,14 +958,13 @@ function tileGatherIds(z, x, y, seed) {
 function startAction(id, mi = 0, baitName = null) {
   const a = ACTIONS[id];
   if (a.kind === 'todo') return '아직 구현되지 않은 기능입니다.';
-  if (!['gather', 'battle', 'rest', 'investigate', 'gamble', 'tame', 'train', 'leisure', 'lounge'].includes(a.kind)) return '시작할 수 없는 행동입니다.';
+  if (!['gather', 'battle', 'rest', 'investigate', 'gamble', 'tame', 'train', 'leisure', 'lounge', 'rescue'].includes(a.kind)) return '시작할 수 없는 행동입니다.';
   if (!state.created) return '먼저 캐릭터를 만드세요.';
   if (state.active || state.pending) return '이미 진행 중이거나 결과 확인이 필요한 행동이 있습니다.';
   const lg = levelGate(id);
   if (lg) return lg;
   if (a.kind === 'train' && !learnableRecipes().length) return RECIPES.some(rc => !recipeKnown(rc)) ? '지금 등급에서 더 배울 수 있는 레시피가 없습니다. 승급하면 새 레시피를 배울 수 있어요.' : '배울 수 있는 레시피를 모두 익혔습니다.';
   if (actionBlocked(id)) return a.kind === 'gamble' ? `방금 한 판을 했습니다. ${fmtDur(actionBlocked(id))} 뒤에 다시 할 수 있어요.` : '이 칸은 조금 전에 조사했습니다. 12시간 뒤에 다시 할 수 있습니다.';
-  if (a.kind === 'battle' && state.vitals.hp <= HP_RETREAT) return `HP가 부족합니다. (${HP_RETREAT} 초과 필요) 쉬거나 응급 키트를 사용하세요.`;
   const t = nowMs(), v = state.vitals, cost = spOf(a);
   if (a.kind === 'leisure') { // 여가: 하루 한 번만 버프. 그 뒤에는 분위기 묘사만
     const first = !leisureTaken(), r = { text: leisureText(id), items: [], exp: first ? 5 : 0, money: 0, hp: 0, sp: 0, spCost: 0, buff: null };
@@ -956,7 +979,31 @@ function startAction(id, mi = 0, baitName = null) {
     if (!d || d.zone !== a.zone || tileOf(zoneOf(a.zone), d.x, d.y) !== '?') return '이곳에서만 할 수 있어요.';
     const n = state.lounge[a.zone] = Math.min(9999, (state.lounge[a.zone] | 0) + 1), night = isNightNow();
     const r = { text: pick(night ? q.vnight : q.vday), items: [], exp: 0, money: 0, hp: 0, sp: 0, spCost: 0, buff: null };
-    if (n >= LOUNGE_NEED && !state.journals[a.zone]) { state.journals[a.zone] = 1; r.text += `\n\n바닥에 낡은 수첩 한 권이 떨어져 있는 걸 발견했다. 누군가의 탐험록이다. 도감에 기록해 두었다.`; r.journal = a.zone; }
+    if (n >= LOUNGE_NEED && !state.journals[a.zone]) {
+      state.journals[a.zone] = 1; r.text += `\n\n바닥에 낡은 수첩 한 권이 떨어져 있는 걸 발견했다. 누군가의 탐험록이다. 도감에 기록해 두었다.`; r.journal = a.zone;
+      if (allJournals()) { r.text += `\n수첩을 덮는 순간, 뒤표지 안쪽에 접혀 있던 종이 한 장이 툭 떨어졌다.`; r.journalLast = true; } // 마지막 저널 (도감 저널 맨 끝)
+    }
+    state.pending = { id, result: r };
+    save();
+    return null;
+  }
+  if (a.kind === 'rescue') { // 대원 구조: 바로 싸운다. 결과는 지금 정해지고, 화면은 로그를 한 줄씩 보여 준다
+    const d = state.dungeon, z = d && zoneOf(d.zone);
+    if (!d || d.zone !== a.zone || !rescueShown(z, d.x, d.y, d.seed)) return '이 칸에는 도움이 필요한 대원이 보이지 않습니다.';
+    if (v.sp < cost) return `기력이 부족합니다. (필요 ${cost})`;
+    v.sp -= cost;
+    const m = rescueFoe(), who = pick(RESCUE_NAMES), st = { hp: Math.max(20, v.hpMax), mhp: m.hp }, hp0 = st.hp, log = [];
+    discover('monsters', m.name);
+    for (let i = 0; i < 40 && st.hp > 0 && st.mhp > 0; i++) { const l = mockRound(m, st); log.push({ t: l.text, k: l.kind, d: l.dealt || 0, h: l.taken || 0 }); }
+    const win = st.mhp <= 0, r = { text: pick(RESCUE_SCENES)(m.name) + ' ', items: [], exp: win ? 15 + Math.round(25 * m.d) : 5, money: 0, hp: 0, sp: 0, spCost: cost, buff: null };
+    if (win) {
+      if (m.rare && chance(RESCUE_RARE)) { r.items.push([m.rare, m.d > .6 ? 2 : 1]); }
+      else r.money = Math.round(m.cr * (3 + 4 * m.d));
+      r.text += `${m.name}을(를) 물리치고 대원을 구했다! ` + pick(RESCUE_THANKS)(who);
+    } else { r.hp = -rescueHpLoss(m.d); r.text += pick(RESCUE_FAIL)(who, m.name); }
+    floorLoss(r); r.death = false; // 구조 전투에서 지면 다치기만 하고 죽지는 않는다
+    r.rescue = { foe: m.name, who, win, hp0, mhp0: m.hp, log };
+    d.rs = d.rs || {}; d.rs[`${d.x},${d.y}`] = 1; state.rescueAt[d.zone] = t;
     state.pending = { id, result: r };
     save();
     return null;
@@ -991,14 +1038,15 @@ function startAction(id, mi = 0, baitName = null) {
     if (!baitItems().includes(bait)) return '고른 먹이가 가방에 없습니다. 먹일 먹이를 다시 골라 주세요.';
     if (v.sp < cost) return `기력이 부족합니다. (필요 ${cost})`;
   }
-  const mopt = multiOpt(mi), multi = (a.kind === 'gather' || a.kind === 'battle') && mopt.sec > 0;
+  const risk = a.kind === 'battle' && v.hp <= HP_RETREAT; // HP가 낮은데도 싸우면: 한 번만 싸우고, 지면 사망 → 클론 재탄생
+  const mopt = multiOpt(mi), multi = (a.kind === 'gather' || a.kind === 'battle') && mopt.sec > 0 && !risk;
   const cycleSec = a.kind === 'rest' || a.kind === 'train' ? a.sec : a.kind === 'tame' ? TAME_SEC : a.kind === 'gather' ? GATHER_SEC : rand(MIN_CYCLE, MAX_CYCLE);
   const cycles = multi ? Math.max(1, Math.floor(mopt.sec / cycleSec)) : 1;
   const total = multi ? mopt.sec : cycleSec, spCost = cost * cycles;
   if (v.sp < spCost) return `기력이 부족합니다. (필요 ${spCost}) 식량을 먹거나 휴식하세요.`;
   v.sp -= spCost;
   if (bait) removeItem(bait);
-  state.active = { id, startAt: t, endAt: t + total * 1000, cycles, cycleSec, spCost, ...(bait ? { bait } : {}), ...(a.kind === 'battle' ? { seed: 1 + Math.floor(Math.random() * 2147483000), hp0: v.hp, bs: battleSnap(), d: curDifficulty() } : a.kind === 'gather' ? { d: curDifficulty() } : {}) };
+  state.active = { id, startAt: t, endAt: t + total * 1000, cycles, cycleSec, spCost, ...(bait ? { bait } : {}), ...(a.kind === 'battle' ? { seed: 1 + Math.floor(Math.random() * 2147483000), hp0: v.hp, bs: battleSnap(), d: curDifficulty(), ...(risk ? { risk: true } : {}) } : a.kind === 'gather' ? { d: curDifficulty() } : {}) };
   save();
   return null;
 }
@@ -1169,6 +1217,7 @@ function battleSlotLine(m, runs, ci, slot, act) { // 회차 ci 의 slot(0~5)번�
     const last = b.rs[n - 1], dead = last && last.mhp <= 0;
     if (b.win) { parts.push(`${nm}을(를) 쓰러뜨렸다!`); kind = 'hit'; }
     else if (dead) { parts.push('숨통을 끊으려던 순간, 마지막 일격이 빗나가 놓치고 말았다…'); kind = 'hurt'; }
+    else if (act.risk) { parts.push(`${nm}의 일격에 무릎이 꺾였다. 시야가 어둡게 가라앉는다…`); kind = 'hurt'; } // HP가 바닥인 채 싸워 졌다: 사망
     else { parts.push(`더는 버틸 수 없어 ${nm}에게서 물러났다…`); kind = 'hurt'; }
   }
   return { text: parts.join(' '), kind };
@@ -1350,7 +1399,7 @@ function resolveAction(id, cycles = 1, spPaid = 0, act = null) {
       discover('monsters', m.name);
       r.hp -= b.lost;
       if (b.win) { wins++; countKill(m.name); r.exp += m.exp; r.money += m.cr; if (keep) { if (chance(Math.min(.95, BATTLE_MAT * (1 + DEPTH_DROP * dd)))) add(pick(t.gather), rand(1, 2) * mult); m.drops.forEach(([n, p]) => { if (chance(Math.min(.95, p * (1 + DEPTH_DROP * dd)))) add(n, mult); }); } if (seed && chance(SEED_DROP.battle)) add(seed, 1); }
-      else { losses++; r.buff = '부상'; } // 진 회차는 보상 없이 HP만 잃고, 남은 회차는 이어간다
+      else { losses++; r.buff = foeDebuff(m.name); if (act && act.risk) { r.death = true; r.deathWhy = 'battle'; } } // 진 회차는 보상 없이 HP만 잃고(적에 따라 다른 디버프), 남은 회차는 이어간다. HP가 바닥인데 싸워서 지면 사망
     }
     done++;
   }
@@ -1378,6 +1427,7 @@ function resolveAction(id, cycles = 1, spPaid = 0, act = null) {
   return r;
 }
 
+const allJournals = () => { const ids = Object.keys(QMARKS); return ids.length > 0 && ids.every(id => (state.journals || {})[id]); }; // 지금 있는 모든 구역의 저널을 모았다 (구역이 늘면 그것까지)
 /* 시간이 다 된 행동을 마무리한다. 타일 이동이면 'step', 결과 대기면 true, 아직이면 false */
 function finishIfDue() {
   const act = state.active;
@@ -1419,6 +1469,7 @@ function turnInLost() { // 캠프에서 분실물을 돌려준다. 성공 { n, t
   const list = lostHeld(); if (!list.length) return '돌려줄 물건이 없습니다.';
   const first = !state.flags.lostFound;
   let n = 0; list.forEach(x => { n += removeItem(x, countItem(x)); });
+  state.lostCount = Math.min(999999, (state.lostCount | 0) + n);
   const tk = n * LOST_REWARD_TICKETS; state.tickets = Math.min(9999, (state.tickets || 0) + tk);
   let gift = null; if (first) { state.flags.lostFound = true; if (addItem('안대', 1)) gift = '안대'; }
   save();
@@ -1448,6 +1499,7 @@ function itemEffectParts(name, plain) { // { base: 기본 효과, extra: 강화�
   if (it.use) { if (it.use.hp) base.push(`HP +${it.use.hp} 회복`); if (it.use.sp) base.push(`기력 +${it.use.sp} 회복`); }
   if (it.atk) base.push(`공격력 +${it.atk}`);
   if (it.mods) base.push(...modText(it.mods));
+  if (it.petAcc && PET_ACC[name]) base.push(`펫 악세서리 효과: ${PET_ACC[name].text}`); // 펫에게 달았을 때의 효과
   if (plain) { if (it.capacity) base.push(`소지 칸 ${it.capacity}칸`); return { base, extra }; } // 다른 사람의 장비를 볼 때는 내 강화·세공·세트를 붙이지 않는다
   if (reinforceLv(name)) extra.push(`강화 ${REINFORCE_RANKS[reinforceLv(name)]}랭 (공격력 +${reinforceBonus(name)})`);
   if (state.enchants[name]) extra.push(`세공: ${enchantText(state.enchants[name])}`);
@@ -1465,8 +1517,8 @@ function itemEffect(name) { return itemEffectRaw(name) || '제작 재료'; }
 function itemLines(name, plain) {
   const it = ITEMS[name]; if (!it) return ['', ''];
   const { base, extra } = itemEffectParts(name, plain), b = base.join(' · ');
-  const eff = [b && !it.desc.includes(b) ? b : '', it.petAcc && PET_ACC[name] ? `펫 악세서리 효과: ${PET_ACC[name].text}` : '', ...extra].filter(Boolean).join(' · '); // 기본 효과가 설명에 이미 있으면 빼고, 강화·세공은 항상 붙인다
-  const l2 = [it.group ? `[분류] ${it.group}` : '', (it.tags || []).length ? `[태그] ${it.tags.join(' · ')}` : '', it.sell ? `[판매가] ${it.sell}CR` : ''].filter(Boolean).join(' ');
+  const eff = [b && !it.desc.includes(b) ? b : '', ...extra].filter(Boolean).join(' · '); // 기본 효과가 설명에 이미 있으면 빼고, 강화·세공은 항상 붙인다
+  const l2 = [it.group ? `[분류] ${it.group}` : '', state.madeBy && state.madeBy[name] ? `[제작] ${state.madeBy[name]}` : '', (it.tags || []).length ? `[태그] ${it.tags.join(' · ')}` : '', it.sell ? `[판매가] ${it.sell}CR` : ''].filter(Boolean).join(' ');
   return [it.desc + (eff ? ` | ${eff}` : ''), l2];
 }
 /* 제작 시간(초): 감각 스탯으로 단축 */
@@ -1513,6 +1565,8 @@ function collectCraft() {
   discover('recipes', c.out);
   state.crafting = null;
   const mUp = []; (ITEMS[c.out].tags || []).filter(t => TAG_NAMES.includes(t) && !GATHER_KINDS[t] && t !== '농사').forEach(t => { const u = addMastery(t, MASTERY_GAIN.craft * (c.qty || 1)); if (u) mUp.push([t, u]); });
+  const jt = (ITEMS[c.out].tags || []).find(t => MASTERY_JOB[t]), mt = jt && masteryTitleOf(jt, masteryLv(jt)); // 제작 숙련 칭호가 있으면 만든 물건에 제작자 표시가 붙는다
+  if (mt) state.madeBy[c.out] = `${mt} ${state.character.name || ''}`.trim();
   save();
   return { got, lost: want - got, great: c.great, out: c.out, mUp };
 }
@@ -1563,7 +1617,7 @@ function leaveDungeon() { state.dungeon = null; state.location = '이동장치';
 function currentGroups() {
   if (!state.dungeon) return LOCATIONS[state.location].groups;
   const z = zoneOf(state.dungeon.zone), ch = tileOf(z, state.dungeon.x, state.dungeon.y), ti = terrainIndex(ch);
-  if (ti >= 0) { const t = z.terrains[ti]; const sp = spotAt(z, state.dungeon.x, state.dungeon.y); return [{ label: sp ? sp.name : t.name, items: [t.actions[0], ...(sp ? sp.ids : []), ...tileGatherIds(z, state.dungeon.x, state.dungeon.y, state.dungeon.seed), tileBattleId(z, t, state.dungeon.x, state.dungeon.y, state.dungeon.seed), ...(tameShown(z, state.dungeon.x, state.dungeon.y, state.dungeon.seed) ? [t.tameId] : [])] }]; }
+  if (ti >= 0) { const t = z.terrains[ti]; const sp = spotAt(z, state.dungeon.x, state.dungeon.y); return [{ label: sp ? sp.name : t.name, items: [t.actions[0], ...(sp ? sp.ids : []), ...(rescueShown(z, state.dungeon.x, state.dungeon.y, state.dungeon.seed) ? [`${z.id} 대원 구조`] : []), ...tileGatherIds(z, state.dungeon.x, state.dungeon.y, state.dungeon.seed).filter(id => !(sp && ACTIONS[id] && ACTIONS[id].method === '낚시' && sp.fish.includes(ACTIONS[id].items[0]))), tileBattleId(z, t, state.dungeon.x, state.dungeon.y, state.dungeon.seed), ...(tameShown(z, state.dungeon.x, state.dungeon.y, state.dungeon.seed) ? [t.tameId] : [])] }]; }
   if (ch === 'C') return [{ label: '안전 캠프', items: ['캠프 휴식', '임무 수주', '상점', '모닥불 주사위', ...(lostHeld().length ? ['분실물 전달'] : [])] }];
   if (ch === 'S') return [{ label: '입구', items: ['퇴장'] }];
   if (ch === '?' && QMARKS[z.id]) return [{ label: QMARKS[z.id].name, items: [`${z.id} 시간을 보낸다`] }];
@@ -1947,12 +2001,14 @@ function deliverJob(picks) {
     if (total !== need) return `정확히 ${need}개를 골라 주세요. (지금 ${total}개)`;
   } else { let left = need; for (const r of stock) { const q = Math.min(left, r.q); list.push([r.n, q, r.price]); left -= q; if (!left) break; } }
   let pay = 0;
-  list.forEach(([n, q, price]) => { removeItem(n, q); pay += q * price; });
+  const mGain = {}; // 납품한 물건의 태그 중 이 서브잡 태그(채집·채굴·낚시 제외)에 숙련도가 쌓인다
+  list.forEach(([n, q, price]) => { removeItem(n, q); pay += q * price; (ITEMS[n].tags || []).filter(t => j.tags.includes(t) && TAG_NAMES.includes(t) && !GATHER_KINDS[t]).forEach(t => { mGain[t] = (mGain[t] || 0) + q * MASTERY_GAIN.job; }); });
+  const mUp = []; Object.entries(mGain).forEach(([t, g]) => { const u = addMastery(t, g); if (u) mUp.push([t, u]); });
   pay = Math.round(pay * 1.25); state.money += pay; j.lastAt = nowMs();
   let up = false;
   if (j.level < JOB_MAX_LV && ++j.prog >= jobProgNeed(j.level)) { j.level++; j.prog = 0; up = true; }
   save();
-  return { n: need, pay, up };
+  return { n: need, pay, up, mGain, mUp };
 }
 
 /* ---------- 농장 ---------- */
@@ -1982,7 +2038,21 @@ function harvestPlot(i) {
 
 /* ---------- 펫 ---------- */
 const petCap = () => Object.keys(PET_SPECIES).length; // 펫 보관함: 종마다 한 마리씩 모으는 도감식 (중복 불가), 소지품과 별도
-const petFed = p => nowMs() - p.fedAt < PET_FED_MS;
+const petFull = p => !p ? 0 : !Number.isFinite(p.full) ? Math.max(0, PET_FULL_MAX * (1 - (nowMs() - (p.fedAt || 0)) / PET_FED_MS)) : Math.max(0, Math.min(PET_FULL_MAX, p.full - (nowMs() - (p.fullAt || 0)) / PET_FULL_DRAIN_MS * PET_FULL_MAX)); // 지금 배부름 0~100 (배부름 필드가 없는 펫은 옛 방식 fedAt 으로)
+const petEmptyAt = p => !Number.isFinite(p.full) ? (p.fedAt || 0) + PET_FED_MS : (p.fullAt || 0) + p.full / PET_FULL_MAX * PET_FULL_DRAIN_MS; // 배가 완전히 비는 시각
+const petFed = p => petFull(p) > 0;
+const feedFull = item => Math.round(PET_FULL_GAIN * (item === PET_FOOD ? FOOD_BOND_MULT : 1));
+function petHungerTick() { // 배가 빈 채로 PET_HUNGRY_MS 가 지날 때마다 친밀도가 준다 (탐험 중에는 멈춤). 바뀌면 true
+  let ch = false; const t = nowMs();
+  state.pets.forEach(p => {
+    if (p.exp) return;
+    const from = Math.max(petEmptyAt(p), p.decayAt || 0), n = Math.floor((t - from) / PET_HUNGRY_MS);
+    if (n < 1) return;
+    p.decayAt = from + n * PET_HUNGRY_MS; p.bond = Math.max(0, p.bond - n * PET_HUNGRY_BOND); ch = true;
+  });
+  if (ch) save();
+  return ch;
+}
 const petAcc = p => (p && PET_ACC[p.acc]) || {};
 const petBuff = p => Math.min(.5, PET_SPECIES[p.id].base * (.5 + p.bond / 200) * (1 + ((p.lv || 1) - 1) * PET_LV_SPEED) + (petAcc(p).spd || 0)); // 이동속도 증가 비율 (타일 이동 시간 단축)
 const petLevelUps = []; // 펫이 레벨업한 기록 (UI가 비우며 알림)
@@ -2020,7 +2090,7 @@ const tameChance = bait => clamp(TAME_BASE + totalStats().sen * .02 + (bait === 
 const feedGain = n => Math.round((ITEMS[n].feed || 0) * (n === PET_FOOD ? FOOD_BOND_MULT : 1));
 function addPet(id) {
   if (!PET_SPECIES[id] || state.pets.some(p => p.id === id) || state.pets.length >= petCap()) return false;
-  state.pets.push({ id, lv: 1, pxp: 0, acc: '', bond: PET_BOND_START, fedAt: 0, exp: null, pers: pick(PET_PERS_LIST) });
+  state.pets.push({ id, lv: 1, pxp: 0, acc: '', bond: PET_BOND_START, fedAt: 0, full: 0, fullAt: nowMs(), decayAt: nowMs(), exp: null, pers: pick(PET_PERS_LIST) });
   if (state.petActive < 0) state.petActive = 0;
   save();
   return true;
@@ -2034,7 +2104,8 @@ function feedPet(i, item) {
   if (herb && p.pers === herb) return `${petName(p)}은(는) 이미 ${herb} 성격입니다.`;
   if (!removeItem(item)) return '먹이가 없습니다.';
   if (herb) p.pers = herb;
-  p.bond = Math.min(100, p.bond + feedGain(item) + (petAcc(p).bond || 0)); p.fedAt = nowMs(); save();
+  const t = nowMs(); p.full = Math.min(PET_FULL_MAX, petFull(p) + feedFull(item)); p.fullAt = t; p.decayAt = t;
+  p.bond = Math.min(100, p.bond + feedGain(item) + (petAcc(p).bond || 0)); p.fedAt = t; save();
   return null;
 }
 /* 돌보기(간식·쓰다듬기·기분 묻기): 개인실에서, 또는 함께 다니는 펫이면 어디서든 */
@@ -2090,7 +2161,7 @@ function sendExpedition(i, zoneId, baitName = null) {
   const bait = baitName == null ? baitItems()[0] : baitName;
   if (!baitItems().includes(bait)) return '고른 먹이가 가방에 없습니다. 줄 먹이를 다시 골라 주세요.';
   removeItem(bait);
-  p.exp = { zone: zoneId, at: nowMs(), ms: Math.round(PET_EXP_MS * (1 - effects().petTime)) }; p.fedAt = nowMs(); save();
+  p.exp = { zone: zoneId, at: nowMs(), ms: Math.round(PET_EXP_MS * (1 - effects().petTime)) }; p.fedAt = nowMs(); p.full = PET_FULL_MAX; p.fullAt = nowMs(); save(); // 도시락을 들고 떠난다
   return null;
 }
 /* 탐험 결과 계산: 구역 지형들의 재료 풀에서 확률로 가져온다 */
@@ -2110,7 +2181,7 @@ function claimExpedition(i) {
   if (!expReady(p)) return '아직 돌아오지 않았습니다.';
   const items = expeditionLoot(p), lost = [];
   items.forEach(([n, q]) => { const g = addItem(n, q); if (g < q) lost.push([n, q - g]); });
-  p.exp = null; p.bond = Math.min(100, p.bond + 2); save();
+  p.exp = null; p.bond = Math.min(100, p.bond + 2); p.decayAt = nowMs(); save(); // 돌아온 뒤부터 다시 허기를 센다
   return { items, lost };
 }
 
@@ -2120,11 +2191,32 @@ function zoneFullyLit(zid) {
   const z = DANGER_ZONES.find(x => x.id === zid), ex = state.explored && state.explored[zid]; if (!z || !ex) return false;
   return z.map.every((row, y) => [...row].every((c, x) => c === '#' || c === '.' || ex[`${x},${y}`]));
 }
+/* 같은 제작 직업의 낮은 호칭을 지우고, 착용 중이었다면 새 호칭으로 바꾼다. 바뀌었으면 true */
+function supersedeMasteryTitles() {
+  let changed = false;
+  Object.entries(MASTERY_JOB).forEach(([tag, job]) => {
+    const cur = masteryTitleOf(tag, masteryLv(tag)); if (!cur) return;
+    const olds = masteryRanks(tag).map(([, nm]) => `${nm} ${job}`).filter(t => t !== cur);
+    olds.forEach(t => {
+      if (state.titles.includes(t)) { state.titles = state.titles.filter(x => x !== t); changed = true; }
+      if (state.character.title === t) { state.character.title = state.titles.includes(cur) ? cur : state.character.title; changed = true; }
+    });
+  });
+  return changed;
+}
 /* 조건을 채운 칭호를 얻는다. 새로 얻은 칭호 이름들 */
+function noteStatPeak() { // 버프·장비 포함 스탯의 최고 기록 (확정된 값만: 나누기 전 포인트는 세지 않는다). 바뀌면 true
+  const t = totalStats(), pk = state.statPeak = state.statPeak || {}; let ch = false;
+  for (const k in t) if (t[k] > (pk[k] | 0)) { pk[k] = Math.min(9999, t[k]); ch = true; }
+  return ch;
+}
 function checkTitles() {
   if (!state.created) return [];
+  if (noteStatPeak()) save();
   const got = TITLE_DEFS.filter(([n, , ok]) => !state.titles.includes(n) && ok()).map(t => t[0]);
-  if (got.length) { state.titles.push(...got); save(); }
+  if (got.length) state.titles.push(...got);
+  const swapped = supersedeMasteryTitles(); // 제작 호칭은 레벨이 오르면 덮어쓴다 (초보 재봉사 → 숙련 재봉사)
+  if (got.length || swapped) save();
   return got;
 }
 function setTitle(name) {
@@ -2223,6 +2315,7 @@ function sendMail(to, subject, body, items = []) {
   if (list.length && countItem(MAIL_SHIP_ITEM) < 1) return `아이템을 담아 보내려면 ${MAIL_SHIP_ITEM}(상점 구매)가 1개 필요합니다.`;
   if (list.length) { removeItem(MAIL_SHIP_ITEM, 1); list.forEach(([n, q]) => removeItem(n, q)); }
   sendMail.sent = list.map(r => r.slice()); // 실제로 가방에서 뺀 첨부 (중복·운송장치 제외 후)
+  if (list.length) state.mailItemSent = Math.min(999999, (state.mailItemSent | 0) + 1); // 아이템 배달 횟수 (칭호)
   save();
   return null;
 }

@@ -17,7 +17,7 @@ const MULTI_OPTIONS = [{ label: '1회', sec: 0 }, { label: '30분', sec: 1800 },
 const CUSTOM_MIN_MIN = 5, CUSTOM_MIN_MAX = 1440; // 직접 입력 가능한 시간(분): 5분~24시간
 const DUNGEON_STEP_SEC = 60;  // 지상 안에서 타일 1칸 이동 시간(초): 1분 (험난한 지형도 같다). 지도(구역 간) 이동은 시간이 걸리지 않는다
 const INVESTIGATE_SP = 1;      // 조사(즉시) 기력 소모
-const HP_RETREAT = 20;         // HP가 이 값 이하면 반복 행동 중단/전투 시작 불가
+const HP_RETREAT = 10;         // HP가 이 값 이하면 반복 행동(전투) 중단. 이 상태에서 또 전투를 시작할 수는 있지만, 지면 사망 → 클론 재탄생
 const BUFF_MS = 5 * 60 * 1000;
 const MAX_LEVEL = 30;
 const MOVE_SP_SAFE = 0;        // 공중(안전구역)끼리 이동은 기력이 들지 않는다
@@ -77,7 +77,11 @@ defItems('장비', [
   ['플라즈마 블레이드', 'swords', '등급 B · 공격력 +12. 고온 플라즈마 날을 형성하는 근접 무기다.', { slot: '무기', atk: 12 }],
   ['이끼 위장 망토', 'checkroom', '제1구역 캠프의 특산 장비다. 숲에 녹아드는 위장 망토다.', { slot: '목', mods: { agi: 2 } }],
   ['해무 고글', 'visibility', '제2구역 캠프의 특산 장비다. 안개 낀 해안에서도 시야가 또렷하다.', { slot: '얼굴', mods: { sen: 3 } }],
-  ['방열 장갑', 'back_hand', '제3구역 캠프의 특산 장비다. 화산의 열기를 막아 주는 장갑이다.', { slot: '장갑', mods: { wil: 2, str: 1 } }]
+  ['방열 장갑', 'back_hand', '제3구역 캠프의 특산 장비다. 화산의 열기를 막아 주는 장갑이다.', { slot: '장갑', mods: { wil: 2, str: 1 } }],
+  ['협곡 등반화', 'steps', '제4구역 캠프의 특산 장비다. 바위 틈과 급류 옆 절벽에서도 미끄러지지 않는 밑창을 달았다.', { slot: '신발', mods: { agi: 3, str: 1 } }],
+  ['설원 방한 외투', 'checkroom', '제5구역 캠프의 특산 장비다. 눈보라 속에서도 체온을 지켜 주는 두툼한 외투다.', { slot: '상의', mods: { wil: 3, str: 2 } }],
+  ['정글 차양모', 'self_improvement', '제6구역 캠프의 특산 장비다. 덩굴 사이로 쏟아지는 햇빛을 가리고 기척을 살피기 좋은 모자다.', { slot: '머리', mods: { sen: 3, luk: 2 } }],
+  ['사막 여행자 바지', 'checkroom', '제7구역 캠프의 특산 장비다. 모래바람과 낮의 열기를 견디도록 헐렁하게 지은 바지다.', { slot: '하의', mods: { agi: 3, wil: 3 } }]
 ]);
 defItems('장비', [ // 튜토리얼 끝에 하나 고르는 F등급 무기 (성능은 모두 같다)
   ['훈련용 검', 'swords', '등급 F · 공격력 +3. 균형이 잘 잡힌 기본 장검이다.', { slot: '무기', atk: 3, weapon: '검' }],
@@ -98,7 +102,7 @@ defItems('소모품', [ // 농장 작물로 만드는 음식 / 상점 상품 / �
   ['허브 차', 'emoji_food_beverage', 'HP를 20, 기력을 10 회복한다.', { use: { hp: 20, sp: 10 } }],
   ['고급 응급 키트', 'medical_information', 'HP를 70 회복한다.', { use: { hp: 70 } }],
   ['운송장치', 'local_shipping', '메일에 아이템을 담아 보낼 때 1개 소모된다. (아이템 없이 글만 보내는 메일은 필요 없음)', {}],
-  ['펫 사료', 'pets', '펫에게 먹이면 든든함이 24시간 유지되고 친밀도가 크게(작물의 1.5배) 오른다. 길들일 때 먹이로 쓰면 성공 확률이 조금 오른다.', { feed: 15 }]
+  ['펫 사료', 'pets', '펫에게 먹이면 배를 든든하게(작물의 1.5배) 채우고 친밀도가 크게(작물의 1.5배) 오른다. 길들일 때 먹이로 쓰면 성공 확률이 조금 오른다.', { feed: 15 }]
 ]);
 /* 농장: 씨앗(seed) → 작물(crop). grow = 자라는 시간(분), yield = 수확량 범위, feed = 펫에게 먹였을 때 친밀도 */
 const CROPS = {
@@ -264,8 +268,8 @@ const JOB_TAGS = [ // 서브잡 태그: 아이콘과 설명 (버프는 core.js j
 ];
 const TAG_NAMES = JOB_TAGS.map(t => t[0]);
 /* 숙련: 서브잡 태그마다 따로 쌓인다 (서브잡 가입과 상관없음). 채집·채굴·낚시는 그 행동을 하면, 나머지는 그 태그의 물건을 만들면(농사는 수확하면) 오른다. 만렙 30 */
-const MASTERY_MAX = 30, MASTERY_GAIN = { gather: 2, craft: 2, farm: 1 }; // 채집 1회차·제작 1개·수확 1칸당 숙련도
-const MASTERY_NEED = lv => Math.round(10 + 3 * Math.pow(lv, 1.4)); // lv → lv+1 에 필요한 숙련도
+const MASTERY_MAX = 30, MASTERY_GAIN = { gather: 2, craft: 2, farm: 2, job: 2 }; // 채집 1회차·제작 1개·수확 1칸·납품 1개당 숙련도 (10/24: 수확·납품 1→2)
+const MASTERY_NEED = lv => Math.round(8 + 2.4 * Math.pow(lv, 1.35)); // lv → lv+1 에 필요한 숙련도 (10/24 완화: 만렙까지 4504 → 3138, 약 30% 줄임. 쌓인 숙련도는 그대로라 레벨이 바로 오른다)
 const MASTERY_TOTAL = (() => { let t = 0; for (let l = 1; l < MASTERY_MAX; l++) t += MASTERY_NEED(l); return t; })();
 const MASTERY_CRAFT_TAGS = ['목공', '재봉', '대장', '가죽공예', '보석공예'], MASTERY_HEAL_TAGS = ['요리', '약학'];
 const JOB_MAX_LV = 10, JOB_NAME_MAX = 10, JOB_TAG_MAX = 1, JOB_DAY_MS = 24 * 3600 * 1000;
@@ -350,8 +354,25 @@ const TRAIN_SEC = 1500, TRAIN_SP = 10, TRAIN_EXP = 30; // 단련: 25분 · 기�
 /* ---------- 버프/디버프 ---------- */
 const BUFFS = {
   '부상': { type: 'debuff', icon: 'personal_injury', desc: '전투에서 입은 부상. 민첩 -2', mods: { agi: -2 } },
-  '충분한 휴식': { type: 'buff', icon: 'bedtime', desc: '푹 쉬어 정신이 맑다. 의지 +2', mods: { wil: 2 } }
+  '충분한 휴식': { type: 'buff', icon: 'bedtime', desc: '푹 쉬어 정신이 맑다. 의지 +2', mods: { wil: 2 } },
+  // 싸운 적에 따라 지면 다른 디버프가 붙는다 (FOE_DEBUFF). 지속 시간은 BUFF_MS 로 '부상'과 같다
+  '화상': { type: 'debuff', icon: 'local_fire_department', desc: '불길에 그을린 화상. 근력 -2', mods: { str: -2 } },
+  '동상': { type: 'debuff', icon: 'ac_unit', desc: '얼어붙은 손발이 굳었다. 민첩 -1 · 감각 -1', mods: { agi: -1, sen: -1 } },
+  '중독': { type: 'debuff', icon: 'sick', desc: '독이 돌아 정신이 흐릿하다. 의지 -2', mods: { wil: -2 } },
+  '출혈': { type: 'debuff', icon: 'water_drop', desc: '깊게 베인 상처에서 피가 멎지 않는다. 근력 -1 · 의지 -1', mods: { str: -1, wil: -1 } },
+  '감전': { type: 'debuff', icon: 'bolt', desc: '전류에 감각이 저릿하다. 감각 -2', mods: { sen: -2 } },
+  '혼란': { type: 'debuff', icon: 'cyclone', desc: '기묘한 힘에 머릿속이 어지럽다. 지능 -2', mods: { int: -2 } }
 };
+const FOE_DEBUFF = { // 몬스터 이름 → 패배했을 때 붙는 디버프 (없으면 이름의 단어로 추측하고, 그래도 없으면 '부상')
+  '용암 두꺼비': '화상', '화염 정령': '화상', '재 늑대': '화상',
+  '서리 정령': '동상', '얼음 박쥐': '동상', '빙하 곰': '동상', '설원 늑대': '동상', '설원 여우': '동상',
+  '동굴 거미': '중독', '모래 지네': '중독', '황금 전갈': '중독', '가시 도마뱀': '중독', '늪지 거머리 군체': '중독', '심해 해파리': '중독', '갯벌 괴어': '중독',
+  '숲 늑대': '출혈', '정글 재규어': '출혈', '목마른 하이에나': '출혈', '산악 곰': '출혈', '멧돼지': '출혈', '늪 악어': '출혈', '절벽 매': '출혈', '급류 수달': '출혈',
+  '경비 드론': '감전', '모래 먼지 로봇': '감전',
+  '난파선 망령': '혼란', '수정 박쥐': '혼란'
+};
+const FOE_DEBUFF_WORDS = [[/화염|용암|불꽃|마그마|재 /, '화상'], [/서리|얼음|빙하|눈보라|설원/, '동상'], [/거미|전갈|지네|독|해파리|거머리/, '중독'], [/드론|로봇|기계|전기/, '감전'], [/망령|유령|정령|수정/, '혼란'], [/늑대|곰|재규어|표범|하이에나|악어|매$/, '출혈']];
+const foeDebuff = name => { const d = FOE_DEBUFF[name] || (FOE_DEBUFF_WORDS.find(([re]) => re.test(name || '')) || [])[1]; return d && BUFFS[d] ? d : '부상'; };
 
 /* ---------- 지역 / 행동 ----------
    공중: 본부, 개인실, 상점가 / 지상: 제1~3구역 (지형마다 채집·전투)
@@ -768,7 +789,10 @@ const PET_FOOD = '펫 사료', TAME_FOOD_BONUS = .08, FOOD_BOND_MULT = 1.5; // �
 const TAME_SP = 3, TAME_SEC = 600, TAME_BASE = .3; // 길들이기: 기력 3 · 10분 · 기본 성공 30% (감각 +2%p/pt)
 const PET_SPECIES = {}; // 길들일 수 있는 펫 종: 짐승 몬스터 이름 → { zone, level, base, name }
 const PET_SPEED = { 1: .08, 2: .12, 3: .16, 4: .2, 5: .24 };      // 펫 이동속도 버프(타일 이동 시간 단축) 기본값: 구역 level별
-const PET_FED_MS = 24 * 3600 * 1000;               // 먹이를 준 뒤 24시간 동안 든든함(버프 유지)
+const PET_FED_MS = 24 * 3600 * 1000;               // (옛 세이브 변환용) 예전에는 먹이를 주면 24시간 든든함
+/* 펫 허기: 배부름 0~100. 시간이 지나면 줄고(PET_FULL_DRAIN_MS 동안 100 → 0), 간식을 주면 찬다(작물 60 · 펫 사료 90, 하루 두 번이면 충분).
+   배부름이 남아 있는 동안만 동행 효과가 있고, 배가 완전히 비면 PET_HUNGRY_MS 마다 친밀도가 PET_HUNGRY_BOND 씩 준다 (친밀도 100이어도 계속 먹여야 한다) */
+const PET_FULL_MAX = 100, PET_FULL_DRAIN_MS = 24 * 3600 * 1000, PET_FULL_GAIN = 60, PET_HUNGRY_MS = 6 * 3600 * 1000, PET_HUNGRY_BOND = 2;
 const PET_BOND_START = 20;                          // 친밀도 0~100. 버프 = 기본값 × (0.5 + 친밀도/200)
 const MAX_BATCH = 99;                              // 한 번에 제작/사용할 수 있는 최대 수량 (저장 검증이 불러올 때 바로 쓰므로 data.js에 둔다)
 const PET_NAME_MAX = 8;                           // 펫 이름 최대 글자 수 (저장 검증이 불러올 때 바로 쓰므로 data.js에 둔다)
@@ -845,6 +869,8 @@ DANGER_ZONES.forEach(z => {
 /* ---------- '?' 칸: 구역마다 1곳, 세계관을 느끼는 특수한 칸 (여가처럼 글 읽는 맛). 낮(06~18시, 한국 시간)/밤에 따라 문장이 달라지고
    '시간을 보낸다'를 LOUNGE_NEED번 하면 어느 탐험가의 저널을 얻어 도감에 기록된다. (히든: 패치 노트에 쓰지 않는다) ---------- */
 const LOUNGE_NEED = 5;
+/* 모든 구역의 저널을 모으면(구역이 늘어나도 전부) 도감 저널 맨 끝에 '마지막 장'이 나타난다. 본문 맨 아래(스크롤 끝)에 tail 한 줄 (히든) */
+const LAST_JOURNAL = { name: '저널의 마지막 페이지', text: "마지막 장이다. 수첩의 남은 종이를 세어 보니 딱 한 장이 남았다. 꼭 맞춰 쓰라는 것처럼.\n\n갈대밭에서 방귀 소리 나는 피리를 불었고, 해변에서 갈매기와 복숭아를 나눠 먹었다. 온천에서는 여우에게 양말을 빼앗겼고, 이끼 낀 신상에게 '나도'라고 새겼다. 눈 덮인 절 마당을 쓸었고, 낮에도 별이 뜬다는 걸 알았고, 사막 한복판의 등대에서 병편지를 던졌다. 적고 보니 참 바쁘게 놀았다.\n\n다리가 예전 같지 않다. 오늘은 열 걸음마다 쉬었다. 더 깊은 곳까지 가 보고 싶었지만, 내 모험은 아무래도 여기까지인 것 같다. 이상하게 무섭지는 않다. 끝난 세계에서 이렇게 많은 아름다운 것을 봤으니, 누가 뭐래도 남는 장사였다.\n\n여태까지의 모험은 정말 즐거웠다. 내 삶에 후회는 없다.\n\n다만, 딱 하나 후회가 있다면 너를 다시 만나지 못한 것인 것 같아. 떠나던 날 너는 금방 돌아오라고 했지. 나는 웃으면서 그러겠다고 대답했고. 그 약속만은 끝내 지키지 못했네. 미안해.\n\n그래도 언젠가 이 수첩이 너에게 닿는다면, 내가 본 풍경을 너도 꼭 봐 줬으면 좋겠다. 갈대 소리, 파도 소리, 눈 내리는 소리. 나는 그 자리마다 오래 서서 네 생각을 했으니까.", tail: '보고싶어, 리코.' };
 const QMARKS = {
   "제1구역": { name: "갈대밭", icon: "grass",
     day: "잠자리가 날아다니는 갈대 들판. 햇볕이 따사롭게 비추는 곳. 모든 것이 끝난 이 세계에서 마치 저세상이라도 되는 양 이질적인 분위기다. 그러나 그것이 퍽 아름답다.",
@@ -1002,6 +1028,17 @@ const QUESTS = [
   { id: 'z3_fire', board: '제3구역', kind: '서브', title: '화염 정령 진압', desc: '화산 중턱의 화염 정령을 2마리 처치한다.', need: { type: 'kill', monster: '화염 정령', qty: 2 }, reward: { exp: 70, money: 200 } },
   { id: 'z3_crystal', board: '제3구역', kind: '서브', title: '화염 결정 수집', desc: '연구실에서 요청한 화염 결정 3개를 납품한다.', need: { type: 'item', name: '화염 결정', qty: 3, consume: true }, reward: { exp: 60, money: 180, items: [['응급 키트', 2]] } }
 ];
+/* 구역 고유 임무 (제4구역 이후). 구역을 추가할 때는 캠프 특산 장비 1종 + 구역 고유 임무(처치 1·납품 1)가 반드시 있어야 한다 */
+QUESTS.push(
+  { id: 'z4_otter', board: '제4구역', kind: '서브', title: '급류 수달 소탕', desc: '협곡 하류를 어지럽히는 급류 수달을 3마리 처치한다.', need: { type: 'kill', monster: '급류 수달', qty: 3 }, reward: { exp: 90, money: 240 } },
+  { id: 'z4_copper', board: '제4구역', kind: '서브', title: '구리 광석 납품', desc: '캠프 보수용 구리 광석 6개를 납품한다.', need: { type: 'item', name: '구리 광석', qty: 6, consume: true }, reward: { exp: 80, money: 220, items: [['응급 키트', 2]] } },
+  { id: 'z5_wolf', board: '제5구역', kind: '서브', title: '설원 늑대 퇴치', desc: '캠프 주변을 맴도는 설원 늑대를 3마리 처치한다.', need: { type: 'kill', monster: '설원 늑대', qty: 3 }, reward: { exp: 130, money: 320 } },
+  { id: 'z5_frost', board: '제5구역', kind: '서브', title: '서리 결정 수집', desc: '연구 분석용 서리 결정 5개를 납품한다.', need: { type: 'item', name: '서리 결정', qty: 5, consume: true }, reward: { exp: 120, money: 300, items: [['고급 응급 키트', 1]] } },
+  { id: 'z6_jaguar', board: '제6구역', kind: '서브', title: '정글 재규어 사냥', desc: '열대숲의 정글 재규어를 3마리 처치한다.', need: { type: 'kill', monster: '정글 재규어', qty: 3 }, reward: { exp: 170, money: 420 } },
+  { id: 'z6_coconut', board: '제6구역', kind: '서브', title: '코코넛 납품', desc: '캠프 식량용 코코넛 6개를 납품한다.', need: { type: 'item', name: '코코넛', qty: 6, consume: true }, reward: { exp: 150, money: 380, items: [['에너지 젤', 1]] } },
+  { id: 'z7_scorpion', board: '제7구역', kind: '서브', title: '황금 전갈 소탕', desc: '붉은 바위지대의 황금 전갈을 3마리 처치한다.', need: { type: 'kill', monster: '황금 전갈', qty: 3 }, reward: { exp: 210, money: 520 } },
+  { id: 'z7_glass', board: '제7구역', kind: '서브', title: '사막 유리 납품', desc: '캠프 창문 수리용 사막 유리 3개를 납품한다.', need: { type: 'item', name: '사막 유리', qty: 3, consume: true }, reward: { exp: 190, money: 480, items: [['고급 응급 키트', 2]] } }
+);
 /* 승급 시험: 메인 임무 형식. 본부 '승급'에서 받고, 임무를 마치면 등급이 오른다 (D등급까지). need.type 'multi' = 여러 조건을 모두 달성, 'recipe' = 단련·구입으로 익힌 레시피 수 */
 QUESTS.push(
   { id: 'promo_e', promo: 'E', lv: 3, kind: '메인', title: '승급 시험 · E등급', desc: '숲 늑대 5마리를 처치하고, 약초 5개를 납품하고, 레시피 3개를 익힌다.',
@@ -1040,10 +1077,10 @@ const SHOPS = {
       '농사': [['감자 씨앗', 6], ['허브 씨앗', 8], ['사탕무 씨앗', 10]], 'RP템': [['우정반지', 800], ['결혼반지', 2000]] } },  '제1구역': { title: '제1구역 캠프 보급소', base: campBase, special: [['이끼 위장 망토', 260], ['귀환 신호기', 52], ['생체 섬유', 14], ['약초', 12], ['야생 열매 씨앗', 12]] },
   '제2구역': { title: '제2구역 캠프 보급소', base: campBase, special: [['해무 고글', 280], ['귀환 신호기', 52], ['소금', 12], ['해초', 12], ['해풍 콩 씨앗', 16]] },
   '제3구역': { title: '제3구역 캠프 보급소', base: campBase, special: [['방열 장갑', 300], ['귀환 신호기', 52], ['유황', 16], ['흑요석', 20], ['화산 고추 씨앗', 22]] },
-  '제4구역': { title: '제4구역 캠프 보급소', base: campBase, special: [['귀환 신호기', 52], ['사암', 12], ['구리 광석', 18], ['협곡 허브', 16], ['협곡 보리 씨앗', 26]] },
-  '제5구역': { title: '제5구역 캠프 보급소', base: campBase, special: [['귀환 신호기', 52], ['얼음 조각', 20], ['서리 이끼', 16], ['설산 약초', 22], ['설원 순무 씨앗', 30]] },
-  '제7구역': { title: '제7구역 캠프 보급소', base: campBase, special: [['귀환 신호기', 52], ['선인장', 14], ['대추야자', 18], ['사막 수박 씨앗', 34]] },
-  '제6구역': { title: '제6구역 캠프 보급소', base: campBase, special: [['귀환 신호기', 52], ['사탕수수', 14], ['망고', 18], ['오리알', 12], ['정글 카사바 씨앗', 32]] }
+  '제4구역': { title: '제4구역 캠프 보급소', base: campBase, special: [['협곡 등반화', 340], ['귀환 신호기', 52], ['사암', 12], ['구리 광석', 18], ['협곡 허브', 16], ['협곡 보리 씨앗', 26]] },
+  '제5구역': { title: '제5구역 캠프 보급소', base: campBase, special: [['설원 방한 외투', 380], ['귀환 신호기', 52], ['얼음 조각', 20], ['서리 이끼', 16], ['설산 약초', 22], ['설원 순무 씨앗', 30]] },
+  '제7구역': { title: '제7구역 캠프 보급소', base: campBase, special: [['사막 여행자 바지', 460], ['귀환 신호기', 52], ['선인장', 14], ['대추야자', 18], ['사막 수박 씨앗', 34]] },
+  '제6구역': { title: '제6구역 캠프 보급소', base: campBase, special: [['정글 차양모', 420], ['귀환 신호기', 52], ['사탕수수', 14], ['망고', 18], ['오리알', 12], ['정글 카사바 씨앗', 32]] }
 };
 
 /* ---------- 2026-10-24 추가: 전광판 / 새 요리·상점·RP 아이템 / 낚시 크기 / 일일 의뢰 / 펫 꼬시기 / 분실물 ---------- */
@@ -1136,6 +1173,11 @@ Object.entries(PET_ACC).forEach(([n, a]) => {
   if (!ITEMS[n]) ITEMS[n] = { tab: '장비', icon: a.icon, desc: `${a.desc} 펫에게 달아 줄 수 있다.`, group: '펫 악세서리', petAcc: true, sell: Math.max(4, Math.floor(.8 * Object.entries(a.mats).reduce((s, [m, q]) => s + q * ((ITEMS[m] && ITEMS[m].sell) || 0), 0))) };
   if (!RECIPES.some(r => r.out === n)) RECIPES.push({ out: n, mats: a.mats, sec: a.sec, rank: 'F' });
 });
+/* 더 이상 얻을 수 없는 옛 아이템(어디서도 나오지 않는다)은 목록에서 없앤다. 옛 저장에 남아 있으면 같은 분류의 비슷한 아이템으로 바꿔 준다(core.js sanitize) */
+const LEGACY_ITEMS = { '민물고기': '붕어', '바닷물고기': '고등어', '짐승 고기': '', '짐승 가죽': '', '두꺼운 가죽': '' };
+Object.keys(LEGACY_ITEMS).forEach(n => delete ITEMS[n]);
+Object.keys(MAT_GROUPS).forEach(g => { MAT_GROUPS[g] = MAT_GROUPS[g].filter(n => ITEMS[n]); });
+LEGACY_ITEMS['짐승 고기'] = MAT_GROUPS['고기'][0]; LEGACY_ITEMS['짐승 가죽'] = MAT_GROUPS['가죽'][0]; LEGACY_ITEMS['두꺼운 가죽'] = MAT_GROUPS['두꺼운 가죽'][0];
 /* 낚시: 낚은 물고기의 크기(cm)와 최고 기록. [최소, 최대] */
 const FISH_SIZE = { '민물고기': [15, 45], '바닷물고기': [20, 60], '협곡 송어': [20, 70], '빙어': [6, 16], '붕어': [12, 40], '잉어': [30, 90], '메기': [30, 100], '고등어': [20, 45], '광어': [30, 80], '오징어': [15, 50], '피라냐': [15, 35], '아로와나': [50, 120], '열수 뱀장어': [40, 110], '오아시스 틸라피아': [20, 65] };
 /* 헤더: 계절(한국 날짜 기준)과 고도. 상공(안전지대)은 약 8,400m, 지상은 구역마다 다르다 */
@@ -1197,8 +1239,33 @@ let TAME_APPEAR = .3; const TAME_FAIL_MAX = 3; // (TAME_APPEAR 는 시험에서 
 const LOST_CHANCE = { gather: .006, battle: .008 }; // 한 번(회차)당 확률. 구역 깊이에 따라 조금 늘어난다
 const LOST_DEPTH = 1.5;
 const LOST_ITEMS = { '제1구역': '빛바랜 인식표', '제2구역': '녹슨 회중시계', '제3구역': '그을린 수첩', '제4구역': '금 간 나침반', '제5구역': '얼어붙은 장갑 한 짝', '제6구역': '이끼 낀 필름 통', '제7구역': '모래에 닳은 고글' };
-defItems('재료', Object.entries(LOST_ITEMS).map(([z, n]) => [n, 'help', '누군가 잃어버린 물건 같다. 어디에 쓰는 건지는 알 수 없다.', { hidden: true }]));
+defItems('재료', Object.entries(LOST_ITEMS).map(([z, n]) => [n, 'help', '누군가 잃어버린 물건 같다. 어디에 쓰는 건지는 알 수 없다. 주인이 애타게 찾고 있을지도 모르는데… 캠프 관리인에게 맡겨 두면 언젠가 주인 손에 돌아가겠지.', { hidden: true }]));
+const LOST_SAMARITAN = 20;
+const STAT_PEAK_NEED = 40; // 버프·장비 포함 스탯이 한 번이라도 이 값에 닿으면 칭호
+const STAT_PEAK_TITLES = { str: '강함의 증표', agi: 'Sweet Dreams', int: '마더 컴퓨터', wil: '꺾이지 않는 마음', sen: '식스 센스', luk: '신이 내린 풍운아' };
+const MAIL_DELIVERY_NEED = 20; // 아이템을 담은 메일을 이만큼 보내면 칭호 '배달의 민족' // 분실물을 이만큼 돌려주면 칭호 '착한 사마리아인'
 const LOST_REWARD_TICKETS = 1;
+/* 위험에 처한 대원 구하기: 지형 칸에 가끔(입장할 때마다 칸 시드로) 나타난다. 즉시 전투(모의 전투처럼 한 줄씩 보여 줌).
+   이기면 그 칸의 희귀 재료나 CR + 감사 인사, 지면 깊이(난이도)에 비례해 HP -1~14 (죽지는 않는다). 한 구역에서 구하면 RESCUE_COOLDOWN_MS 동안 그 구역엔 다시 안 나온다 */
+const RESCUE_APPEAR = .07, RESCUE_SP = 3, RESCUE_COOLDOWN_MS = 2 * 3600 * 1000, RESCUE_HP = [1, 14], RESCUE_RARE = .55;
+const RESCUE_NAMES = ['하진', '도윤', '세라', '무겸', '유나', '태오', '이솔', '로한', '미르', '가온', '다현', '노을', '시아', '한결'];
+const RESCUE_SCENES = [
+  m => `${m}에게 몰린 대원 하나가 바위 틈에 몸을 숨긴 채 구조 신호를 보내고 있다.`,
+  m => `다리를 다친 대원이 주저앉아 있고, ${m}이(가) 그 주위를 맴돌고 있다.`,
+  m => `멀리서 비명이 들린다. ${m}에게 쫓기는 대원이 이쪽으로 달려온다!`,
+  m => `장비를 잃은 대원이 ${m}과(와) 대치하고 있다. 혼자서는 버티기 어려워 보인다.`
+];
+const RESCUE_THANKS = [
+  n => `「살았다… 정말 고마워요. 이거라도 받아 주세요.」 ${n} 대원이 몇 번이고 고개를 숙였다.`,
+  n => `「당신 아니었으면 끝이었어요. 은혜는 꼭 갚을게요!」 ${n} 대원이 손을 꼭 잡았다.`,
+  n => `「본부에 돌아가면 꼭 한턱낼게요.」 ${n} 대원이 멋쩍게 웃으며 품에서 무언가를 꺼냈다.`,
+  n => `${n} 대원이 떨리는 목소리로 고맙다고 말했다. 「이건… 제가 오늘 찾은 것 중에 제일 좋은 거예요.」`
+];
+const RESCUE_FAIL = [
+  (n, m) => `${m}의 기세에 밀려 물러났다. 다행히 ${n} 대원은 그 틈에 몸을 피했지만, 나는 꽤 다치고 말았다.`,
+  (n, m) => `${m}을(를) 쫓아내지 못했다. ${n} 대원과 함께 간신히 달아났지만 상처가 깊다.`
+];
+DANGER_ZONES.forEach(z => { ACTIONS[`${z.id} 대원 구조`] = { kind: 'rescue', zone: z.id, icon: 'sos', label: '위험에 처한 대원 구하기', title: '대원 구조', action: `위험에 처한 대원을 돕기 위해 몬스터와 싸웁니다. 이기면 감사의 보수(희귀 재료나 CR)를 받고, 지면 HP를 잃습니다. (즉시 · 기력 ${RESCUE_SP})`, cost: { sp: RESCUE_SP } }; });
 { // 종합 상가 '장비' 탭을 무기 / 장비로 나눈다
   const mall = SHOPS['종합 상가'], sec = mall.sections, gear = sec['장비'], isW = ([n]) => ITEMS[n].slot === '무기';
   mall.sections = { '무기': gear.filter(isW), '장비': gear.filter(r => !isW(r)), '재료': sec['재료'], '농사': sec['농사'], 'RP템': sec['RP템'] };
@@ -1212,7 +1279,8 @@ const GUILD_MAX = 20, GUILD_NAME_MAX = 12, GUILD_NAME_MIN = 2;
 /* 도감 분류 */
 const ITEM_CATEGORIES = ['장비', '소모품', '재료'];
 const MONSTER_KINDS = ['이능 몬스터', '짐승'];
-const STICKERS = [['인사', 'waving_hand'], ['확인', 'thumb_up'], ['감사', 'favorite'], ['웃음', 'sentiment_very_satisfied'], ['응원', 'celebration'], ['주의', 'warning'], ['슬픔', 'sentiment_dissatisfied'], ['잠깐', 'hourglass_top']];
+const STICKERS = [['인사', 'waving_hand'], ['확인', 'thumb_up'], ['감사', 'favorite'], ['웃음', 'sentiment_very_satisfied'], ['응원', 'celebration'], ['슬픔', 'sentiment_dissatisfied'], ['신남', 'sentiment_excited'], ['당황', 'sentiment_stressed'], ['걱정', 'sentiment_worried'], ['잘 자', 'bedtime']];
+const STICKERS_OLD = [['주의', 'warning'], ['잠깐', 'hourglass_top']]; // 지운 이모티콘: 예전에 보낸 채팅은 그대로 그림으로 보인다 (보내기 목록에는 없음)
 
 /* 칭호: [이름, 달성 조건 문장, 조건 함수]. 한 번 달성하면 계속 가진다 (state.titles). 프로필에서 조건과 획득 여부를 볼 수 있다 */
 /* 지역 지도를 모두 밝히면 얻는 칭호 (이름 + '을 밝힌 자') */
@@ -1224,6 +1292,9 @@ const TITLE_DEFS = [
   ['전술 분석관', '도감에 아이템 20종을 등록한다', () => Object.keys(state.codex.items).length >= 20],
   ['생존 전문가', '도감에 몬스터 5종을 등록한다', () => Object.keys(state.codex.monsters).length >= 5],
   ['선량한', '길 잃은 물건을 제 주인에게 돌려준다', () => !!state.flags.lostFound],
+  ['착한 사마리아인', `분실물을 ${LOST_SAMARITAN}번 이상 주인에게 돌려준다`, () => (state.lostCount | 0) >= LOST_SAMARITAN],
+  ...Object.entries(STAT_PEAK_TITLES).map(([k, n]) => [n, `${{ str: '근력', agi: '민첩', int: '지능', wil: '의지', sen: '감각', luk: '행운' }[k]}이(가) 버프 포함 ${STAT_PEAK_NEED}에 한 번이라도 닿는다`, () => ((state.statPeak || {})[k] | 0) >= STAT_PEAK_NEED]),
+  ['배달의 민족', `메일로 아이템을 ${MAIL_DELIVERY_NEED}번 이상 보낸다`, () => (state.mailItemSent | 0) >= MAIL_DELIVERY_NEED],
   ['도시의 개척자', '레벨 10에 도달한다', () => state.character.level >= 10],
   ['정식 대원', '승급 시험을 통과해 E등급이 된다', () => 'EDCBAS'.includes(state.character.rank)],
   ['숙련 대원', '승급 시험을 통과해 D등급이 된다', () => 'DCBAS'.includes(state.character.rank)],
@@ -1243,7 +1314,7 @@ const TITLE_DEFS = [
 const MASTERY_JOB = { '요리': '요리사', '목공': '목수', '재봉': '재봉사', '대장': '대장장이', '가죽공예': '가죽공예가', '보석공예': '보석공예가', '약학': '약사' };   // 제작 계열만 호칭이 붙는다(채집·채굴·낚시·농사는 없음)
 const masteryRanks = tag => [[30, '레전드'], [20, '숙련'], [5, '초보']];
 const masteryTitleOf = (tag, lv) => { const r = masteryRanks(tag).find(([n]) => lv >= n); return r && MASTERY_JOB[tag] ? `${r[1]} ${MASTERY_JOB[tag]}` : ''; };
-Object.entries(MASTERY_JOB).forEach(([tag, job]) => masteryRanks(tag).slice().reverse().forEach(([n, nm]) => TITLE_DEFS.push([`${nm} ${job}`, `${tag} 숙련 레벨 ${n}에 도달한다`, () => masteryLv(tag) >= n])));
+Object.entries(MASTERY_JOB).forEach(([tag, job]) => masteryRanks(tag).slice().reverse().forEach(([n, nm]) => TITLE_DEFS.push([`${nm} ${job}`, `${tag} 숙련 레벨 ${n}에 도달한다 (더 높은 호칭을 얻으면 바뀐다)`, () => masteryTitleOf(tag, masteryLv(tag)) === `${nm} ${job}`])));
 const TITLES = TITLE_DEFS.map(t => t[0]);
 const TODO_MAX = 30, TODO_LEN = 40; // 투두리스트: 최대 30개, 한 줄 40자 (저장 검증이 불러올 때 쓰므로 data.js에 둔다)
 const TRADE_DAILY = 3; // 교환은 하루 3회
@@ -1253,6 +1324,20 @@ const NEARBY_PLAYERS = []; // 같은 장소의 다른 대원 [이름, 상태, �
 const POSTS = {
   '공지': [
     ['업데이트 · 10월 25일', `[신규]
+· 위험에 처한 대원 구하기: 지상 칸에 가끔 도움이 필요한 대원이 나타납니다. 그 칸의 몬스터와 바로 싸우고, 이기면 희귀 재료나 CR을 보수로 받아요. 지면 깊은 곳일수록 HP를 더 잃습니다(1~14, 죽지는 않음).
+· 디버프 종류 추가: 싸운 적에 따라 지면 화상·동상·중독·출혈·감전·혼란이 붙습니다. (기존 부상 포함)
+· 전투 중단 기준이 HP 20 → 10으로 낮아졌습니다. HP 10 이하에서도 전투를 시작할 수는 있지만 한 번만 싸우고, 지면 사망해 클론으로 재탄생합니다.
+· 서브잡 납품(채집·채굴·낚시 제외)을 하면 그 태그의 숙련도(스테이터스 3페이지)도 오릅니다.
+· 설정 → 표시에 'UI 기본값으로 되돌리기' 버튼이 생겼습니다.
+· 칭호가 많아지면 좌우 화살표·스와이프로 넘겨 볼 수 있습니다.
+· 채팅에서 내 사진을 누르면 다른 대원이 보는 것과 같은 프로필이 열립니다. (편집은 왼쪽 위 내 사진에서) 프로필의 방 버튼 이름이 'ROOM 구경'으로 바뀌었어요.
+· 펫 간식은 '간식 주기'를 누르면 고르는 창이 열립니다. 탐험 보내기도 창에서 구역·먹이를 고릅니다.
+· 펫 배부름: 간식을 먹으면 배가 차고(작물 60% · 펫 사료 90%) 하루에 걸쳐 줄어듭니다. 하루 두 번쯤 간식을 주면 충분해요. 배부름이 남아 있는 동안만 동행 효과가 있고, 배가 빈 채로 두면 친밀도가 조금씩 떨어져요. 친밀도가 100이어도 꾸준히 챙겨 주세요.
+· 채팅 이모티콘: '주의'·'잠깐' 대신 신남·당황·걱정·잘 자를 넣었습니다. (예전에 보낸 것은 그대로 보여요)
+· 새 칭호가 몇 가지 추가됐습니다. 조건은 직접 찾아보세요.
+· 세부 숙련이 쉬워졌습니다: 레벨업에 필요한 숙련도가 약 30% 줄었고(지금까지 쌓은 숙련도는 그대로라 레벨이 바로 오를 수 있어요), 수확·서브잡 납품으로 오르는 숙련도가 두 배가 됐습니다.
+[수정]
+· 제2구역 바위 낚시터 설명·선택지에 오징어가 두 번 나오던 문제.
 · 파티: 친구 창·대원 프로필에서 초대(2~4명). 상황 탭에서 수락·나가기·내보내기, 파티 채팅 탭, 파티원은 항상 주위 대원이라 교환할 수 있습니다. (서버 SQL 갱신 필요)
 · 안전지대 '여가구역': 배팅장·게임센터·도서관·사우나·영화관·사진관 중 하루 한 곳에서 8시간 버프(해당 스탯 +2)를 받습니다. 받은 뒤에도 다른 곳을 둘러보며 분위기를 즐길 수 있고, 파티 인원에 따라 묘사가 달라집니다.
 · 무기 3종 추가: 채찍·빗자루·요요 (종합 상가). 빗자루는 하늘을 날 수 있다는 소문이 있습니다.
@@ -1266,6 +1351,7 @@ const POSTS = {
 · 개인실 '창고': 물건을 따로 보관합니다(60종·종류마다 999개, 세이브 안에 저장되어 서버에 부담이 없습니다).
 · 제작 숙련(요리·목공·재봉·대장·가죽공예·보석공예·약학) 5/20/30레벨이 되면 '초보/숙련/레전드 ○○' 칭호를 얻습니다. 숙련 화면에서 확인할 수 있어요.
 · 승급 시험이 더 어려워졌습니다. 몬스터 처치 수와 재료 납품이 늘고, '레시피 N개 익히기' 조건이 추가됐어요. A등급 시험은 확실히 빡셉니다.
+· 제4~7구역 캠프에도 특산 장비(협곡 등반화·설원 방한 외투·정글 차양모·사막 여행자 바지)와 구역 임무가 생겼습니다. 앞으로 새 구역에도 계속 추가됩니다.
 · 펫 레벨: 함께 다니는 든든한 펫이 내가 얻는 EXP의 절반과 걸음마다 조금씩 EXP를 얻어 오릅니다(최대 Lv.10). 레벨이 오를수록 이동 시간 단축이 조금씩 커져요.
 · 펫 악세서리: 석영 모래·사막 유리·선인장 등 잘 쓰이지 않던 재료로 제작해 펫에게 달아 줄 수 있습니다. (펫 화면의 '악세서리')
 · 파티: 파티장이 '파티 이동'을 켜야 동행 모드를 켠 파티원이 함께 움직입니다. 동행 모드는 '파티장이 파티 이동을 켰을 때 따라간다'는 뜻이에요.
@@ -1467,12 +1553,16 @@ function createDefaultState() {
     questTaken: {},     // 수주한 임무 { id: true } (수주/승급 시험)
     questAt: {},        // 수주 임무를 받은 시각 { id: ms } — 다음 오전 4시(KST)에 리셋
     lounge: {},         // '?' 칸에서 시간을 보낸 횟수 { 구역: 횟수 }
+    madeBy: {},         // 내가 마지막으로 만든 제작물의 제작자 표시 { 아이템: '초보 요리사 이름' }
     journals: {},       // 얻은 저널 { 구역: 1 } (히든)
     partyMove: false,   // 파티장이 켜는 '파티 이동' (켜져 있을 때만 파티원의 동행 모드가 따라간다)
     follow: false,      // 파티 동행 모드 (파티원이 켜면 파티장이 움직일 때 따라간다)
     farm: { plots: [] }, // 농장 밭 [{ crop, at } | null ...]
     pets: [],           // 길들인 펫 [{ id(종), bond, fedAt }]
     deaths: 0, // 죽은 횟수
+    lostCount: 0, // 돌려준 분실물 개수 (칭호 '착한 사마리아인')
+    statPeak: {}, // 스탯마다 지금까지 가장 높았던 값 (버프 포함) — 칭호용
+    mailItemSent: 0, // 아이템을 담아 보낸 메일 수 (칭호 '배달의 민족')
     tickets: 0,         // 뽑기권 (임무 5번마다 1장)
     questCount: 0,      // 지금까지 완수한 임무 횟수 (종류 무관, 반복 임무 포함)
     gacha: { pat: 0, pulls: 0, wins: 0 }, // 뽑기 기계: 지금 경품 묶음 번호, 뽑은 횟수, 1등 당첨 횟수
@@ -1487,6 +1577,7 @@ function createDefaultState() {
     qprog: {},          // 처치 임무 진행도 { id: 수 }
     guild: null,        // 길드 { name, master: 길드장인가, members: [이름...](나 제외) }
     invAt: {},
+    rescueAt: {},       // 대원 구조: 구역마다 마지막 구조 시각 { 구역: ms }
     gambleAt: {},       // 도박성 선택지 마지막 시각 { 이름: ms } — 1시간에 한 번
               // 조사한 칸 { '구역,x,y': 시각(ms) } — 12시간 뒤 다시 조사 가능
     repeats: {},        // 반복 횟수 { "행동 id@구역,x,y": { n, at } } (같은 장소의 같은 행동만 누적) — 4번째부터 아이템 확률 저하, 12시간 뒤 초기화

@@ -258,3 +258,25 @@ STUB_ICONS=1 python3 tests/smoke.py   # 아이콘 폰트를 못 받는 환경(�
 - 낚시터(10/24): `FISH_SPOTS`(data.js)가 구역마다 지도의 한 칸(x,y)을 낚시터로 지정한다(맵 문자는 그대로 두고 좌표로 덮어씀: 바탕 지형 `base` 위). `spotAt(z,x,y)`, `tileInfo(z,ch,x,y)`(이름·설명 덮어씀), `currentGroups`가 그 칸에서 `sp.ids`(낚시 행동 `제N구역 낚시터 <물고기>`, `spot:true`)를 먼저 보여 줌. 낚시 크기: spot이면 `u=max(난수, 평균 난수)`, 대물(+15%) 확률 `SPOT_BIG` .1(일반 .03). 제3구역은 물이 없어 '열수 뱀장어'(신규 낚시 재료)를 추가. 테스트의 LEGACY 맵 때문에 smoke에서는 `window.__M` 실제 맵으로 바꿔 검사한다. 맵 타일을 바꾸면 FISH_SPOTS 좌표도 확인할 것.
 - 제7구역 사막(10/24): `DANGER_ZONES[6]`(n7·level7·tone 'desert'), 지형 5(모래언덕·오아시스·선인장 군락·붉은 바위지대·모래 속 폐허), `MAPS['제7구역']` 17x11, 지도 좌표 (64,74), 신규 재료(석영 모래·선인장·대추야자·사막 유리·오아시스 틸라피아)·작물 사막 수박, `ZONE_REWARD[7]`, `ZONE_SEEDS`, `ZONE_ALT`, `LOST_ITEMS`, `LIT_TITLES`, 캠프 보급소, 낚시터 `FISH_SPOTS`, CSS `--tone-desert`. 구역을 더 늘릴 때 같은 표들을 모두 채울 것.
 - '?' 칸·저널(10/24, 히든 — 패치 노트 금지; 묘사 낮·밤 각 7개 100자 안팎, 저널 600자 이상, 전광판 리코 떡밥 2건 포함): `QMARKS`(data.js, 구역별 name/day/night/vday/vnight/journal), 지도 문자 `?`(구역마다 1칸), 행동 `제N구역 시간을 보낸다`(kind 'lounge', 즉시·기력 0), `isNightNow()`(한국 시간 18~06시), `state.lounge`(횟수)·`state.journals`(얻은 저널), `LOUNGE_NEED`=5번째에 저널 획득. 도감 '저널' 탭은 하나라도 얻어야 `codexTabs()`에 나타남. 지도를 고치면 `?` 칸이 길을 막지 않는지 확인.
+
+- **구역을 추가할 때 반드시 함께 넣을 것**: 캠프 보급소 `SHOPS[구역].special`의 특산 장비 1종(`'제N구역 캠프의 특산'` 설명, 장비 슬롯 있음) + 구역 고유 임무(`QUESTS`의 `board:'제N구역'`, 처치 1개·납품 1개, 납품 재료는 그 구역에서 얻을 수 있어야 함). 테스트 `every_zone_has_special_gear_and_own_quests`가 확인한다.
+- `view.matPick`은 자동 선택을 `''`로 저장한다. 이 값을 `countItem`에 넘기면 안 된다(예전에 두 번째 제작이 먹통이던 원인). `countItem`은 이제 모르는 이름이면 0.
+
+## 2026-10-24 (3) 내 프로필 보기 · HP 10/클론 · 디버프 · 대원 구조 · 마지막 저널 · 요청 줄이기
+- 내 프로필 보기: `viewUser(내 이름)`은 남이 보는 것과 같은 `.user-card`(`myCard()`, 서버 조회 없음, 교환·파티·친구 버튼 없음). 편집 화면 `openProfile`은 왼쪽 위 `#avatarButton`만. 'ROOM 구경' 버튼(`roomPeekBtn`, 나는 `room-self`→`peekMyRoom` 읽기 전용), `.equip-head` 아래 여백.
+- 전투: `HP_RETREAT`=10. HP 10 이하에서도 전투 시작 가능하지만 `active.risk`(1회만), 지면 `r.death`(`deathWhy:'battle'`) → `dieAndRebirth`. 확인창에 경고. 지면 적별 디버프 `foeDebuff(이름)`(data.js `FOE_DEBUFF`+`FOE_DEBUFF_WORDS` 추측, 없으면 '부상'): 화상·동상·중독·출혈·감전·혼란. 새 몬스터는 FOE_DEBUFF에 한 줄.
+- 설정 → 표시 'UI 기본값으로 되돌리기'(`resetUiDefaults`): layout·collapsed·zoom/pan·fontSize·cursor만.
+- 칭호: `.title-strip`(1줄 가로 스크롤, 넘치면 `.ts-arrow` 표시, 마우스 끌기·휠·터치 스와이프, `initTitleStrip`/`titleArrows`).
+- 낚시터: 칸 채집 중 낚시터 물고기와 겹치는 낚시 행동은 선택지에서 빼고, 툴팁(`tileMats`)도 중복 제거.
+- 분실물(히든): 설명 끝에 캠프 관리인 힌트. `state.lostCount`(돌려준 개수) ≥ `LOST_SAMARITAN`(20) → 칭호 '착한 사마리아인'. 패치노트에 쓰지 않음.
+- 펫: 간식 칩 목록 제거. '간식 주기'→`openPetFeed`(고르고 주기), '탐험 보내기'→`openPetSend`(구역+먹이 고르고 보내기, `pet-send-do`). `view.petFrom`으로 돌아갈 곳.
+- 서브잡 납품: 납품한 물건 태그 중 서브잡 태그(채집·채굴·낚시 제외)에 `MASTERY_GAIN.job`(1)×개수 숙련.
+- 마지막 저널(히든): `allJournals()`(QMARKS 전부, 구역이 늘면 그것까지)이면 도감 저널 끝에 `LAST_JOURNAL`(제목 '저널의 마지막 페이지', 본문+맨 아래 `tail` '보고싶어, 리코.' — 본문과 같은 글씨, `.j-last`는 큰 위 여백만). 모으기 전에는 자리도 안 보임.
+- 대원 구조(kind `rescue`, `제N구역 대원 구조`): 지형 칸에 `rescueShown`(입장 시드, `RESCUE_APPEAR` 7%, 구역별 `state.rescueAt` 2시간 쿨다운, 칸별 `dungeon.rs`). `startAction`이 즉시 `mockRound`로 결과를 정해 `state.pending`(`r.rescue.log`)에 두고 UI `openRescueFight`가 한 줄씩 보여 준다(창이 열려 있는 동안 tick은 claim하지 않음, 닫거나 확인하면 받음). 승리=희귀 재료(55%) 또는 CR+감사 인사, 패배=`rescueHpLoss(d)` 1~14, 죽지 않음.
+- 요청 줄이기: `POLLS`+`pollTick`(3초마다 확인) 한 곳에서 모든 주기 호출 관리. `pollMode()`='active'(5분 안 조작)/'idle'/'hidden'. 채팅 6초(조용하면 10초)/30초/안 함, 위치(nearby) 바뀔 때만 즉시+30~60초/90초, 교환 15/45초, 친구·메일 60/180/300초, 동기화 60/180초, 공지 5/10분, 파티 20/60초(동행 5초). 동기화는 먼저 `save_head`(rev·기기 번호만)로 확인하고 서버가 더 새로울 때만 `pull_save`(없으면 `_noHead`로 예전 방식). **friends.sql 재실행 필요(save_head 추가).**
+- 아이콘 폰트는 opsz 24 고정(`GRAD@24,400,0,0`)으로 받는 크기를 줄였다.
+- 미리보기 빌드 `tools/build_preview.py`는 10/24에 게시본과 같게 다시 만든 것(이전 파일 분실). zip에 tools/가 빠지므로 따로 보관할 것.
+- 펫 허기(10/24): `p.full`(0~100)·`p.fullAt`·`p.decayAt`. `petFull(p)`=시간에 따라 줄어든 배부름(`PET_FULL_DRAIN_MS` 24h에 100→0), `petFed`=배부름>0(동행 효과·EXP 조건). 간식 `feedFull`(작물 60·펫 사료 90, 하루 2번이면 충분), 배불러도 먹는다(100에서 멈춤). 배가 빈 채 `PET_HUNGRY_MS`(6h)마다 친밀도 -`PET_HUNGRY_BOND`(2) (`petHungerTick`, tick에서, 탐험 중 제외). 옛 펫은 `petHungerOf`가 fedAt으로 변환, 필드가 없는 펫은 petFull이 fedAt 방식으로 계산.
+- 이모티콘: '주의'·'잠깐' 삭제(`STICKERS_OLD`로 예전 메시지는 그림 유지), 신남·당황·걱정·잘 자 추가. 브이 손·선글라스·놀란 얼굴은 Material Symbols에 없음(필요하면 CUSTOM_ICONS SVG).
+- 스탯 칭호: `state.statPeak`(버프·장비 포함 최고값, `noteStatPeak`은 checkTitles에서) ≥ `STAT_PEAK_NEED`(40) → `STAT_PEAK_TITLES`. 배달의 민족: `state.mailItemSent`(아이템 메일 보낸 수, sendMail) ≥ 20. 이전 발송분은 서버 `my_item_mail_count`(받지 않아 남은 것만)로 한 번 보정(`view.mailBackfill`).
+- 숙련 완화(10/24): `MASTERY_NEED`=8+2.4·lv^1.35(만렙 누적 3138, 예전 4504), `MASTERY_GAIN` 수확·납품 2. 숙련은 누적 숙련도로 저장하므로 곡선을 바꾸면 레벨이 다시 계산된다(옛 값이 새 MASTERY_TOTAL보다 크면 만렙에서 잘린다).

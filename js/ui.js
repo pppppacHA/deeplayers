@@ -29,7 +29,7 @@ function modal(title, body, actions = [], small = false) {
   $('#modal').classList.toggle('small', small); $('#modal').classList.remove('terminal', 'room', 'solo');
   $('#overlay').classList.add('open');
 }
-const closeModal = () => { view.room = null; { const rf = $('#roomFloat'); if (rf) rf.remove(); } if (view.mockTimer) { clearInterval(view.mockTimer); view.mockTimer = 0; } $('#overlay').classList.remove('open'); applyTheme(); }; // 저장하지 않은 테마 미리보기는 되돌린다
+const closeModal = () => { view.room = null; { const rf = $('#roomFloat'); if (rf) rf.remove(); } if (view.mockTimer) { clearInterval(view.mockTimer); view.mockTimer = 0; } if (view.rescueTimer) { clearInterval(view.rescueTimer); view.rescueTimer = 0; } view.rescueAnim = false; $('#overlay').classList.remove('open'); applyTheme(); }; // 저장하지 않은 테마 미리보기는 되돌린다
 const btnClose = '<button data-act="close">닫기</button>';
 
 /* ---------- 테마 ---------- */
@@ -85,7 +85,7 @@ function renderBars() {
 /* 시간제 버프 + 펫(든든한 동안) + 서브잡(상시) */
 function allBuffs() {
   const list = activeBuffs(), p = activePet(), j = state.subjob;
-  if (p && petFed(p)) list.push({ id: `펫 · ${petName(p)}`, type: 'buff', icon: 'pets', desc: `함께 다니는 펫. 타일 이동 시간 -${Math.round(petBuff(p) * 100)}%`, endAt: p.fedAt + PET_FED_MS });
+  if (p && petFed(p)) list.push({ id: `펫 · ${petName(p)}`, type: 'buff', icon: 'pets', desc: `함께 다니는 펫. 타일 이동 시간 -${Math.round(petBuff(p) * 100)}% · 배부름 ${Math.ceil(petFull(p))}%`, endAt: petEmptyAt(p) });
   if (j) list.push({ id: `서브잡 · ${j.name}`, type: 'buff', icon: 'work', desc: jobActive() ? `Lv.${j.level} ${jobFxText()}` : `Lv.${j.level} 오늘 납품을 마치면 적용: ${jobFxText(true)}`, endAt: jobActive() ? nextKstMidnight(j.lastAt) : 0 });
   { const w = todayWeather(); list.push({ id: `날씨 · ${w.name}`, type: 'buff', icon: w.icon, desc: w.desc, endAt: 0, weather: true }); }
   return list;
@@ -105,10 +105,9 @@ function renderBuffs(force) {
   renderStatus();
 }
 function masteryPageHtml() { // 스테이터스 3페이지: 숙련을 한 줄씩 (이름 · 레벨 · 진행 막대 · 숙련도). 보너스는 마우스를 올리면 보인다
-  const crafted = TAG_NAMES.map(t => masteryTitleOf(t, masteryLv(t))).filter(Boolean);
-  return (crafted.length ? `<div class="mast-title">${crafted.map(esc).join(' · ')}</div>` : '') + '<div class="mast-list">' + TAG_NAMES.map(t => {
+  return '<div class="mast-list">' + TAG_NAMES.map(t => {
     const m = masteryInfo(t), ic = (JOB_TAGS.find(x => x[0] === t) || [])[1] || 'star', max = m.lv >= MASTERY_MAX, pct = max ? 100 : Math.round(m.cur / m.need * 100);
-    return `<div class="mast-row" data-tip-title="${esc(t)} 숙련 Lv.${m.lv}${max ? ' (MAX)' : ''}${masteryTitleOf(t, m.lv) ? ' · ' + esc(masteryTitleOf(t, m.lv)) : ''}" data-tip-desc="${esc(masteryText(t) + (max ? '' : `\n다음 레벨까지 ${m.need - m.cur}`))}">${icon(ic)}<b>${esc(t)}</b><em>Lv.${m.lv}</em><div class="bar"><span style="width:${pct}%"></span></div><span class="val">${max ? 'MAX' : `${m.cur}/${m.need}`}</span></div>`;
+    return `<div class="mast-row" data-tip-title="${esc(t)} 숙련 Lv.${m.lv}${max ? ' (MAX)' : ''}" data-tip-desc="${esc(masteryText(t) + (max ? '' : `\n다음 레벨까지 ${m.need - m.cur}`))}">${icon(ic)}<b>${esc(t)}</b><em>Lv.${m.lv}</em><div class="bar"><span style="width:${pct}%"></span></div><span class="val">${max ? 'MAX' : `${m.cur}/${m.need}`}</span></div>`;
   }).join('') + '</div>';
 }
 function combatPageHtml() { // 스테이터스 2페이지: 1단 공격력/방어력 · 2단 이동속도 · 3단 모의전투 (1페이지와 같은 칸 크기)
@@ -235,7 +234,7 @@ const curPicks = () => { const o = {}; $$('#modalBody .mat-pick').forEach(s => {
 const matPickHtml = (rc, i) => groupsOf(rc).map(g => { const own = MAT_GROUPS[g].filter(m => countItem(m) > 0), sel = (view.matPick || {})[g];
   return `<div class="srow fontrow"><span>${esc(g)} 고르기</span><select class="mat-pick" data-g="${esc(g)}" ${own.length ? '' : 'disabled'}><option value="">자동 (값싼 것부터)</option>${own.map(m => `<option value="${esc(m)}" ${m === sel ? 'selected' : ''}>${esc(m)} ×${countItem(m)}</option>`).join('')}</select></div>`; }).join('');
 function openCraftQty(i) {
-  view.matPick = Object.fromEntries(Object.entries(view.matPick || {}).filter(([g, m]) => MAT_GROUPS[g] && countItem(m) > 0));
+  view.matPick = Object.fromEntries(Object.entries(view.matPick || {}).filter(([g, m]) => m && MAT_GROUPS[g] && ITEMS[m] && countItem(m) > 0));
   const rc = RECIPES[i], it = ITEMS[rc.out], max = Math.max(1, maxCraft(rc, view.matPick));
   modal(`${rc.out} 제작`, `<div class="nearby-row"><div class="round-avatar">${icon(it.icon)}</div><div class="grow"><strong>${esc(rc.out)}</strong><small class="effect">${esc(itemEffect(rc.out))}</small></div></div>` +
     `<div class="choice-label">몇 개 만들까요? (최대 ${max}개)</div><div class="qty-row"><button data-act="cq-step" data-d="-1" aria-label="하나 줄이기">−</button><input id="cqQty" type="number" min="1" max="${max}" value="1" inputmode="numeric" data-index="${i}" aria-label="제작 개수"><button data-act="cq-step" data-d="1" aria-label="하나 늘리기">＋</button><button data-act="cq-max">최대</button></div><p class="tiny" id="cqInfo"></p>` + matPickHtml(rc, i),
@@ -286,7 +285,7 @@ function applyMapTransform() { $('#mapWorld').style.transform = state.dungeon ? 
 const matTerrains = (z, q) => z.terrains.map((t, i) => [t, i]).filter(([t]) => [...t.gather, t.rare, ...t.monsters.map(m => m.name)].some(n => n && n.toLowerCase().includes(q))).map(([t, i]) => i); // 재료나 출몰 몬스터 이름으로 찾는다
 /* 지도 칸 설명: 같은 지형이라도 칸마다 나타나는 재료·몬스터는 다르므로, 칸 좌표를 주면 그 칸에 실제로 나타나는 것만 보여 준다 (검색·범례는 지형 전체) */
 function tileMats(z, t, x, y, seed) {
-  const sp = x === undefined ? null : spotAt(z, x, y), gids = [...(sp ? sp.fish : []), ...tileGatherIds(z, x, y, seed).map(id => ACTIONS[id] && ACTIONS[id].items && ACTIONS[id].items[0]).filter(Boolean)];
+  const sp = x === undefined ? null : spotAt(z, x, y), gids = [...new Set([...(sp ? sp.fish : []), ...tileGatherIds(z, x, y, seed).map(id => ACTIONS[id] && ACTIONS[id].items && ACTIONS[id].items[0]).filter(Boolean)])]; // 낚시터 물고기와 칸 채집물이 겹치면 한 번만
   const bm = ACTIONS[tileBattleId(z, t, x, y, seed)];
   return `[채집] ${gids.length ? gids.join(' · ') : '없음'}${t.rare ? ` [희귀] ${t.rare}` : ''} [출몰] ${bm && bm.monster ? bm.monster.name : t.monster.name}`;
 }
@@ -505,6 +504,7 @@ function tick() {
   renderBuffs(); // 펫의 든든함이 끝나면 버프 아이콘도 사라진다
   if (resetBoardQuests()) { renderSide(); toast('완수한 임무가 오전 4시를 지나 다시 받을 수 있게 되었습니다.'); }
   for (let n = 0; petLevelUps.length && n < 5; n++) { const u = petLevelUps.shift(); toast(`${u.name}이(가) Lv.${u.lv}이 되었어요! 이동 속도가 조금 빨라졌습니다.`); addLog(`펫 레벨업: ${u.name} Lv.${u.lv}`); sfx('levelup'); } petLevelUps.length = 0;
+  if (petHungerTick()) renderSide();
   farmRefresh(); petSideRefresh();
   followTick(); partyPlacePush();
   awardTitles();
@@ -524,7 +524,7 @@ function tick() {
       if (travelFinds.length) toast(`길가에서 ${[...new Set(travelFinds)].join(', ')}을(를) 주웠습니다!`), travelFinds.length = 0;
     } else updateRunning();
   }
-  if (state.pending) A.claim(); // 결과는 확인을 누르지 않아도 바로 받는다 (끝난 행동의 결과 카드는 행동 패널에 남는다)
+  if (state.pending && !(view.rescueAnim && $('#overlay').classList.contains('open') && $('#rescueLog'))) A.claim(); // 결과는 확인을 누르지 않아도 바로 받는다 (끝난 행동의 결과 카드는 행동 패널에 남는다)
   if (craftTick()) {
     const name = state.crafting.out, res = collectCraft();
     renderBag(); sfx('done'); notifyDone(`${name} 제작이 완료되었습니다.`);
@@ -543,6 +543,23 @@ const rewardText = q => `보상 · EXP +${q.reward.exp} · CR +${q.reward.money}
 /* 오른쪽 '펫' 탭: 보유 펫과 탐험 중인 펫의 상태를 한눈에 */
 const petRoot = el => (el && el.closest && el.closest('#sideView')) || $('#modalBody');
 const petLvText = p => `Lv.${p.lv || 1}${(p.lv || 1) >= PET_MAX_LV ? ' (최대)' : ` · EXP ${p.pxp || 0}/${petXpMax(p.lv || 1)}`} · 악세서리 ${p.acc || '없음'}`;
+function openPetFeed(i) { // 간식 고르기: 가진 간식을 보여 주고 하나를 골라 준다
+  const p = state.pets[i]; if (!p) return;
+  const feeds = Object.values(state.inventory).flat().filter(x => ITEMS[x.n].feed).reduce((m, x) => (m[x.n] = (m[x.n] || 0) + x.q, m), {});
+  const rows = Object.entries(feeds).sort((a, b) => ITEMS[a[0]].feed - ITEMS[b[0]].feed).map(([n, q]) => {
+    const herb = PET_PERS_LIST.find(k => PET_PERS[k].herb === n), same = herb && p.pers === herb;
+    return `<div class="nearby-row"><div class="round-avatar">${icon(ITEMS[n].icon)}</div><div class="grow"><strong>${esc(n)} ×${q}</strong><small>친밀도 +${feedGain(n) + (petAcc(p).bond || 0)} · 배부름 +${feedFull(n)}${herb ? ` · 먹이면 성격이 '${esc(herb)}'(으)로 바뀜` : ''}</small></div><button class="primary" data-act="pet-feed-do" data-i="${i}" data-item="${esc(n)}" ${same ? 'disabled title="이미 그 성격이에요"' : ''}>주기</button></div>`;
+  }).join('');
+  modal(`${petName(p)}에게 간식 주기`, `<p class="tiny">줄 간식을 고르세요. 지금 배부름 ${Math.ceil(petFull(p))}%. 간식을 먹으면 배가 차고 친밀도가 올라요. 배부름은 하루에 걸쳐 줄어들고, 배가 비어 있으면 친밀도가 조금씩 떨어져요. 성격 허브를 주면 성격이 바뀝니다.</p>` + (rows || '<div class="empty">줄 수 있는 간식이 없습니다. 농장에서 작물을 키워 보세요.</div>'), [btnClose], true);
+}
+function openPetSend(i) { // 탐험 보내기: 구역과 가져갈 먹이를 고르고 '보내기'
+  const p = state.pets[i]; if (!p) return;
+  if (!view.expZone || !DANGER_ZONES.some(z => z.id === view.expZone)) view.expZone = DANGER_ZONES[0].id;
+  const have = [...new Set(baitItems())].map(n => [n, countItem(n)]).filter(([, q]) => q > 0);
+  const rows = have.map(([n, q]) => `<div class="nearby-row"><div class="round-avatar">${icon(ITEMS[n].icon)}</div><div class="grow"><strong>${esc(n)} ×${q}</strong><small>${n === PET_FOOD ? '펫 사료' : '간식'}</small></div><button class="primary" data-act="pet-send-do" data-i="${i}" data-item="${esc(n)}">보내기</button></div>`).join('');
+  modal(`${petName(p)} 탐험 보내기`, `<div class="srow fontrow"><span>탐험 구역</span><select id="expZone">${DANGER_ZONES.map(z => `<option value="${esc(z.id)}" ${z.id === view.expZone ? 'selected' : ''}>${esc(z.name)}</option>`).join('')}</select></div>` +
+    `<p class="tiny">가져갈 먹이를 고르고 '보내기'를 누르세요. 먹이 1개가 들고, 24시간 뒤에 그 구역의 재료를 가져와요.</p>` + (rows || '<div class="empty">가져갈 먹이(작물·펫 사료)가 없습니다.</div>'), [btnClose], true);
+}
 function openPetAcc(i) { // 펫 악세서리 창: 가진 악세서리를 달거나 벗긴다
   const p = state.pets[i]; if (!p) return;
   const have = Object.keys(PET_ACC).filter(n => countItem(n) > 0);
@@ -682,7 +699,7 @@ async function chatPoll() { // 월드·길드 채팅을 서버에서 가져온�
   if (!chatOnline() || !state.created || document.hidden || view.chatBusy) return;
   view.chatBusy = true; let changed = false;
   try {
-    if (nowMs() - (view.partyAt || 0) > (state.follow && PARTY.id ? 5000 : 20000)) { view.partyAt = nowMs(); await partySync(); } // 파티 초대·구성은 20초마다 확인
+    if (nowMs() - (view.partyAt || 0) > (state.follow && PARTY.id ? 5000 : pollMode() === 'active' ? 20000 : 60000)) { view.partyAt = nowMs(); await partySync(); } // 파티 초대·구성: 평소 20초, 자리 비움 60초 (동행 중 5초)
     for (const tab of ['월드', '길드', '파티']) {
       if (!chatTabOn(tab)) continue; // 꺼 둔 탭은 가져오지 않는다
       if (tab === '길드' && !state.guild) { if (view.chatSrv['길드'].length) { view.chatSrv['길드'] = []; view.chatLast['길드'] = 0; changed = true; } continue; }
@@ -690,7 +707,7 @@ async function chatPoll() { // 월드·길드 채팅을 서버에서 가져온�
       let rows; try { rows = await Cloud.chatFetch(CHAT_CH[tab], view.chatLast[tab]); } catch (e) { continue; }
       for (const r of rows) {
         const id = Number(r.id); if (!Number.isFinite(id) || id <= view.chatLast[tab]) continue;
-        view.chatLast[tab] = id; view.chatSrv[tab].push([cleanText(r.name, 12) || '?', cleanText(r.body, 200), /^[0-9a-f-]{36}$/i.test(r.uid) ? r.uid : '', id, Date.parse(r.at) || 0, /^rank:[A-Z]$/.test(r.sys || '') ? r.sys : '']); changed = true;
+        view.chatLast[tab] = id; view.chatNewAt = nowMs(); view.chatSrv[tab].push([cleanText(r.name, 12) || '?', cleanText(r.body, 200), /^[0-9a-f-]{36}$/i.test(r.uid) ? r.uid : '', id, Date.parse(r.at) || 0, /^rank:[A-Z]$/.test(r.sys || '') ? r.sys : '']); changed = true;
         if (r.uid !== Cloud.userUid && state.chatTab !== tab && view.chatReady) { toast(`[${tab}] ${cleanText(r.name, 12)}: ${cleanText(r.body, 40)}`); }
       }
       view.chatSrv[tab] = view.chatSrv[tab].slice(-100);
@@ -724,7 +741,7 @@ function renderChat() {
   $('#chatFeed').innerHTML = (chatOnline() && CHAT_CH[state.chatTab] ? view.chatSrv[state.chatTab] : (state.chats[state.chatTab] || [])).map((row) => {
     const [n, m] = row, srv = chatOnline() && CHAT_CH[state.chatTab], uid = srv ? row[2] : '', at = srv ? row[4] : row[2], tm = fmtChatTime(at);
     if (srv && row[5]) return `<div class="msg-sys" role="status">${icon('workspace_premium')}<span>${esc(m)}</span></div>`; // 승급 축하 같은 시스템 공지: 가운데 정렬
-    const st = /^\[(.+)\]$/.exec(m), sticker = st && STICKERS.find(x => x[0] === st[1]);
+    const st = /^\[(.+)\]$/.exec(m), sticker = st && (STICKERS.find(x => x[0] === st[1]) || STICKERS_OLD.find(x => x[0] === st[1]));
     const body = sticker ? `<div class="bubble sticker-msg" title="${esc(sticker[0])}">${icon(sticker[1])}</div>` : `<div class="bubble">${esc(m)}</div>`;
     const mine = n === '나' || (!!uid && uid === Cloud.userUid), who = mine ? (state.character.name || '나') : n;
     return `<div class="msg ${mine ? 'mine' : 'other'}"><div class="msg-ava" data-user="${esc(mine ? '나' : n)}">${avatarOf(mine ? '나' : n)}</div><div class="msg-main"><span class="msg-name" data-user="${esc(mine ? '나' : n)}">${esc(who)}</span>${tm ? `<time class="msg-time">${esc(tm)}</time>` : ''}${state.chatTab === '알림' && canNotice() && (view.nIds || {})[n + '\n' + m] ? `<button class="msg-del" data-act="notice-del" data-id="${(view.nIds || {})[n + '\n' + m]}" title="이 공지 삭제" aria-label="공지 삭제">${icon('delete')}</button>` : ''}${body}</div></div>`; // 컴팩트 한 줄 형식: 아이콘 · 이름 · 내용 (내 이름은 색이 다르다)
@@ -809,11 +826,20 @@ function cloudApply(data, rev) { // 서버 세이브로 교체하고 다시 시�
 }
 /* 다른 기기(PC↔폰)에서 더 새로 저장했는지 확인한다. 이 기기에서 한 조작이 없으면 조용히 서버 진행으로 바꾸고, 있으면 어느 쪽을 쓸지 묻는다 */
 let _syncAt = 0, _syncBusy = false;
+let _noHead = false; // 서버에 save_head 가 아직 없으면(옛 SQL) 예전처럼 전체를 받는다
 async function cloudSync(force) {
   if (!Cloud.enabled || !Cloud.user() || !state.created || _syncBusy || window.__noSave || _locked) return;
   if (!force && Date.now() - _syncAt < 20000) return;
   _syncAt = Date.now(); _syncBusy = true;
   try {
+    if (!_noHead) { // 먼저 rev·기기 번호만 확인하고, 서버가 더 새롭거나 다른 기기가 들어왔을 때만 세이브 전체를 받는다 (서버 부담·데이터 사용량 감소)
+      let h = null; try { h = await Cloud.head(); } catch (e) { if (/save_head|404|PGRST/i.test(String(e && e.message))) _noHead = true; else throw e; }
+      if (!_noHead) {
+        if (!h || !h.created) return;
+        const otherDev = _claimed && h.dev && h.dev !== DEV;
+        if (!otherDev && !(h.rev > Cloud.rev())) { if (!_claimed) { if (h.dev === DEV) _claimed = true; else await cloudPushNow(); } return; }
+      }
+    }
     const s = await Cloud.pull(true);
     if (!s || !s.data || !s.data.created) return;
     if (_claimed && s.data.__dev && s.data.__dev !== DEV) { lockDevice(); return; } // 다른 기기가 새로 접속함
@@ -883,7 +909,7 @@ function openSettings() {
     `<div class="snd-card">${snd('bgmOn', 'music_note', '배경음악', st.bgmOn)}<div class="snd-slider">${icon('volume_down')}<input id="bgmVolume" type="range" min="0" max="100" value="${st.bgmVolume}" aria-label="배경음악 크기"><b id="bgmValue">${st.bgmVolume}%</b></div></div>` +
     `<div class="snd-card"><div class="snd-pair">${snd('clickOn', 'ads_click', '클릭음', st.clickOn)}${snd('alertOn', 'notifications_active', '알림음', st.alertOn)}</div>` +
     `<div class="snd-slider">${icon('volume_down')}<input id="sfxVolume" type="range" min="0" max="100" value="${st.sfxVolume}" aria-label="효과음 크기"><b id="sfxValue">${st.sfxVolume}%</b></div></div></div>` +
-    `<div class="setting-group"><h3>표시</h3>${sw('cursorOn', '사용자 지정 커서', st.cursor)}<div class="srow fontrow"><span>글자 크기</span><select id="fontSize">${opt('s', '작게', st.fontSize)}${opt('m', '보통', st.fontSize)}${opt('l', '크게', st.fontSize)}${opt('xl', '아주 크게', st.fontSize)}</select></div></div>` +
+    `<div class="setting-group"><h3>표시</h3>${sw('cursorOn', '사용자 지정 커서', st.cursor)}<div class="srow fontrow"><span>글자 크기</span><select id="fontSize">${opt('s', '작게', st.fontSize)}${opt('m', '보통', st.fontSize)}${opt('l', '크게', st.fontSize)}${opt('xl', '아주 크게', st.fontSize)}</select></div><div class="row-gap ui-reset-row"><button data-act="ui-reset">${icon('restart_alt')} UI 기본값으로 되돌리기</button><span class="tiny">패널 폭·높이, 접은 패널, 지도 확대, 글자 크기, 커서를 처음 상태로 돌려요.</span></div></div>` +
     `<div class="setting-group"><h3>튜토리얼</h3><div class="row-gap"><button data-act="tutorial-replay">튜토리얼 다시 보기</button></div></div>` +
     cloudGroupHtml() +
     `<div class="setting-group"><h3>채팅창 탭</h3>${CHAT_TABS.map(k => sw('ctab_' + k, `${k} 탭 표시`, st.chatTabs[k])).join('')}<p class="tiny">끈 탭은 채팅창에서 사라지고, 그 채널의 새 메시지 알림도 오지 않아요. 최소 한 개는 켜 두어야 해요.</p></div>` +
@@ -941,7 +967,8 @@ function codexEntries(tab) {
   if (tab === '아이템') return Object.entries(ITEMS).filter(([n, it]) => !it.hidden || c.items[n]).map(([n, it]) => ({ sub: codexItemSub(n), icon: it.icon, name: n, desc: it.desc + (FISH_SIZE[n] ? ` (크기 ${FISH_SIZE[n][0]}~${FISH_SIZE[n][1]}cm)` : ''), src: sourceText(n), best: FISH_SIZE[n] ? (state.fishBest[n] ? `최고 기록 ${state.fishBest[n]}cm` : '아직 기록이 없어요') : '', known: c.items[n] }));
   if (tab === '펫') return Object.entries(PET_SPECIES).map(([id, sp]) => { const p = state.pets.find(x => x.id === id); // 지금 데리고 있는 펫만 '발견'으로 보인다
     return { sub: '', icon: sp.icon || 'pets', name: p ? `${petName(p)}${p.name ? ` (${sp.name})` : ''}` : sp.name, desc: p ? `고향 ${sp.zone} · Lv.${p.lv || 1} · 친밀도 ${p.bond}/100 · 동행 시 이동 시간 -${Math.round(petBuff(p) * 100)}%` : '', where: p ? '' : sp.zone, known: !!p }; });
-  if (tab === '저널') return DANGER_ZONES.filter(z => QMARKS[z.id]).map(z => ({ sub: '', icon: 'menu_book', name: `${QMARKS[z.id].name} 탐험록 · ${z.id}`, desc: QMARKS[z.id].journal, known: !!(state.journals || {})[z.id], journal: true }));
+  if (tab === '저널') return DANGER_ZONES.filter(z => QMARKS[z.id]).map(z => ({ sub: '', icon: 'menu_book', name: `${QMARKS[z.id].name} 탐험록 · ${z.id}`, desc: QMARKS[z.id].journal, known: !!(state.journals || {})[z.id], journal: true }))
+    .concat(allJournals() ? [{ sub: '', icon: 'menu_book', name: LAST_JOURNAL.name, desc: LAST_JOURNAL.text, known: true, journal: true, last: true }] : []); // 마지막 장은 다 모으기 전에는 자리('???')도 보이지 않는다
   if (tab === '몬스터') return DANGER_ZONES.flatMap(z => z.terrains.flatMap(t => t.monsters.map(m => ({ sub: m.kind, icon: m.kind === '짐승' ? 'pets' : 'bug_report', name: m.name,
     desc: `${m.desc} (HP ${m.hp} · 공격 ${m.atk})`, where: `${z.name} · ${t.name}`, known: c.monsters[m.name] }))));
   return RECIPES.map(rc => ({ sub: '', icon: ITEMS[rc.out].icon, name: rc.out, desc: Object.entries(rc.mats).map(([n, q]) => `${n} ×${q}`).join(' + '), known: recipeKnown(rc), badge: recipeKnown(rc) ? (c.recipes[rc.out] ? '제작 완료' : '미제작') : (rankAtLeast(rc.rank) ? '단련으로 습득 가능' : `${rc.rank}등급부터 단련으로 습득`) }));
@@ -965,9 +992,9 @@ const codexCountText = list => codexView.tab === '레시피' ? `${list.length}�
 function journalHtml() {
   const l = codexEntries('저널'), k = clamp(codexView.jIdx || 0, 0, l.length - 1), e = l[k];
   return `<div class="post-layout journal-layout"><div class="post-list">${l.map((x, i) => x.known
-    ? `<button class="post-item ${i === k ? 'active' : ''}" data-act="codex-journal" data-j="${i}">저널 ${i + 1}</button>`
+    ? `<button class="post-item ${i === k ? 'active' : ''} ${x.last ? 'last' : ''}" data-act="codex-journal" data-j="${i}">${x.last ? esc(LAST_JOURNAL.name) : `저널 ${i + 1}`}</button>`
     : `<button class="post-item locked" disabled>저널 ${i + 1} · ???</button>`).join('')}</div>` +
-    (e.known ? `<article class="post-detail"><h3>${esc(e.name)}</h3><p>${esc(e.desc)}</p></article>` : `<article class="post-detail"><p>아직 발견하지 못한 저널입니다.</p></article>`) + `</div>`;
+    (e.known ? `<article class="post-detail ${e.last ? 'j-last-wrap' : ''}"><h3>${esc(e.name)}</h3><p>${esc(e.desc)}</p>${e.last ? `<p class="j-last">${esc(LAST_JOURNAL.tail)}</p>` : ''}</article>` : `<article class="post-detail"><p>아직 발견하지 못한 저널입니다.</p></article>`) + `</div>`;
 }
 function codexHtml() {
   const { tab, sub } = codexView, list = codexFiltered();
@@ -1094,6 +1121,7 @@ async function friendPoll() {
   marketSync(); // 서버에서 친구 신청·메일·교환 소식을 가져온다
   if (!Cloud.enabled || !Cloud.user() || !state.created || _polling) return;
   announceRankA(); announceMax();
+  if (!view.mailBackfill) { view.mailBackfill = true; Cloud.myItemMailCount().then(n => { n = intIn(n, 0, 99999, 0); if (n > (state.mailItemSent | 0)) { state.mailItemSent = n; save(); awardTitles(); } }).catch(() => {}); } // 이 기능 전에 보낸 아이템 메일도 (서버에 남은 만큼) 센다
   _polling = true;
   try {
     let changed = false, newMail = 0;
@@ -1158,7 +1186,33 @@ async function friendPoll() {
     else if ($('#friendInbox')) $('#friendInbox').innerHTML = inboxHtml();
   } finally { _polling = false; }
 }
-if (Cloud.enabled) { setTimeout(nearbyPoll, 2000); setInterval(() => { if (!document.hidden) nearbyPoll(); }, 20000); setTimeout(ltPoll, 3000); setInterval(() => { if (!document.hidden) ltPoll(); }, 15000); setTimeout(friendPoll, 5000); setInterval(friendPoll, 60000); setTimeout(() => { syncMyAvatar(); chatPoll(); }, 1200); setInterval(() => { if (!document.hidden || (view.pollN = (view.pollN || 0) + 1) % 4 === 0) chatPoll(); }, 6000); } // 탭이 가려져 있으면 24초에 한 번만 가져온다
+/* ---------- 서버 호출 일정 (요청 수 줄이기) ----------
+   모든 주기 호출을 한 곳에서 관리한다. 'active'=최근 5분 안에 조작함, 'idle'=화면은 켜져 있지만 조작 없음, 'hidden'=다른 탭/앱.
+   자리를 비우거나 탭이 가려지면 간격을 크게 늘리고(null=부르지 않음), 위치는 바뀌었을 때만 보낸다. 접속 표시(90초)는 채팅 확인이 유지한다 */
+const IDLE_MS = 5 * 60 * 1000;
+let _lastInput = Date.now();
+['pointerdown', 'keydown', 'wheel', 'touchstart'].forEach(ev => addEventListener(ev, () => { _lastInput = Date.now(); }, { passive: true, capture: true }));
+const pollMode = () => document.hidden ? 'hidden' : Date.now() - _lastInput > IDLE_MS ? 'idle' : 'active';
+const POLLS = { // 이름: [함수, active, idle, hidden] (밀리초)
+  chat: [() => chatPoll(), () => (nowMs() - (view.chatNewAt || 0) > 180000 ? 10000 : 6000), 30000, null], // 조용한 채팅은 10초, 새 글이 오가면 6초
+  nearby: [() => nearbyPoll(), () => (state.side === '상황' ? 30000 : 60000), 90000, null],
+  lt: [() => ltPoll(), 15000, 45000, null],
+  friend: [() => friendPoll(), 60000, 180000, 300000],
+  sync: [() => cloudSync(), 60000, 180000, null],
+  notices: [() => syncNotices(), 300000, 600000, null]
+};
+const _pollAt = {};
+function pollTick() {
+  if (!Cloud.enabled || !Cloud.user() || !state.created) return;
+  const mode = pollMode(), t = Date.now(), col = { active: 1, idle: 2, hidden: 3 }[mode];
+  if (mode !== 'hidden' && locKey() !== view.nbSent && t - (_pollAt.nearby || 0) > 3000) { _pollAt.nearby = t; nearbyPoll(); } // 위치가 바뀌면 바로 알린다
+  for (const [k, p] of Object.entries(POLLS)) {
+    let gap = p[col]; if (typeof gap === 'function') gap = gap();
+    if (gap == null || t - (_pollAt[k] || 0) < gap) continue;
+    _pollAt[k] = t; p[0]();
+  }
+}
+if (Cloud.enabled) { const t0 = Date.now(); _pollAt.chat = t0 - 4800; _pollAt.nearby = t0 - 58000; _pollAt.lt = t0 - 12000; _pollAt.friend = t0 - 55000; _pollAt.sync = t0; _pollAt.notices = t0; setTimeout(() => { syncMyAvatar(); chatPoll(); }, 1200); setInterval(pollTick, 3000); }
 function openFriends(noPoll) {
   Object.keys(view.avatars).forEach(k => { if (!view.avatars[k]) delete view.avatars[k]; }); // 못 찾았던 이름은 창을 열 때 다시 물어본다
   renderMailBadge();
@@ -1450,10 +1504,12 @@ const A = {
     if (txt) { sfx('ok'); toast(`수확: ${txt}${err ? ` (${err})` : ''}`); } else { toast(err || '수확할 작물이 없습니다.'); sfx('error'); }
   },
   'pet-feed-pick': el => { view.feed = el.dataset.item; petRefresh(el); },
-  'pet-feed': el => {
-    const pet = state.pets[+el.dataset.i], before = pet && pet.pers, err = feedPet(+el.dataset.i, view.feed);
-    if (err) { toast(err); sfx('error'); return; }
-    renderBag(); renderBuffs(true); sfx('ok'); toast(pet.pers !== before ? `${petName(pet)}의 성격이 '${pet.pers}'(으)로 바뀌었습니다. ${petFeedLine(pet)}` : petFeedLine(pet)); petRefresh(el);
+  'pet-feed': el => { const i = +el.dataset.i, e = petCareErr(i); if (e) { toast(e); sfx('error'); return; } view.petFrom = el.closest('#sideView') ? 'side' : 'modal'; openPetFeed(i); }, // 간식 주기: 줄 간식을 고르는 창
+  'pet-feed-do': el => {
+    const i = +el.dataset.i, pet = state.pets[i], before = pet && pet.pers, err = feedPet(i, el.dataset.item);
+    if (err) { toast(err); sfx('error'); openPetFeed(i); return; }
+    renderBag(); renderBuffs(true); sfx('ok'); toast(pet.pers !== before ? `${petName(pet)}의 성격이 '${pet.pers}'(으)로 바뀌었습니다. ${petFeedLine(pet)}` : petFeedLine(pet));
+    if (view.petFrom === 'modal') openPets(); else closeModal(); renderSide();
   },
   'pet-name': el => { view.petNaming = +el.dataset.i; petRefresh(el); const e = $('#petNameIn'); if (e) e.focus(); },
   'pet-name-cancel': el => { view.petNaming = -1; petRefresh(el); },
@@ -1503,11 +1559,13 @@ const A = {
   'pet-dex-toggle': el => { view.petDexOpen = !view.petDexOpen; petRefresh(el); },
   'pet-stroke': el => { const r = petStroke(+el.dataset.i); if (r.err) { toast(r.err); sfx('error'); return; } view.petMsg = { i: +el.dataset.i, text: r.text }; sfx('ok'); petRefresh(el); },
   'pet-mood': el => { const r = petAskMood(+el.dataset.i); if (r.err) { toast(r.err); sfx('error'); return; } view.petMsg = { i: +el.dataset.i, text: r.text }; sfx('ok'); petRefresh(el); },
-  'pet-send': el => {
-    const sel = petRoot(el).querySelector('#expZone'); if (sel) view.expZone = sel.value;
-    const err = sendExpedition(+el.dataset.i, view.expZone, view.feed);
-    if (err) { toast(err); sfx('error'); return; }
-    renderBag(); sfx('ok'); toast(`펫이 ${view.expZone} 탐험을 떠났습니다. 24시간 뒤에 돌아와요.`); petRefresh(el);
+  'pet-send': el => { view.petFrom = el.closest('#sideView') ? 'side' : 'modal'; openPetSend(+el.dataset.i); }, // 탐험 보내기: 구역·먹이를 고르는 창
+  'pet-send-do': el => {
+    const sel = $('#expZone'); if (sel) view.expZone = sel.value;
+    const i = +el.dataset.i, err = sendExpedition(i, view.expZone, el.dataset.item);
+    if (err) { toast(err); sfx('error'); openPetSend(i); return; }
+    renderBag(); sfx('ok'); toast(`펫이 ${view.expZone} 탐험을 떠났습니다. 24시간 뒤에 돌아와요.`);
+    if (view.petFrom === 'side') { closeModal(); renderSide(); } else { openPets(); renderSide(); }
   },
   'pet-claim': el => {
     const r = claimExpedition(+el.dataset.i);
@@ -1607,7 +1665,8 @@ const A = {
     const r = deliverJob(picks);
     if (typeof r === 'string') { toast(r); sfx('error'); return; }
     renderProfile(); renderBag(); renderBuffs(true); sfx(r.up ? 'levelup' : 'ok');
-    toast(`납품 완료: ${r.n}개 · +${r.pay} CR${r.up ? ` · 서브잡 레벨 업! Lv.${state.subjob.level}` : ''}`);
+    const mg = Object.entries(r.mGain || {}).map(([t, g]) => `${t} 숙련 +${g}`).join(' · ');
+    toast(`납품 완료: ${r.n}개 · +${r.pay} CR${mg ? ` · ${mg}` : ''}${r.up ? ` · 서브잡 레벨 업! Lv.${state.subjob.level}` : ''}`); masteryNote(r.mUp || []); if (mg) renderStatus();
     if (r.up) addLog(`서브잡 레벨 업: ${state.subjob.name} Lv.${state.subjob.level}`);
     if (fromSide) renderSide(); else openJob();
   },
@@ -1706,6 +1765,7 @@ const A = {
     if (a.kind === 'step') { doMove(); return; }
     if (a.kind === 'enter') { enterDungeon(a.zone); resetPhase(); renderMapHead(); renderMap(); renderAction(); renderSide(); return; }
     if (a.kind === 'leave') { leaveDungeon(); resetPhase(); renderMapHead(); renderMap(); renderAction(); return; }
+    if (a.kind === 'rescue') { const msg = startAction(view.id); if (msg) { toast(msg); sfx('error'); return; } resetPhase(); renderBars(); renderAction(); openRescueFight(); return; }
     if (a.kind === 'leisure') { const msg = startAction(view.id); if (msg) { toast(msg); sfx('error'); return; } resetPhase(); renderBars(); renderAction(); sfx('ok'); if (state.pending) A.claim(); return; }
     { const ce = $('#customMin'); if (ce && MULTI_OPTIONS[view.mult].custom) setCustomMin(ce.value); }
     const bsel = $('#tameBait'); if (bsel) view.bait = bsel.value;
@@ -1728,7 +1788,7 @@ const A = {
       awardTitles();
       addLog(`사망: ${r.result.text} — 본부에서 재탄생했습니다.${r.died.lost ? ` (구조비 ${r.died.lost} CR)` : ''}`);
       sfx('error');
-      modal('재탄생했습니다', `<p class="detail-desc">HP가 1인 채로 또 피해를 입어 숨이 끊어졌습니다.</p><p class="detail-desc">클론은 데이터로 되살아납니다. 대원은 본부에서 재탄생했어요. HP ${REBIRTH_HP}로 깨어났고 부상 상태입니다.</p><p class="tiny">${r.died.lost ? `구조비로 ${r.died.lost} CR을 냈습니다. ` : ''}그 행동의 보상은 받지 못했지만 레벨과 소지품은 그대로예요.</p>`, [btnClose]);
+      modal('재탄생했습니다', `<p class="detail-desc">${r.result.deathWhy === 'battle' ? `HP가 바닥난 몸으로 다시 전투에 나섰다가 쓰러져 숨이 끊어졌습니다.` : 'HP가 1인 채로 또 피해를 입어 숨이 끊어졌습니다.'}</p><p class="detail-desc">클론은 데이터로 되살아납니다. 대원은 본부에서 재탄생했어요. HP ${REBIRTH_HP}로 깨어났고 부상 상태입니다.</p><p class="tiny">${r.died.lost ? `구조비로 ${r.died.lost} CR을 냈습니다. ` : ''}그 행동의 보상은 받지 못했지만 레벨과 소지품은 그대로예요.</p>`, [btnClose]);
       return;
     }
     if (r.result.recipe) { addLog(`단련: 「${r.result.recipe}」 제작법을 익혔습니다.`); toast(`새 레시피 「${r.result.recipe}」를 익혔습니다!`); renderCraft(); renderLeftTab(); }
@@ -1737,9 +1797,9 @@ const A = {
     sfx(r.ups ? 'levelup' : 'ok');
     if (r.lost.length) toast(`가방이 가득 차 ${r.lost.map(([n, q]) => `${n} ${q}개`).join(', ')}을(를) 얻지 못했습니다.`);
     if (r.ups) toast(`레벨 업! Lv.${state.character.level} · 스탯 포인트 +${r.ups}`);
-    if (r.result.journal) { sfx('levelup'); modal('저널을 획득했습니다', `<p class="detail-desc">저널을 획득했습니다. 도감을 확인해주세요.</p>`, ['<button class="primary" data-act="open-codex-journal">도감 열기</button>', btnClose], true); }
+    if (r.result.journal) { sfx('levelup'); view.jLast = !!r.result.journalLast; modal('저널을 획득했습니다', `<p class="detail-desc">저널을 획득했습니다. 도감을 확인해주세요.</p>${view.jLast ? '<p class="tiny">수첩 사이에 한 장이 더 끼워져 있었다.</p>' : ''}`, ['<button class="primary" data-act="open-codex-journal">도감 열기</button>', btnClose], true); }
   },
-  'open-codex-journal': () => { closeModal(); codexView.tab = '저널'; codexView.sub = null; codexView.jIdx = Math.max(0, codexEntries('저널').findIndex(e => e.known)); codexView.q = ''; openSystem('도감'); },
+  'open-codex-journal': () => { closeModal(); codexView.tab = '저널'; codexView.sub = null; codexView.jIdx = view.jLast ? codexEntries('저널').length - 1 : Math.max(0, codexEntries('저널').findIndex(e => e.known)); view.jLast = false; codexView.q = ''; openSystem('도감'); },
 
   /* 스탯 / 제작 / 아이템 */
   'stat-up': el => { const k = el.dataset.stat, d = view.statDraft = view.statDraft || {}; if (!(k in state.stats)) return; if (state.statPoints - Object.values(d).reduce((a, b) => a + b, 0) < 1) return; d[k] = (d[k] || 0) + 1; renderStatus(); },
@@ -1818,7 +1878,7 @@ const A = {
     askConfirm('보상 버리기', `보상 「${shownName(o[0])}」 ×${o[1]}은(는) 가방에 들어가지 않습니다. 받지 않고 버릴까요? 버린 보상은 다시 받을 수 없어요.`, '버리기', 'qfull-drop-do', { item: o[0], qty: o[1] }, openQuestFull); },
   'qfull-drop-do': el => { const f = view.qfull; if (!f) { closeModal(); return; } f.drop[el.dataset.item] = (f.drop[el.dataset.item] || 0) + intIn(el.dataset.qty, 1, 9999, 1); sfx('click'); openQuestFull(); },
   'qfull-cancel': () => { view.qfull = null; closeModal(); },
-  sticker: el => { if (state.chatTab === '알림') { setTray(false); return; } sendChat(`[${el.dataset.name}]`); setTray(false); },
+  sticker: el => { if (state.chatTab === '알림') { setTray(false); return; } if (!STICKERS.some(x => x[0] === el.dataset.name)) return; sendChat(`[${el.dataset.name}]`); setTray(false); },
   post: el => {
     const p = POSTS[el.dataset.board][+el.dataset.post];
     $$('[data-act="post"]').forEach(x => x.classList.toggle('active', x === el));
@@ -1946,6 +2006,11 @@ const A = {
     addLog(`장비 세공: ${el.dataset.name} → ${enchantText(r.now)}`);
     openEnhance(true);
   },
+  'rescue-skip': () => { if (view.rescueFinish) view.rescueFinish(); },
+  'rescue-done': () => { closeModal(); if (state.pending) A.claim(); },
+  'ui-reset': () => askConfirm('UI 기본값으로 되돌리기', '패널 폭과 높이, 접어 둔 패널, 지도 확대·위치, 글자 크기, 커서 설정을 처음 상태로 되돌릴까요? 게임 진행·소리·테마·채팅 탭 설정은 그대로예요.', '되돌리기', 'ui-reset-do', {}, openSettings),
+  'ui-reset-do': () => { resetUiDefaults(); openSettings(); toast('UI를 기본 상태로 되돌렸습니다.'); sfx('ok'); },
+  'title-scroll': el => { const box = $('#titleChips'); if (box) box.scrollBy({ left: (+el.dataset.d || 1) * Math.max(120, box.clientWidth * .8), behavior: 'smooth' }); },
   'title-set': el => { const err = setTitle(el.dataset.title); if (err) { toast(err); sfx('error'); return; } renderProfile(); sfx('ok'); $$('.tchip').forEach(b => b.classList.toggle('on', b.dataset.title === state.character.title)); const pt = $('#pcTitle'); if (pt) pt.textContent = state.character.title; },
   'mail-tab': el => { view.mailSubj = ''; view.mailTab = el.dataset.tab; view.mailOpen = null; view.mailAtt = {}; view.mailInvPage = 1; openMail(); },
   'mail-open': el => { const m = state.mail.find(x => x.id === +el.dataset.id); if (m) { view.mailOpen = m.id; m.read = true; save(); renderMailBadge(); } openMail(true); },
@@ -2092,20 +2157,22 @@ function otherEquipHtml(eq, who) { // 다른 대원의 착용 장비 (서버가 
   const cell = (sl, big) => { const n = safe[sl], it = n && ITEMS[n]; return `<div class="slot ${big ? 'big' : ''} ${it ? 'filled' : ''}" ${it ? `data-tip-title="${esc(n)}" data-tip-desc="${esc(itemLines(n, true).filter(Boolean).join('\n'))}"` : `data-tip-title="${esc(sl)} · 비어 있음" data-tip-desc=""`} aria-label="${esc(sl)}">${it ? icon(it.icon) : `<span class="slot-label">${esc(sl)}</span>`}</div>`; };
   return `<div class="choice-label equip-head"><span>착용 장비</span>${who ? roomPeekBtn(who) : ''}</div><div class="equip-wrap other-equip"><div class="equip-grid">${EQUIP_SMALL.map(s => cell(s)).join('')}</div><div class="equip-big">${EQUIP_BIG.map(s => cell(s, true)).join('')}</div></div>`;
 }
-async function viewUser(name) { // 이름·아이콘을 누르면 그 대원의 프로필을 보여준다 (나는 내 프로필)
-  if (name === '나' || name === state.character.name) { view.profEdit = false; openProfile(); return; }
+const myCard = () => { const c = state.character; return { name: c.name, online: true, level: c.level, rank: c.rank, ability: c.ability, abilityDesc: c.abilityDesc, title: c.title, age: c.age, guild: state.guild ? state.guild.name : '', keywords: c.keywords, equipment: state.equipment, mainStat: c.mainStat, subStat: c.subStat }; };
+async function viewUser(name) { // 이름·아이콘을 누르면 그 대원의 프로필을 보여준다. 나도 남이 보는 것과 같은 화면 (편집은 왼쪽 위 내 사진을 눌렀을 때만)
+  const me = name === '나' || name === state.character.name; if (me) name = state.character.name;
   const cell = (k, v) => `<div class="uc"><span>${esc(k)}</span><b>${esc(v)}</b></div>`;
   const draw = (r, uid, note) => {
-    const has = state.friends.includes(name), p = samplePlayer(name), pr = r && r.ability !== undefined ? r : null;
+    const has = !me && state.friends.includes(name), p = samplePlayer(name), pr = r && r.ability !== undefined ? r : null;
     const st = r ? (r.online ? '온라인' : '자리 비움') : (REMOTE_PLAYERS[name] || (p && p[1]) || '알 수 없음');
     const kw = pr ? String(pr.keywords || '').split(',').map(t => t.trim()).filter(Boolean).map(t => '#' + cleanText(t, 10)).join(' ') : '';
     modal('프로필', `<div class="user-card"><div class="round-avatar big">${avatarOf(name)}</div><div class="uc-name">${pr && pr.title ? `<span class="title-chip">${esc(cleanText(pr.title, 20))}</span>` : ''}<strong>${esc(name)}</strong></div>${pr ? `<div class="uc-ability"><b>${icon('bolt')} 이능력 · ${esc(cleanText(pr.ability, 20) || '미설정')}</b><p>${esc(cleanText(pr.abilityDesc, 300) || '이능력 설명이 없습니다.')}</p>${abilityStatChips({ mainStat: STAT_DEFS.some(d => d.key === pr.mainStat) ? pr.mainStat : '', subStat: STAT_DEFS.some(d => d.key === pr.subStat) && pr.subStat !== pr.mainStat ? pr.subStat : '' })}</div>` : ''}</div>` +
-      `<div class="user-grid">${cell('상태', st)}${r ? cell('레벨', 'Lv.' + intIn(r.level, 1, MAX_LEVEL, 1)) + cell('등급', ('FEDCBAS'.includes(r.rank) ? r.rank : 'F') + '등급') : ''}${pr ? cell('나이', intIn(pr.age, 0, 999, 0) + '세') : ''}${cell('관계', has ? '친구' : '친구 아님')}${pr ? cell('길드', pr.guild ? cleanText(pr.guild, 12) : '-') : ''}</div>` +
+      `<div class="user-grid">${cell('상태', st)}${r ? cell('레벨', 'Lv.' + intIn(r.level, 1, MAX_LEVEL, 1)) + cell('등급', ('FEDCBAS'.includes(r.rank) ? r.rank : 'F') + '등급') : ''}${pr ? cell('나이', intIn(pr.age, 0, 999, 0) + '세') : ''}${cell('관계', me ? '나' : has ? '친구' : '친구 아님')}${pr ? cell('길드', pr.guild ? cleanText(pr.guild, 12) : '-') : ''}</div>` +
       (kw ? `<div class="char-tags">${esc(kw)}</div>` : '') + (pr && pr.equipment ? otherEquipHtml(pr.equipment, name) : pr ? '<p class="tiny">장비 정보는 서버에 supabase/friends.sql 최신본을 실행하면 보여요.</p>' : '') +
       (pr ? '' : (Cloud.enabled && Cloud.user() ? `<p class="tiny">${esc(note || '자세한 프로필을 불러오는 중…')}</p>` : '<p class="tiny">서버에 로그인하면 이능력 등 자세한 프로필을 볼 수 있어요.</p>')),
-      [btnClose, (PARTY.members.some(m => m.name === name) || (view.nearby || []).some(p => p.name === name)) ? `<button class="primary" data-act="ftrade-open" data-name="${esc(name)}">교환</button>` : '', uid && chatOnline() && (!PARTY.id || partyLeader()) && !PARTY.members.some(m => m.name === name) ? `<button data-act="party-invite" data-uid="${esc(uid)}" data-name="${esc(name)}">파티 초대</button>` : '', !has && uid ? `<button class="primary" data-act="friend-req" data-uid="${esc(uid)}" data-name="${esc(name)}">친구 신청</button>` : ''].filter(Boolean));
+      me ? [btnClose] : [btnClose, (PARTY.members.some(m => m.name === name) || (view.nearby || []).some(p => p.name === name)) ? `<button class="primary" data-act="ftrade-open" data-name="${esc(name)}">교환</button>` : '', uid && chatOnline() && (!PARTY.id || partyLeader()) && !PARTY.members.some(m => m.name === name) ? `<button data-act="party-invite" data-uid="${esc(uid)}" data-name="${esc(name)}">파티 초대</button>` : '', !has && uid ? `<button class="primary" data-act="friend-req" data-uid="${esc(uid)}" data-name="${esc(name)}">친구 신청</button>` : ''].filter(Boolean));
     view.userShown = name;
   };
+  if (me) { draw(myCard(), ''); return; } // 내 정보는 서버에 묻지 않고 지금 상태로
   draw(null, '');
   if (!(Cloud.enabled && Cloud.user())) return;
   const ok = f => f && view.userShown === name && $('#overlay').classList.contains('open') && $('#modalBody').querySelector('.user-card');
@@ -2275,8 +2342,8 @@ function openProfile(keepScroll) {
   modal('프로필', `<div class="profile-card"><button class="avatar big ${img ? '' : 'empty'}" data-act="avatar-pick" title="이미지 변경" aria-label="프로필 이미지 변경">${img ? `<img src="${esc(img)}" alt="프로필">` : icon('add_a_photo')}<span class="avatar-edit">${icon('photo_camera')}</span></button>` +
     `<div class="pc-info"><div class="title-chip" id="pcTitle">${esc(c.title)}</div><strong>${esc(c.name || '-')}</strong><div class="char-meta">LV.${c.level}　${esc(c.rank)}등급　${c.age}세</div><div class="char-tags">${esc(tags)}</div>${state.subjob ? `<div class="char-job">${esc(`서브잡 · ${state.subjob.name} Lv.${state.subjob.level}`)}</div>` : ''}</div><div class="pf-sw">${sw('cFriend', '친구 추가 허용', dr ? dr.fr : c.allowFriend, 'near', dis)}${sw('cGuild', '길드 초대 허용', dr ? dr.gu : c.allowGuild, 'near', dis)}</div></div>` +
     `<div class="pc-ability"><b>${icon('bolt')} 이능력 · ${esc(c.ability || '미설정')}</b><p>${esc(c.abilityDesc || '이능력 설명이 없습니다.')}</p>${abilityStatChips(c)}</div>` +
-    `<div class="choice-label">칭호 ${state.titles.length}개 보유 · 눌러서 착용</div><div class="title-chips">${TITLE_DEFS.filter(([n]) => state.titles.includes(n)).map(([n, d]) =>
-      `<button class="tchip ${c.title === n ? 'on' : ''}" data-act="title-set" data-title="${esc(n)}" title="달성: ${esc(d)}">${esc(n)}</button>`).join('')}</div>` +
+    `<div class="choice-label">칭호 ${state.titles.length}개 보유 · 눌러서 착용</div><div class="title-strip"><button class="ts-arrow hidden" data-act="title-scroll" data-d="-1" aria-label="이전 칭호">${icon('chevron_left')}</button><div class="title-chips" id="titleChips">${TITLE_DEFS.filter(([n]) => state.titles.includes(n)).map(([n, d]) =>
+      `<button class="tchip ${c.title === n ? 'on' : ''}" data-act="title-set" data-title="${esc(n)}" title="달성: ${esc(d)}">${esc(n)}</button>`).join('')}</div><button class="ts-arrow hidden" data-act="title-scroll" data-d="1" aria-label="다음 칭호">${icon('chevron_right')}</button></div>` +
     `<div class="setting-group"><div class="pf-head"><h3>캐릭터 정보</h3><div class="pf-side">${editing ? `<button class="pf-edit on" data-act="profile-edit-cancel">${icon('close')} 편집 취소</button>` : `<button class="pf-edit" data-act="profile-edit" ${lock > 0 ? 'disabled' : ''}>${icon('edit')} 편집</button>`}</div></div>` +
     (lock > 0 ? `<p class="tiny">프로필(칭호 제외)은 수정 후 24시간이 지나야 다시 바꿀 수 있어요. 남은 시간 ${fmtLong(lock)}${statFree ? ' · 주·부 스탯은 아직 정하지 않아서 지금 고를 수 있어요.' : ''}</p>` : state.profileEditAt ? '' : '<p class="tiny">첫 수정은 바로 가능하고, 그 뒤에는 24시간마다 한 번 수정할 수 있어요.</p>') +
     row('이름', `<input id="cName" maxlength="12" ${dis} value="${esc(dr ? dr.name : c.name)}">`) +
@@ -2290,6 +2357,34 @@ function openProfile(keepScroll) {
     `<p class="tiny">사진 버튼을 눌러 이미지를 고르면 ${AVATAR_PX}px로 자동 압축됩니다. (png·jpg·webp·gif)</p>`,
     [`<button data-act="avatar-clear" ${img ? '' : 'disabled'}>이미지 삭제</button>`, `<button class="primary" data-act="char-save" ${editing || statFree ? '' : 'disabled'}>저장</button>`]);
   $('#modalBody').scrollTop = st0;
+  initTitleStrip();
+}
+function resetUiDefaults() { // 설정 > 표시 > UI 기본값: 화면 배치·확대·글자 크기만 처음으로 (진행·소리·테마는 그대로)
+  const d = createDefaultState();
+  state.layout = { ...d.layout }; state.collapsed = {}; state.zoom = d.zoom ?? 1; state.pan = { ...(d.pan || { x: 0, y: 0 }) };
+  state.settings.fontSize = d.settings.fontSize; state.settings.cursor = d.settings.cursor;
+  view.dpan = { x: 0, y: 0 }; view.dzoom = 1; view.statusPage = 0; view.statSlide = {};
+  $$('.panel.collapsed').forEach(p => p.classList.remove('collapsed'));
+  applyTheme(); applyLayout(); applyMapTransform(); renderStatus(); renderMap(); save();
+}
+/* 칭호 목록: 많아져 한 화면을 넘으면 좌우 화살표가 생기고, 화살표·스와이프(터치)·마우스 끌기·휠로 넘겨 본다 */
+function titleArrows() {
+  const box = $('#titleChips'); if (!box) return;
+  const over = box.scrollWidth > box.clientWidth + 2, [l, r] = box.parentElement.querySelectorAll('.ts-arrow');
+  l.classList.toggle('hidden', !over); r.classList.toggle('hidden', !over);
+  l.disabled = box.scrollLeft <= 1; r.disabled = box.scrollLeft + box.clientWidth >= box.scrollWidth - 1;
+}
+function initTitleStrip() {
+  const box = $('#titleChips'); if (!box) return;
+  const on = box.querySelector('.tchip.on'); if (on && on.offsetLeft > box.clientWidth) box.scrollLeft = on.offsetLeft - 8; // 착용 중인 칭호가 보이게
+  box.onscroll = () => titleArrows();
+  box.onwheel = e => { if (box.scrollWidth <= box.clientWidth || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return; e.preventDefault(); box.scrollLeft += e.deltaY; };
+  let drag = null; // 마우스로 끌어 넘기기 (터치는 브라우저 기본 스크롤)
+  box.onpointerdown = e => { if (e.pointerType !== 'mouse') return; drag = { x: e.clientX, s: box.scrollLeft, moved: false }; };
+  box.onpointermove = e => { if (!drag) return; const dx = e.clientX - drag.x; if (Math.abs(dx) > 5) drag.moved = true; if (drag.moved) box.scrollLeft = drag.s - dx; };
+  box.onpointerup = box.onpointerleave = () => { if (drag && drag.moved) view.noClickUntil = Date.now() + 150; drag = null; };
+  box.addEventListener('click', e => { if (Date.now() < (view.noClickUntil || 0)) { e.stopPropagation(); e.preventDefault(); } }, true);
+  titleArrows();
 }
 $('#avatarButton').onclick = () => { view.profEdit = false; openProfile(); };
 $('#avatarFile').onchange = async e => {
@@ -2481,20 +2576,16 @@ function petCareHtml(compact) { // 펫 돌보기 화면. compact=오른쪽 '펫'
     const p = state.pets[i], sp = PET_SPECIES[p.id], fed = petFed(p), act = state.petActive === i, away = !!p.exp, ready = expReady(p);
     const state1 = away ? (ready ? `${p.exp.zone} 탐험에서 돌아왔어요!` : `${p.exp.zone} 탐험 중 · ${fmtLeft(expLeft(p))} 남음`) : act ? '동행 중' : '대기 중';
     return `<div class="pet-row ${act ? 'active' : ''}"><div class="round-avatar">${icon('pets')}</div><div class="grow"><strong>${esc(petName(p))} ${p.name ? `<small>(${esc(sp.name)})</small> ` : ''}${penBtn(i)} <span class="tag">${esc(state1)}</span></strong>` +
-      `<small class="pet-line">${esc(petCareLine(p))}</small>${view.petMsg && view.petMsg.i === i ? `<small class="pet-talk">${esc(view.petMsg.text)}</small>` : ''}<small>${esc(petLvText(p))}</small><small>성격 ${esc(petPersOf(p))} · 친밀도 ${p.bond}/100 · ${fed ? `든든함 ${fmtLeft(Math.max(0, p.fedAt + PET_FED_MS - nowMs()))} 남음` : '배고픔'} · 동행 시 이동 시간 -${Math.round(petBuff(p) * 100)}%${fed ? '' : ' (먹이를 줘야 적용)'}</small>` +
-      `<div class="bar thin"><span style="width:${p.bond}%"></span></div></div>` +
+      `<small class="pet-line">${esc(petCareLine(p))}</small>${view.petMsg && view.petMsg.i === i ? `<small class="pet-talk">${esc(view.petMsg.text)}</small>` : ''}<small>${esc(petLvText(p))}</small><small>성격 ${esc(petPersOf(p))} · 친밀도 ${p.bond}/100 · ${fed ? `배부름 ${Math.ceil(petFull(p))}% (${fmtLeft(Math.max(0, petEmptyAt(p) - nowMs()))} 뒤 배고픔)` : '배고픔 — 간식을 주지 않으면 친밀도가 조금씩 줄어요'} · 동행 시 이동 시간 -${Math.round(petBuff(p) * 100)}%${fed ? '' : ' (먹이를 줘야 적용)'}</small>` +
+      `<div class="bar thin"><span style="width:${p.bond}%"></span></div><div class="bar thin full" title="배부름"><span style="width:${Math.ceil(petFull(p))}%"></span></div></div>` +
       `<div class="col-btns">${away ? (ready ? `<button class="primary" data-act="pet-claim" data-i="${i}">수확물 받기</button>` : '<button disabled>탐험 중</button>')
         : (() => { const ok = !petCareErr(i), tip = ok ? '' : ' title="함께 다니지 않는 펫은 개인실에서 돌볼 수 있어요"'; return `<button data-act="pet-feed" data-i="${i}" ${feeds.length && ok ? '' : 'disabled'}${tip}>간식 주기</button><button data-act="pet-stroke" data-i="${i}" ${ok ? '' : 'disabled'}${tip}>쓰다듬기</button><button data-act="pet-mood" data-i="${i}" ${ok ? '' : 'disabled'}${tip}>기분 묻기</button><button data-act="pet-active" data-i="${i}">${act ? '동행 해제' : '함께 다니기'}</button><button data-act="pet-acc" data-i="${i}">악세서리</button>${act ? '' : `<button data-act="pet-send" data-i="${i}" ${feeds.length ? '' : 'disabled'}>탐험 보내기</button>`}`; })()}</div>${editRow(i)}</div>`;
   }).join('');
   if (compact) {
-    const feedBox = feeds.length ? `<div class="choice-label">줄 간식 <small class="tiny">— 눌러서 고르고, 펫의 '간식 주기'를 누르세요</small></div><div class="feed-picks" id="feedPicks">${feeds.map(x => `<button class="feed-opt ${x.n === view.feed ? 'selected' : ''}" data-act="pet-feed-pick" data-item="${esc(x.n)}" data-tip-title="${esc(x.n)}" data-tip-desc="${esc(itemTip(x.n) + `\n친밀도 +${feedGain(x.n)}`)}" aria-pressed="${x.n === view.feed}">${icon(ITEMS[x.n].icon)}<span>${esc(x.n)}</span><b>×${x.q}</b><small>+${ITEMS[x.n].feed}</small></button>`).join('')}</div>` : '';
-    return (state.petActive >= 0 ? feedBox : '') + (rows || '<div class="empty">아직 길들인 펫이 없습니다.</div>') + '<p class="tiny">성격 허브를 간식으로 주면 펫의 성격이 바뀌어요. 탐험 보내기·도감 등 전체 돌보기는 개인실의 \'펫 돌보기\'에서 할 수 있어요.</p>';
+    return (rows || '<div class="empty">아직 길들인 펫이 없습니다.</div>') + '<p class="tiny">성격 허브를 간식으로 주면 펫의 성격이 바뀌어요. 탐험 보내기·도감 등 전체 돌보기는 개인실의 \'펫 돌보기\'에서 할 수 있어요.</p>';
   }
-  return `<p class="tiny">펫은 지상의 짐승 지형에서 <b>길들이기</b>로 얻어요. 펫 보관함은 소지품과 별도이고, 같은 종은 한 마리만 모을 수 있어요. 한 마리는 <b>동행</b>(먹이를 준 뒤 24시간 타일 이동 시간 단축), 나머지는 <b>24시간 자동 탐험</b>을 보낼 수 있어요.</p>` +
+  return `<p class="tiny">펫은 지상의 짐승 지형에서 <b>길들이기</b>로 얻어요. 펫 보관함은 소지품과 별도이고, 같은 종은 한 마리만 모을 수 있어요. 한 마리는 <b>동행</b>(배부름이 남아 있는 동안 타일 이동 시간 단축), 나머지는 <b>24시간 자동 탐험</b>을 보낼 수 있어요.</p>` +
     `<button class="choice-label dex-toggle" data-act="pet-dex-toggle" aria-expanded="${!!view.petDexOpen}">${icon(view.petDexOpen ? 'expand_less' : 'expand_more')} 펫 도감 ${state.pets.length}/${petCap()}</button>${view.petDexOpen ? `<div class="pet-dex-grid">${dex}</div>` : ''}` +
-    `<div class="choice-label">줄 간식 <small class="tiny">${feeds.length ? '— 눌러서 고르고, 펫의 \'간식 주기\'를 누르세요' : ''}</small></div>` +
-    (feeds.length ? `<div class="feed-picks" id="feedPicks">${feeds.map(x => `<button class="feed-opt ${x.n === view.feed ? 'selected' : ''}" data-act="pet-feed-pick" data-item="${esc(x.n)}" data-tip-title="${esc(x.n)}" data-tip-desc="${esc(itemTip(x.n) + `\n친밀도 +${feedGain(x.n)}`)}" aria-pressed="${x.n === view.feed}">${icon(ITEMS[x.n].icon)}<span>${esc(x.n)}</span><b>×${x.q}</b><small>+${ITEMS[x.n].feed}</small></button>`).join('')}</div>` : '<div class="empty">먹일 간식이 없어요. (작물·펫 사료·성격 허브)</div>') +
-    (state.pets.some((_, i) => state.petActive !== i) ? `<div class="row-gap"><label class="tiny" for="expZone">탐험 구역</label><select id="expZone">${DANGER_ZONES.map(z => `<option value="${esc(z.id)}" ${z.id === view.expZone ? 'selected' : ''}>${esc(z.name)}</option>`).join('')}</select></div>` : '') +
     `<p class="tiny">성격 허브(활발·얌전·장난꾸러기·느긋·호기심·의젓)를 간식으로 주면 펫의 성격이 바뀌고, 성격에 따라 돌보는 문구가 달라져요. 허브는 농장에서 키울 수 있고 씨앗은 채집하다 아주 가끔 나옵니다.</p>` +
     `<p class="tiny">탐험을 보내면 먹이 1개가 들고, 돌아오면 그 구역의 재료·희귀 재료·특산 씨앗을 확률로 가져와요. (친밀도가 높고 고향 구역이면 더 많이)</p>` +
     (rows || '<div class="empty">아직 길들인 펫이 없습니다. 지상에서 작물이나 펫 사료를 들고 짐승을 길들여 보세요.</div>');
@@ -2530,6 +2621,31 @@ function mockMonsters() {
   for (const [id, a] of Object.entries(ACTIONS)) { if (a.kind !== 'battle') continue; const m = monsterBase(a); if (m && !seen.has(m.name)) { seen.add(m.name); out.push(m); } }
   return out.sort((x, y) => x.hp * x.atk - y.hp * y.atk); // 위쪽이 약한 몬스터, 아래로 갈수록 강한 몬스터
 }
+function openRescueFight() { // 대원 구조 전투: 이미 정해진 결과(state.pending)를 한 줄씩 보여 주고, 끝나거나 창을 닫으면 결과를 받는다
+  const p = state.pending, rs = p && p.result && p.result.rescue; if (!rs || !Array.isArray(rs.log) || !(rs.hp0 > 0) || !(rs.mhp0 > 0)) { A.claim(); return; } // 깨진 저장이면 바로 결과만 받는다
+  if (view.rescueTimer) clearInterval(view.rescueTimer);
+  view.rescueAnim = true;
+  modal('위험에 처한 대원 구하기', `<p class="tiny">${esc(rs.who)} 대원을 구하러 ${esc(rs.foe)}에게 달려들었다!</p>` +
+    `<div class="mock-bars"><div><small id="rsMe">나</small><div class="progress"><span id="rsMeBar" style="width:100%"></span></div></div><div><small id="rsEn">상대</small><div class="progress"><span id="rsEnBar" class="bad" style="width:100%"></span></div></div></div>` +
+    `<div class="battle-log mock" id="rescueLog"></div>`, ['<button data-act="rescue-skip">건너뛰기</button>', '<button class="primary hidden" data-act="rescue-done">확인</button>'], true);
+  let i = 0, hp = rs.hp0, mhp = rs.mhp0;
+  const bars = () => { const a = $('#rsMeBar'), b = $('#rsEnBar'); if (!a) return; a.style.width = clamp(hp / rs.hp0 * 100, 0, 100) + '%'; b.style.width = clamp(mhp / rs.mhp0 * 100, 0, 100) + '%'; $('#rsMe').textContent = `나 ${Math.max(0, hp)}/${rs.hp0}`; $('#rsEn').textContent = `${rs.foe} ${Math.max(0, mhp)}/${rs.mhp0}`; };
+  const add = (t, k) => { const lg = $('#rescueLog'); if (!lg) return; lg.insertAdjacentHTML('beforeend', `<div class="bl ${esc(k)}">${esc(t)}</div>`); lg.scrollTop = lg.scrollHeight; };
+  const finish = () => {
+    clearInterval(view.rescueTimer); view.rescueTimer = 0;
+    for (; i < rs.log.length; i++) { const l = rs.log[i]; mhp -= l.d; hp -= l.h; add(l.t, l.k); }
+    bars(); add(rs.win ? `${rs.foe}을(를) 물리쳤다! ${rs.who} 대원을 구했다.` : `${rs.foe}을(를) 이기지 못했다…`, 'note');
+    const sk = $('[data-act="rescue-skip"]'), ok = $('[data-act="rescue-done"]'); if (sk) sk.classList.add('hidden'); if (ok) ok.classList.remove('hidden');
+    sfx(rs.win ? 'levelup' : 'error');
+  };
+  view.rescueFinish = finish;
+  bars(); add(`${rs.foe}와(과) 마주쳤다. 전투 시작!`, 'note');
+  view.rescueTimer = setInterval(() => {
+    if (!$('#rescueLog')) { clearInterval(view.rescueTimer); view.rescueTimer = 0; view.rescueAnim = false; return; }
+    if (i >= rs.log.length) { finish(); return; }
+    const l = rs.log[i++]; mhp -= l.d; hp -= l.h; add(l.t, l.k); bars();
+  }, 450);
+}
 function openMock() {
   const ms = mockMonsters();
   modal('추가 기능 · 모의 전투', `<p class="tiny">상대를 골라 전투를 구경해 보세요. 위쪽일수록 약하고 아래로 갈수록 강한 상대예요. 보상·HP·기력에는 영향이 없어요.</p>` +
@@ -2562,11 +2678,11 @@ let _ltBusy = false;
 const isLtOpen = () => $('#overlay').classList.contains('open') && !!$('#ltRoot'); // 닫힌 창의 내용이 남아 있어도 열린 것으로 보지 않는다
 const sameList = (a, b) => a.length === b.length && a.every(([n, q]) => (b.find(r => r[0] === n) || [0, 0])[1] === q);
 let _nbBusy = false;
-async function nearbyPoll() { // 같은 칸에 접속 중인 대원 (10초마다). 내 위치도 서버에 알린다
+async function nearbyPoll() { // 같은 칸에 접속 중인 대원. 내 위치도 서버에 알린다 (위치가 바뀌면 바로, 아니면 pollTick 주기)
   if (!Cloud.enabled || !Cloud.user() || !state.created || _nbBusy) return;
   _nbBusy = true;
   try {
-    const r = await Cloud.nearbyPlayers(locKey()), list = (Array.isArray(r) ? r : []).slice(0, 20).map(p => ({ uid: String(p && p.uid || '').slice(0, 40), name: cleanText(p && p.name, 12) })).filter(p => p.uid && p.name);
+    const loc = locKey(); view.nbSent = loc; const r = await Cloud.nearbyPlayers(loc), list = (Array.isArray(r) ? r : []).slice(0, 20).map(p => ({ uid: String(p && p.uid || '').slice(0, 40), name: cleanText(p && p.name, 12) })).filter(p => p.uid && p.name);
     const key = JSON.stringify(list); if (key !== view.nbKey) { view.nbKey = key; view.nearby = list; if (state.side === '상황' && $('#sideView') && !$('#todoIn:focus')) renderSituation(); }
   } catch (e) { /* 서버 준비 전 */ } finally { _nbBusy = false; }
 }
@@ -2820,7 +2936,7 @@ function openJob(keepScroll) {
   if (!j) {
     modal('서브잡 가입', lore + `<div class="srow fontrow"><span>생전 가졌던 직업</span><input id="jobName" maxlength="${JOB_NAME_MAX}" placeholder="비워 두면 태그 이름 (예: 숲속 요리사)"></div>` +
       `<div class="choice-label">태그 (1개) — 같은 태그가 붙은 아이템을 납품해요</div><div class="tag-grid">${JOB_TAGS.map(([t, ic, d]) => `<label class="tag-pick" title="${esc(d)}"><input type="radio" name="jobtag" class="job-tag" value="${t}"><span>${icon(ic)} ${t}</span></label>`).join('')}</div>` +
-      `<p class="tiny">하루에 한 번, 태그가 붙은 아이템을 정해진 개수만큼 납품하면 서브잡 레벨이 오르고 버프를 받아요. 생전 직업은 프로필에 표시됩니다. 하루에 한 번 납품을 마친 날에만 서브잡 버프가 적용돼요. 아이템의 태그는 가방·상점 아이템 설명에서 볼 수 있어요.</p>`,
+      `<p class="tiny">하루에 한 번, 태그가 붙은 아이템을 정해진 개수만큼 납품하면 서브잡 레벨이 오르고 버프를 받아요. 생전 직업은 프로필에 표시됩니다. 하루에 한 번 납품을 마친 날에만 서브잡 버프가 적용돼요. 아이템의 태그는 가방·상점 아이템 설명에서 볼 수 있어요. 채집·채굴·낚시를 뺀 태그(요리·약학·제작·농사)는 납품한 개수만큼 스테이터스의 그 숙련도도 올라요.</p>`,
       [btnClose, '<button class="primary" data-act="job-join">가입</button>'], true);
     return;
   }
@@ -3229,13 +3345,12 @@ function init() {
   clock();
   setInterval(() => { tick(); clock(); }, 1000);
   checkUpdate(); setInterval(checkUpdate, 5 * 60 * 1000);
-  syncNotices(); setInterval(syncNotices, 5 * 60 * 1000);
+  syncNotices(); // 이후는 pollTick 이 (자리 비움·숨김이면 덜 자주) 부른다
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden) { checkUpdate(); cloudSync(); }
     else if (Cloud.enabled && Cloud.user() && !_cloudBlocked && (_saveQueued || _cloudTimer)) { if (_saveQueued) flushSave(); if (_cloudTimer) { clearTimeout(_cloudTimer); _cloudTimer = 0; } cloudAutoPush(); } // 폰은 백그라운드에서 타이머가 멈추므로 화면을 떠날 때 바로 저장
   });
   addEventListener('focus', () => cloudSync());
-  setInterval(() => { if (!document.hidden) cloudSync(); }, 60000);
   if (state.created && !(Cloud.enabled && !Cloud.user())) setTimeout(() => cloudSync(true), 600);
 }
 if (!(Cloud.enabled && !Cloud.user())) init(); // 서버 연결 중 로그인 전이면 게임을 시작하지 않는다 (가입 페이지로 이동 중)

@@ -184,7 +184,11 @@ async function peekRoom(name) { // 다른 대원의 방 구경
   view.room = { viewOnly: true, name: cleanText(r.name || name, 12), edit: false, data: cleanRoom(r.room), bg: roomBgOk(r.bg) ? r.bg : '', zoom: 1, px: 0, py: 0 };
   roomOpenWindow(`${view.room.name}의 ROOM`);
 }
-const roomPeekBtn = name => (Cloud.enabled && Cloud.user() ? `<button class="rm-peek" data-act="room-peek" data-name="${esc(name)}">구경</button>` : '');
+const roomPeekBtn = name => (name === state.character.name ? `<button class="rm-peek" data-act="room-self">${icon('chair')} ROOM 구경</button>` : Cloud.enabled && Cloud.user() ? `<button class="rm-peek" data-act="room-peek" data-name="${esc(name)}">${icon('chair')} ROOM 구경</button>` : '');
+function peekMyRoom() { // 프로필 보기의 'ROOM 구경' (내 방): 남이 보는 것처럼 읽기 전용
+  view.room = { viewOnly: true, name: state.character.name, edit: false, data: cleanRoom(state.room), bg: roomBgLocal() || '', zoom: 1, px: 0, py: 0 };
+  roomOpenWindow(`${view.room.name}의 ROOM`);
+}
 
 /* ----- 편집 동작 ----- */
 function roomBring(it) { const R = view.room; R.draft.zc = (R.draft.zc || 0) + 1; it.z = R.draft.zc; if (R.draft.zc > 100000) { R.draft.items.sort((a, b) => a.z - b.z).forEach((x, i) => { x.z = i + 1; }); R.draft.zc = R.draft.items.length; } }
@@ -331,6 +335,7 @@ Object.assign(A, {
   'room-export': () => roomExport(),
   'room-bg-pick': () => { const f = $('#rmBgFile'); if (f) { f.value = ''; f.click(); } },
   'room-bg-clear': () => { roomBgStore(''); if (view.room && view.room.draft && view.room.draft.bg === 'b_custom') view.room.draft.bg = ROOM_DEFAULT_SKIN.bg; if (Cloud.enabled && Cloud.user()) Cloud.setRoomBg('').catch(() => {}); toast('배경 이미지를 지웠어요.'); roomRender(); },
-  'room-peek': el => peekRoom(cleanText(el.dataset.name, 12))
+  'room-peek': el => peekRoom(cleanText(el.dataset.name, 12)),
+  'room-self': () => peekMyRoom()
 });
 roomPointer();

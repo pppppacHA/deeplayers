@@ -408,6 +408,14 @@ with sync_playwright() as p:
     ev(pg, "removeItem('약초',countItem('약초'));addItem('약초',2);renderBag()")
     pg.click('#craftList [data-act="craft"][data-index="0"]'); pg.wait_for_timeout(50)
     check('craft_single_possible_skips_modal', pg.locator('#overlay.open #cqQty').count() == 0 and ev(pg, "!!state.crafting&&state.crafting.qty")== 1)
+    ev(pg, "cancelCraft();view.matPick={'물고기':''};addItem('붕어',3);addItem('잉어',3);addItem('약초',20);renderBag()")
+    ei = ev(pg, "RECIPES.findIndex(r=>r.out==='건조 식량')"); pe0 = len(errs)
+    pg.click('#craftList [data-act="craft"][data-index="%d"]' % ei); pg.wait_for_timeout(60)
+    check('recraft_after_auto_pick_opens_modal_no_error', len(errs) == pe0 and pg.locator('#overlay.open #cqQty').count() == 1, errs[pe0:])
+    pg.click('[data-act="craft-go"]'); pg.wait_for_timeout(60); ff(1000)
+    pg.click('#craftList [data-act="craft"][data-index="%d"]' % ei); pg.wait_for_timeout(60)
+    check('recraft_second_time_works', len(errs) == pe0 and pg.locator('#overlay.open #cqQty').count() == 1, errs[pe0:])
+    pg.click('#closeModal'); ev(pg, "cancelCraft();renderBag()")
     ev(pg, "cancelCraft();renderBag()")
     ev(pg, "addItem('응급 키트',4);state.vitals.hp=1")
     h0 = ev(pg, "countItem('응급 키트')")
@@ -772,9 +780,19 @@ with sync_playwright() as p:
     check('battle_result_ready', pg.locator('[data-act="result-close"]').count() >= 1 and pg.locator('#battleLog').count() == 0)
     hp0 = ev(pg, "state.vitals.hp"); pg.click('[data-act="result-close"] >> nth=0'); pg.wait_for_timeout(100)
     check('battle_hp_never_below_1', ev(pg, "state.vitals.hp")>= 1 and ev(pg, "state.vitals.hp")<= hp0)
+    check('retreat_hp_is_10', ev(pg, "HP_RETREAT") == 10)
     ev(pg, "state.vitals.hp=15;renderBars()")
-    pg.click('#choices button:text-matches("쫓는다|추적한다")'); pg.click('[data-act="action-run"]'); pg.wait_for_timeout(100)
-    check('battle_blocked_low_hp', ev(pg, "!state.active") and 'HP가 부족' in text(pg, '#toast'))
+    pg.click('#choices button:text-matches("쫓는다|추적한다")'); pg.wait_for_timeout(60)
+    check('battle_at_15hp_no_death_warning', '클론' not in text(pg, '#actionMain'))
+    pg.click('[data-act="action-run"]'); pg.wait_for_timeout(100)
+    check('battle_allowed_above_10hp', ev(pg, "!!state.active && !state.active.risk"))
+    pg.click('[data-act="action-abort"]'); pg.wait_for_timeout(80)
+    ev(pg, "state.vitals.hp=8;renderBars()")
+    pg.click('#choices button:text-matches("쫓는다|추적한다")'); pg.wait_for_timeout(60)
+    check('low_hp_battle_warns_clone_death', '클론' in text(pg, '#actionMain') and '사망' in text(pg, '#actionMain'))
+    pg.click('[data-act="action-run"]'); pg.wait_for_timeout(100)
+    check('low_hp_battle_runs_once_with_risk', ev(pg, "!!state.active && state.active.risk === true && state.active.cycles === 1"))
+    pg.click('[data-act="action-abort"]'); pg.wait_for_timeout(80)
     ev(pg, "state.vitals.hp=80;state.vitals.sp=1;renderBars()"); pg.click('#choices button:text-matches("쫓는다|추적한다")'); pg.click('[data-act="action-run"]'); pg.wait_for_timeout(100)
     check('battle_blocked_low_sp', ev(pg, "!state.active") and '기력이 부족' in text(pg, '#toast'))
     ev(pg, "state.vitals.sp=72;renderBars()")
@@ -896,7 +914,7 @@ with sync_playwright() as p:
     check('sticker_tray_hidden_initially', ev(pg, "document.querySelector('#stickerTray').classList.contains('hidden')"))
     pg.click('#emojiBtn'); pg.wait_for_timeout(60)
     tr, cfm = rect(pg, '#stickerTray'), rect(pg, '#chatForm')
-    check('sticker_tray_above_input', tr['b'] <= cfm['y'] + 1 and pg.locator('#stickerTray .sticker').count() == 8 and pg.locator('#overlay.open').count() == 0)
+    check('sticker_tray_above_input', tr['b'] <= cfm['y'] + 1 and pg.locator('#stickerTray .sticker').count() == 10 and pg.locator('#overlay.open').count() == 0)
     check('sticker_tray_icons_only', ev(pg, "[...document.querySelectorAll('#stickerTray .sticker')].every(b=>b.querySelector('.material-symbols-rounded')&&b.children.length===1&&b.querySelector('span:not(.material-symbols-rounded)')===null)"))
     n0 = ev(pg, "state.chats['월드'].length"); pg.click('#stickerTray .sticker >> nth=0'); pg.wait_for_timeout(80)
     check('sticker_sends_immediately', ev(pg, "state.chats['월드'].length")== n0 + 1 and ev(pg, "state.chats['월드'].at(-1).slice(0,2).join()")== '나,[인사]' and pg.locator('.sticker-msg').count() == 1 and ev(pg, "document.querySelector('#stickerTray').classList.contains('hidden')"))
@@ -1293,8 +1311,8 @@ with sync_playwright() as p:
     check('tame_same_species_blocked', pg.locator('#choices button:has-text("먹이를 건넨다")').count() == 0 and '이미 길들인' in (ev(pg, "startAction(ACTIONS[Object.keys(ACTIONS).find(k=>ACTIONS[k].kind==='tame'&&ACTIONS[k].terrain.monster.name==='숲 늑대')]&&Object.keys(ACTIONS).find(k=>ACTIONS[k].kind==='tame'&&ACTIONS[k].terrain.monster.name==='숲 늑대'))") or ''))
     pg.click('[data-act="action-cancel"]') if pg.locator('[data-act="action-cancel"]').count() else None
     ev(pg, "Math.random=window.__rnd")
-    check('pet_speed_needs_feeding', ev(pg, "petSpeed()")== 0 and ev(pg, "(()=>{state.pets[0].fedAt=Date.now();return petSpeed()})()")> 0.03)
-    check('pet_speeds_up_tile_move', ev(pg, "planMove(2,0).sec")< 60 and ev(pg, "(()=>{const a=planMove(2,0).sec;state.pets[0].fedAt=0;const b=planMove(2,0).sec;state.pets[0].fedAt=Date.now();return b===60&&a<b})()"))
+    check('pet_speed_needs_feeding', ev(pg, "petSpeed()")== 0 and ev(pg, "(()=>{(state.pets[0].full=100,state.pets[0].fullAt=Date.now());return petSpeed()})()")> 0.03)
+    check('pet_speeds_up_tile_move', ev(pg, "planMove(2,0).sec")< 60 and ev(pg, "(()=>{const a=planMove(2,0).sec;state.pets[0].full=0;const b=planMove(2,0).sec;(state.pets[0].full=100,state.pets[0].fullAt=Date.now());return b===60&&a<b})()"))
     ev(pg, "renderBuffs(true)")
     check('pet_buff_icon_shown', pg.locator('.buff-icon[data-tip-title*="펫"]').count() == 1)
     ev(pg, "leaveDungeon();renderMap();renderMapHead();renderAction()")
@@ -1305,7 +1323,7 @@ with sync_playwright() as p:
     pg.click('#choices button:has-text("펫 돌보기")'); pg.wait_for_timeout(80)
     check('pet_dex_collapsed_until_clicked', pg.locator('.pet-dex').count() == 0 and pg.locator('[data-act="pet-dex-toggle"]').count() == 1)
     pg.click('[data-act="pet-dex-toggle"]'); pg.wait_for_timeout(60)
-    check('pet_modal_dex_and_rows', pg.locator('.pet-dex').count() == ev(pg, "Object.keys(PET_SPECIES).length") and pg.locator('.pet-dex.got').count() == 4 and pg.locator('.pet-row').count() == 4 and pg.locator('#expZone option').count() == ev(pg, "DANGER_ZONES.length"))
+    check('pet_modal_dex_and_rows', pg.locator('.pet-dex').count() == ev(pg, "Object.keys(PET_SPECIES).length") and pg.locator('.pet-dex.got').count() == 4 and pg.locator('.pet-row').count() == 4)
     check('pet_pen_button_in_every_box_next_to_name', ev(pg, """(()=>{const rows=[...document.querySelectorAll('.pet-row')];return rows.length>=2&&rows.every(r=>{const b=r.querySelector('strong button[data-act="pet-name"]'),n=r.querySelector('strong');return !!b&&n.contains(b)&&r.querySelectorAll('.pet-edit-row button.mini').length===0})})()"""))
     check('pet_rename_pen_beside_name', pg.locator('[data-act="pet-name"][data-i="1"]').evaluate("b=>!!b.closest('strong')&&b.textContent.trim()===''") and pg.locator('.pet-edit-row button.mini').count() == 0)
     pg.click('[data-act="pet-name"][data-i="1"]'); pg.wait_for_timeout(50)
@@ -1319,7 +1337,10 @@ with sync_playwright() as p:
     check('pet_mood_button_shows_cry_line', (pg.click('[data-act="pet-mood"][data-i="0"]') or True) and pg.locator('.pet-talk').count() == 1 and '(' in text(pg, '.pet-talk'))
     check('companion_cared_anywhere_others_only_in_room', ev(pg, """(()=>{const loc=state.location;state.location='본부';const a=petCareErr(0),b=petCareErr(1);state.location=loc;return a===null&&!!b})()"""))
     check('active_pet_listed_first', ev(pg, "(()=>{const bak=state.petActive;state.petActive=2;const o=petOrder();state.petActive=bak;return o[0]===2&&o.length===state.pets.length})()"))
-    bag0 = ev(pg, "usedSlots()"); pg.select_option('#expZone', '제2구역'); pg.click('[data-act="pet-feed-pick"][data-item="감자"]'); pg.click('[data-act="pet-send"][data-i="1"]'); pg.wait_for_timeout(80)
+    check('pet_window_has_no_snack_strip', pg.locator('.feed-opt').count() == 0 and pg.locator('#expZone').count() == 0)
+    bag0 = ev(pg, "usedSlots()"); pg.click('[data-act="pet-send"][data-i="1"]'); pg.wait_for_timeout(80)
+    check('pet_send_opens_zone_and_food_picker', pg.locator('#expZone').count() == 1 and pg.locator('#expZone option').count() == ev(pg, "DANGER_ZONES.length") and pg.locator('[data-act="pet-send-do"][data-item="감자"]').count() == 1)
+    pg.select_option('#expZone', '제2구역'); pg.click('[data-act="pet-send-do"][data-item="감자"]'); pg.wait_for_timeout(80)
     check('expedition_sent_consumes_feed', ev(pg, "state.pets[1].exp.zone")== '제2구역' and ev(pg, "countItem('감자')")== 4 and ev(pg, "setActivePet(1)")!= None and '탐험 중' in text(pg, '.pet-row >> nth=1'))
     ff(23 * 3600); check('expedition_not_back_before_24h', ev(pg, "expReady(state.pets[1])")== False and ev(pg, "claimExpedition(1)")!= None)
     ff(3600 + 30); pg.wait_for_timeout(60)
@@ -1338,7 +1359,7 @@ with sync_playwright() as p:
     pg.click('#choices button:has-text("서브잡")'); pg.wait_for_timeout(80)
     check('job_lore_text', '근본이 되는 인간의 기억' in text(pg, '.job-lore') and '닳아 없어' in text(pg, '.job-lore'))
     check('job_label_is_former_job', '생전 가졌던 직업' in text(pg, '#modalBody') and pg.locator('input.job-tag[type="radio"]').count() == ev(pg, 'JOB_TAGS.length') and ev(pg, 'JOB_TAG_MAX')== 1)
-    check('job_new_craft_tags', ev(pg, "TAG_NAMES.includes('가죽공예')&&TAG_NAMES.includes('보석공예')&&ITEMS['짐승 가죽'].tags.includes('가죽공예')&&ITEMS['가죽 부츠'].tags.includes('가죽공예')&&ITEMS['광물 코어'].tags.includes('보석공예')"))
+    check('job_new_craft_tags', ev(pg, "TAG_NAMES.includes('가죽공예')&&TAG_NAMES.includes('보석공예')&&ITEMS[MAT_GROUPS['가죽'][0]].tags.includes('가죽공예')&&ITEMS['가죽 부츠'].tags.includes('가죽공예')&&ITEMS['광물 코어'].tags.includes('보석공예')"))
     pg.locator('label.tag-pick:has-text("요리")').click(); pg.locator('label.tag-pick:has-text("농사")').click()
     check('job_tag_single_choice', pg.locator('.job-tag:checked').count() == 1 and ev(pg, "document.querySelector('.job-tag:checked').value")== '농사')
     pg.locator('label.tag-pick:has-text("가죽공예")').click(); pg.fill('#jobName', ''); pg.click('[data-act="job-join"]'); pg.wait_for_timeout(80)
@@ -1360,7 +1381,7 @@ with sync_playwright() as p:
     ev(pg, "addItem('허브',6)"); ff(24 * 3600 + 60); pg.wait_for_timeout(60)
     check('job_buff_expires_after_a_day', ev(pg, "!jobActive()") and ev(pg, "healBonus('구운 감자')")== 0)
     ev(pg, "(()=>{closeModal();openJob()})()"); pg.click('[data-act="job-auto"]'); pg.click('[data-act="job-deliver"]'); pg.wait_for_timeout(80)
-    check('job_level_up_after_2_days', ev(pg, "state.subjob.level")== 2 and ev(pg, "state.subjob.prog")== 0 and ev(pg, "jobNeed(2)")== 4 and abs(ev(pg, "healBonus('구운 감자')") - .08) < 1e-9)
+    check('job_level_up_after_2_days', ev(pg, "state.subjob.level")== 2 and ev(pg, "state.subjob.prog")== 0 and ev(pg, "jobNeed(2)")== 4 and abs(ev(pg, "healBonus('구운 감자')") - .08 - ev(pg, "masteryBonus('요리').heal")) < 1e-9)  # 납품으로 오른 요리 숙련 보너스 포함
     check('job_buff_icon_and_text', pg.locator('.buff-icon[data-tip-title*="서브잡"]').count() == 1)
     check('job_other_tags_effects', ev(pg, "(()=>{const o=state.subjob;state.subjob={name:'목수',tags:['목공','채집'],level:5,prog:0,lastAt:nowMs()};const a=jobFx();state.subjob=o;return a.craftTime===.15&&a.gather['채집']===.15})()"))
     pg.click('[data-act="job-quit"]'); pg.wait_for_timeout(40)
@@ -1514,8 +1535,8 @@ with sync_playwright() as p:
     check('dev_mode_on_restores', 'dev-finish' in ev(pg, "devBtn()") and ev(pg, "canNotice()")is True)
     ev(pg, "state.money=0"); pg.click('[data-act="dev-money"]'); pg.wait_for_timeout(40)
     check('dev_panel_actions_work', ev(pg, "state.money")== 1000)
-    pg.fill('#devQty', '3'); pg.select_option('#devItem', '짐승 고기'); n_meat = ev(pg, "countItem('짐승 고기')"); pg.click('[data-act="dev-give"]'); pg.wait_for_timeout(40)
-    check('dev_panel_give_item', ev(pg, "countItem('짐승 고기')")== n_meat + 3)
+    pg.fill('#devQty', '3'); pg.select_option('#devItem', '숲 늑대 고기'); n_meat = ev(pg, "countItem('숲 늑대 고기')"); pg.click('[data-act="dev-give"]'); pg.wait_for_timeout(40)
+    check('dev_panel_give_item', ev(pg, "countItem('숲 늑대 고기')")== n_meat + 3)
     pg.click('#closeModal')
     # 개발자 모드 켜짐: 알림 채널에 말머리를 달아 공지를 쓸 수 있다
     pg.click('[data-chat="알림"]'); pg.wait_for_timeout(60)
@@ -1802,8 +1823,8 @@ with sync_playwright() as p:
     check('pet_stroke_vs_mood_texts_differ', ev(pg, """(()=>{const i=state.petActive,p=state.pets[i];p.petAt=0;const s=petStroke(i).text,m=petAskMood(i).text;return /기분을 느끼는 것 같다\\)/.test(m)&&!/기분을 느끼는 것 같다/.test(s)&&s!==m})()"""))
     ev(pg, "[state.pets,state.petActive]=JSON.parse(window.__pb)")
     check('beast_meat_and_hide_varied', ev(pg, """(()=>{const a=DANGER_ZONES[0].terrains[0].monsters[0].drops.map(d=>d[0]),b=DANGER_ZONES[2].terrains[0].monsters[0].drops.map(d=>d[0]);
-      return a[0]==='숲 늑대 고기'&&a[1]==='숲 늑대 가죽'&&b[1].endsWith('가죽')&&b[0]!==a[0]&&MAT_GROUPS['고기'].length>=20&&MAT_GROUPS['가죽'].includes('짐승 가죽')&&RECIPES.find(r=>r.out==='구운 고기').mats['고기']===1})()"""))
-    check('beast_meat_usable_for_cooking', ev(pg, """(()=>{const bak=JSON.stringify(state.inventory);state.inventory['재료']=[];addItem('숲 늑대 고기',2);addItem('짐승 고기',1);const rc=RECIPES.find(r=>r.out==='구운 고기'),ok=matCount('고기')===3&&canCraft(rc);state.inventory=JSON.parse(bak);return ok})()"""))
+      return a[0]==='숲 늑대 고기'&&a[1]==='숲 늑대 가죽'&&b[1].endsWith('가죽')&&b[0]!==a[0]&&MAT_GROUPS['고기'].length>=20&&!ITEMS['짐승 가죽']&&!MAT_GROUPS['가죽'].includes('짐승 가죽')&&RECIPES.find(r=>r.out==='구운 고기').mats['고기']===1})()"""))
+    check('beast_meat_usable_for_cooking', ev(pg, """(()=>{const bak=JSON.stringify(state.inventory);state.inventory['재료']=[];addItem('숲 늑대 고기',2);addItem('붉은 여우 고기',1);const rc=RECIPES.find(r=>r.out==='구운 고기'),ok=matCount('고기')===3&&canCraft(rc);state.inventory=JSON.parse(bak);return ok})()"""))
     check('train_picks_are_random_not_in_order', ev(pg, """(()=>{const bak=JSON.stringify(state.learned);let sorted=0,runs=0;for(let k=0;k<30;k++){state.learned=[];const seq=[];for(let i=0;i<6;i++){const pool=learnableRecipes();if(!pool.length)break;const rc=pick(pool);state.learned.push(rc.out);seq.push(RECIPES.indexOf(rc))}runs++;if(seq.every((v,i)=>!i||v>seq[i-1]))sorted++}state.learned=JSON.parse(bak);return runs>0&&sorted<runs/2})()"""))
     check('situation_tab_todo_flow', ev(pg, """(()=>{const bak=JSON.stringify([state.todos,state.todoSeq,state.sitOpen,state.side]);state.todos=[];state.todoSeq=0;
       const e0=addTodo('   '),e1=addTodo('물 마시기');toggleTodo(1);addTodo('가죽 모으기');const a=state.todos.length===2&&state.todos[0].done&&!e1&&!!e0;
@@ -2057,7 +2078,9 @@ with sync_playwright() as p:
     ev(pg, "state.petSub='돌보기';view.petSub='돌보기';state.side='펫';renderSide()")
     check('pet_care_shows_personality_and_snack_label', '성격 얌전' in text(pg, '#sideView') and pg.locator('#sideView .pet-line').count() == 1 and '간식 주기' in text(pg, '#sideView') and '성격 허브' in text(pg, '#sideView'))
     ev(pg, "addItem('의젓 허브',1);view.feed='의젓 허브'")
-    ev(pg, "renderSide()"); pg.click('[data-act="pet-feed-pick"][data-item="의젓 허브"]'); pg.click('[data-act="pet-feed"]'); pg.wait_for_timeout(120)
+    ev(pg, "renderSide()"); pg.click('[data-act="pet-feed"]'); pg.wait_for_timeout(80)
+    check('pet_feed_opens_snack_choice_modal', '의젓 허브' in text(pg, '#modalBody') and pg.locator('[data-act="pet-feed-do"]').count() >= 1)
+    pg.click('[data-act="pet-feed-do"][data-item="의젓 허브"]'); pg.wait_for_timeout(120)
     check('pet_feed_ui_changes_personality_with_toast', ev(pg, "state.pets[0].pers")== '의젓' and ("성격" in text(pg, '#toast') or "칭호" in text(pg, '#toast')), text(pg, '#toast'))
     check('personality_persisted_in_save', ev(pg, "(()=>{save();return JSON.parse(localStorage.getItem('deeplayer-ui')).pets[0].pers})()")== '의젓')
     check('personality_seed_drop_defined', ev(pg, "PERS_SEED_DROP>0&&PERS_SEED_DROP<.05&&PERS_SEEDS.length===6&&PERS_SEEDS.every(n=>ITEMS[n]&&ITEMS[n].seed)"))
@@ -2132,15 +2155,16 @@ with sync_playwright() as p:
     check('peak_title_defined_and_granted', ev(pg, "(()=>{const t=TITLE_DEFS.find(x=>x[0]==='정점에 다다른');if(!t)return false;const l=state.character.level;state.character.level=MAX_LEVEL-1;const a=t[2]();state.character.level=MAX_LEVEL;const b=t[2]();state.character.level=l;return !a&&b&&TITLES.includes('정점에 다다른')})()"))
     check('peak_award_sets_announce_pending', ev(pg, "(()=>{const l=state.character.level;state.character.level=MAX_LEVEL;state.titles=state.titles.filter(x=>x!=='정점에 다다른');state.flags.annoMax='';awardTitles();state.character.level=l;return state.flags.annoMax==='pending'&&state.titles.includes('정점에 다다른')})()"))
     check('all_journals_give_footsteps_title', ev(pg, "(()=>{const bak=JSON.stringify(state.journals);const t=TITLE_DEFS.find(x=>x[0]==='걸음을 따라서');if(!t||!TITLES.includes('걸음을 따라서'))return false;state.journals={};const a=t[2]();const ids=Object.keys(QMARKS);ids.slice(0,-1).forEach(z=>state.journals[z]=1);const b=t[2]();state.journals[ids[ids.length-1]]=1;const c=t[2]();state.journals=JSON.parse(bak);return !a&&!b&&c&&ids.length===7})()"))
+    check('every_zone_has_special_gear_and_own_quests', ev(pg, """DANGER_ZONES.every(z=>{const sp=(SHOPS[z.id]&&SHOPS[z.id].special||[]).filter(r=>ITEMS[r[0]]&&ITEMS[r[0]].tab==='장비'&&ITEMS[r[0]].slot&&ITEMS[r[0]].desc.includes(z.id+' 캠프의 특산'));const qs=QUESTS.filter(q=>q.board===z.id);const kill=qs.filter(q=>q.need.type==='kill'&&z.terrains.some(t=>t.monsters.some(m=>m.name===q.need.monster)));const item=qs.filter(q=>q.need.type==='item'&&ITEMS[q.need.name]&&z.terrains.some(t=>t.gather.includes(q.need.name)||t.rare===q.need.name));return sp.length>=1&&kill.length>=1&&item.length>=1&&qs.every(q=>(q.reward.items||[]).every(r=>!!ITEMS[r[0]]))})"""))
     ev(pg, "(()=>{window.__pbak=JSON.stringify([state.pets,state.petActive]);state.pets=[];state.petActive=-1;const id=Object.keys(PET_SPECIES)[0];window.__pid=id;addPet(id);state.petActive=0})()")
     check('pet_has_level_fields', ev(pg, "(()=>{const p=state.pets[0];return p.lv===1&&p.pxp===0&&p.acc===''})()"))
     check('pet_fields_sanitized', ev(pg, "(()=>{const s=JSON.parse(JSON.stringify(state));s.pets[0].lv=99;s.pets[0].pxp=-5;s.pets[0].acc='가짜템';hardenState(s);const p=s.pets[0];return p.lv===PET_MAX_LV&&p.pxp===0&&p.acc===''})()"))
-    check('pet_no_exp_when_hungry', ev(pg, "(()=>{const p=state.pets[0];p.fedAt=0;petGain(100);return p.lv===1&&p.pxp===0})()"))
-    check('pet_gains_exp_and_levels_when_fed', ev(pg, "(()=>{const p=state.pets[0];p.fedAt=Date.now();petLevelUps.length=0;petGain(2*petXpMax(1)/PET_XP_SHARE);const ok=p.lv===2&&petLevelUps.length===1;petGain(1e9);return ok&&p.lv===PET_MAX_LV&&p.pxp===0})()"))
+    check('pet_no_exp_when_hungry', ev(pg, "(()=>{const p=state.pets[0];p.full=0;petGain(100);return p.lv===1&&p.pxp===0})()"))
+    check('pet_gains_exp_and_levels_when_fed', ev(pg, "(()=>{const p=state.pets[0];(p.full=100,p.fullAt=Date.now());petLevelUps.length=0;petGain(2*petXpMax(1)/PET_XP_SHARE);const ok=p.lv===2&&petLevelUps.length===1;petGain(1e9);return ok&&p.lv===PET_MAX_LV&&p.pxp===0})()"))
     check('pet_level_speed_small_increase', ev(pg, "(()=>{const p=state.pets[0];p.bond=100;p.acc='';p.lv=1;const a=petBuff(p);p.lv=PET_MAX_LV;const b=petBuff(p);p.lv=1;return b>a&&b/a<=1.3&&b<=.5})()"))
     check('pet_acc_items_and_recipes_valid', ev(pg, "Object.entries(PET_ACC).every(([n,a])=>ITEMS[n]&&ITEMS[n].petAcc&&ITEMS[n].tab==='장비'&&!ITEMS[n].slot&&itemTip(n).includes(a.text)&&dismantleYield(n)===null&&RECIPES.some(r=>r.out===n&&Object.keys(r.mats).every(m=>!!ITEMS[m]))&&(a.spd||a.pxp||a.bond||a.find))&&Object.keys(PET_ACC).length>=6"))
     check('pet_acc_equip_swap_unequip', ev(pg, "(()=>{const p=state.pets[0];addItem('석영 방울',1);addItem('사막 유리 목걸이',1);const e1=petEquip(0,'석영 방울');const ok1=!e1&&p.acc==='석영 방울'&&countItem('석영 방울')===0;const e2=petEquip(0,'사막 유리 목걸이');const ok2=!e2&&p.acc==='사막 유리 목걸이'&&countItem('석영 방울')===1;const e3=petEquip(0,'없는 템');const e4=petUnequip(0);return ok1&&ok2&&!!e3&&!e4&&p.acc===''&&countItem('사막 유리 목걸이')===1})()"))
-    check('pet_acc_effects', ev(pg, "(()=>{const p=state.pets[0];p.bond=100;p.lv=1;p.fedAt=Date.now();p.acc='';const a=petBuff(p);p.acc='석영 방울';const b=petBuff(p);p.acc='사막 유리 목걸이';p.pxp=0;petGainRaw(20);const g=p.pxp;p.acc='대추야자 장식';const f=petFx('find');p.acc='';return Math.abs(b-a-.02)<1e-9&&g===Math.round(20*1.3)&&f===.02&&petFx('find')===0})()"))
+    check('pet_acc_effects', ev(pg, "(()=>{const p=state.pets[0];p.bond=100;p.lv=1;(p.full=100,p.fullAt=Date.now());p.acc='';const a=petBuff(p);p.acc='석영 방울';const b=petBuff(p);p.acc='사막 유리 목걸이';p.pxp=0;petGainRaw(20);const g=p.pxp;p.acc='대추야자 장식';const f=petFx('find');p.acc='';return Math.abs(b-a-.02)<1e-9&&g===Math.round(20*1.3)&&f===.02&&petFx('find')===0})()"))
     pg.evaluate("state.leftTab='INVENTORY'"); ev(pg, "addItem('석영 방울',1);openPetAcc(0)"); pg.wait_for_timeout(80)
     check('pet_acc_modal_lists_and_equips', '석영 방울' in text(pg, '#modalBody') and pg.locator('[data-act="pet-acc-set"]').count() >= 1)
     pg.click('[data-act="pet-acc-set"]'); pg.wait_for_timeout(120)
@@ -2358,7 +2382,13 @@ with sync_playwright() as p:
     check('tile_tooltip_shows_actual_monster', ev(pg, "(()=>{const z=zoneOf('제4구역'),t=z.terrains.find(x=>x.name==='깊은 동굴');const seen=new Set();for(let x=0;x<40;x++){const s=tileMats(z,t,x,3,12345);const m=s.split('[출몰] ')[1];seen.add(m);if(!t.monsters.some(mm=>mm.name===m))return false}return seen.size===2})()"))
     check('mastery_titles_by_level', ev(pg, "masteryTitleOf('요리',4)===''&&masteryTitleOf('요리',5)==='초보 요리사'&&masteryTitleOf('낚시',30)===''&&masteryTitleOf('채굴',20)===''&&masteryTitleOf('목공',20)==='숙련 목수'&&masteryTitleOf('재봉',30)==='레전드 재봉사'&&masteryTitleOf('대장',25)==='숙련 대장장이'"))
     check('mastery_titles_are_titles', ev(pg, "['초보 요리사','숙련 요리사','레전드 요리사','레전드 대장장이'].every(n=>TITLES.includes(n))&&!TITLES.includes('초보 낚시꾼')&&!TITLES.includes('레전드 광부')"))
-    check('mastery_title_awarded_and_shown', ev(pg, "(()=>{const lvl=l=>{let x=0;for(let i=1;i<l;i++)x+=MASTERY_NEED(i);return x};state.mastery['요리']=lvl(5);const got=checkTitles();state.mastery['요리']=lvl(20);const got2=checkTitles();const html=masteryPageHtml();state.mastery['요리']=0;state.titles=state.titles.filter(t=>!/요리사$/.test(t));return got.includes('초보 요리사')&&got2.includes('숙련 요리사')&&html.includes('숙련 요리사')})()"))
+    check('mastery_title_awarded_and_shown', ev(pg, "(()=>{const lvl=l=>{let x=0;for(let i=1;i<l;i++)x+=MASTERY_NEED(i);return x};state.mastery['요리']=lvl(5);const got=checkTitles();state.mastery['요리']=lvl(20);const got2=checkTitles();const html=masteryPageHtml();state.mastery['요리']=0;state.titles=state.titles.filter(t=>!/요리사$/.test(t));return got.includes('초보 요리사')&&got2.includes('숙련 요리사')&&!html.includes('요리사')&&!html.includes('mast-title')&&!state.titles.includes('초보 요리사')})()"))
+    check('crafted_item_gets_maker_stamp_from_lv5', ev(pg, """(()=>{const lvl=l=>{let x=0;for(let i=1;i<l;i++)x+=MASTERY_NEED(i);return x};const bak=[JSON.stringify(state.mastery),JSON.stringify(state.madeBy),state.crafting];const rc=RECIPES.find(r=>(ITEMS[r.out].tags||[]).includes('요리'));const mk=()=>{state.crafting={out:rc.out,index:0,ready:true,qty:1,great:false};collectCraft()};state.madeBy={};state.mastery['요리']=lvl(4);mk();const a=state.madeBy[rc.out];state.mastery['요리']=lvl(5);mk();const b=state.madeBy[rc.out];const tip=itemTip(rc.out);state.mastery=JSON.parse(bak[0]);state.madeBy=JSON.parse(bak[1]);state.crafting=bak[2];return !a&&/^초보 요리사/.test(b)&&tip.includes('[제작] 초보 요리사')})()"""))
+    check('maker_stamp_follows_20_and_30_titles', ev(pg, """(()=>{const lvl=l=>{let x=0;for(let i=1;i<l;i++)x+=MASTERY_NEED(i);return x};const bak=[JSON.stringify(state.mastery),JSON.stringify(state.madeBy),state.crafting];const rc=RECIPES.find(r=>(ITEMS[r.out].tags||[]).includes('요리'));const mk=()=>{state.crafting={out:rc.out,index:0,ready:true,qty:1,great:false};collectCraft();return state.madeBy[rc.out]};state.madeBy={};state.mastery['요리']=lvl(20);const a=mk();state.mastery['요리']=lvl(30);const b=mk();const tip=itemTip(rc.out);state.mastery=JSON.parse(bak[0]);state.madeBy=JSON.parse(bak[1]);state.crafting=bak[2];return /^숙련 요리사/.test(a)&&/^레전드 요리사/.test(b)&&tip.includes('[제작] 레전드 요리사')})()"""))
+    check('mastery_title_overwritten_and_equipped_swapped', ev(pg, """(()=>{const lvl=l=>{let x=0;for(let i=1;i<l;i++)x+=MASTERY_NEED(i);return x};const bak=[JSON.stringify(state.mastery),JSON.stringify(state.titles),state.character.title];state.mastery['재봉']=lvl(5);checkTitles();const a=state.titles.includes('초보 재봉사');state.character.title='초보 재봉사';state.mastery['재봉']=lvl(20);checkTitles();const b=!state.titles.includes('초보 재봉사')&&state.titles.includes('숙련 재봉사')&&state.character.title==='숙련 재봉사';state.mastery['재봉']=lvl(30);checkTitles();const c=state.titles.includes('레전드 재봉사')&&!state.titles.includes('숙련 재봉사')&&state.character.title==='레전드 재봉사';const n=checkTitles().length;state.mastery=JSON.parse(bak[0]);state.titles=JSON.parse(bak[1]);state.character.title=bak[2];return a&&b&&c&&n===0})()"""))
+    check('legacy_items_removed_and_migrated', ev(pg, """(()=>{const names=['민물고기','바닷물고기','짐승 고기','짐승 가죽','두꺼운 가죽'];if(names.some(n=>ITEMS[n]))return false;const s=JSON.parse(JSON.stringify(state));s.inventory['재료']=[{n:'민물고기',q:2},{n:'짐승 가죽',q:1}];s.storage={'바닷물고기':5};const t=sanitize(merge(createDefaultState(),s));const inv=t.inventory['재료'];return inv.some(x=>x.n==='붕어'&&x.q===2)&&inv.some(x=>x.n===LEGACY_ITEMS['짐승 가죽'])&&t.storage['고등어']===5&&inv.every(x=>!!ITEMS[x.n]) })()"""))
+    check('pet_acc_effect_shown_not_material', ev(pg, "Object.keys(PET_ACC).every(n=>itemEffect(n).includes('펫 악세서리 효과')&&itemEffect(n)!=='제작 재료')") and pg.locator('#craftList .effect:has-text("제작 재료")').count() >= 0)
+    check('maker_stamp_sanitized', ev(pg, "(()=>{const s=JSON.parse(JSON.stringify(state));s.madeBy={'없는템':'x','건조 식량':'초보 요리사 가나'};hardenState(s);return Object.keys(s.madeBy).join()==='건조 식량'})()"))
     check('market_action_in_shop_street', ev(pg, "LOCATIONS['상점가'].groups[0].items.includes('대원 간 상점')&&ACTIONS['대원 간 상점'].kind==='market'"))
     # ---- 개인실 창고 ----
     ev(pg, "(()=>{state.location='개인실';state.storage={};addItem('감자',30);addItem('구리 반지',1);renderAction()})()")
@@ -2411,6 +2441,115 @@ with sync_playwright() as p:
     check('rank_a_bag_and_title', ev(pg, "ITEMS['선봉 배낭'].capacity")== 60 and ev(pg, "TITLES.includes('에이스 대원')") and ev(pg, "(()=>{const t=TITLE_DEFS.find(x=>x[0]==='에이스 대원');const r=state.character.rank;state.character.rank='A';const a=t[2]();state.character.rank='B';const b=t[2]();state.character.rank=r;return a&&!b})()"))
     check('promo_difficulty_scales_with_a_hardest', ev(pg, "(()=>{const t=['e','d','c','b','a'].map(k=>{const ps=QUESTS.find(q=>q.id==='promo_'+k).need.parts;return{k:ps.filter(p=>p.type==='kill').reduce((a,p)=>a+p.qty,0),r:ps.find(p=>p.type==='recipe').qty,i:ps.filter(p=>p.type==='item').reduce((a,p)=>a+p.qty,0)}});return t.every((x,i)=>i===0||(x.k>t[i-1].k&&x.r>t[i-1].r&&x.i>t[i-1].i))&&t[4].k>=40&&t[4].r>=50&&t[4].r<=RECIPES.length-STARTER_RECIPES.length})()"))
     check('next_promo_after_b_is_a', ev(pg, "(()=>{const r=state.character.rank;state.character.rank='B';const q=nextPromo();state.character.rank='A';const e=nextPromo();state.character.rank=r;return q&&q.promo==='A'&&e===null})()"))
+
+    # ---------- 2026-10-24 (3): 내 프로필 보기 · HP 10/클론 · UI 기본값 · ROOM 구경 · 디버프 · 칭호 슬라이드 · 낚시터 · 분실물 · 펫 간식 · 서브잡 숙련 · 사마리아인 · 마지막 저널 · 대원 구조 ----------
+    ev(pg, "closeModal()")
+    check('foe_debuffs_by_enemy', ev(pg, "foeDebuff('용암 두꺼비')==='화상'&&foeDebuff('서리 정령')==='동상'&&foeDebuff('동굴 거미')==='중독'&&foeDebuff('숲 늑대')==='출혈'&&foeDebuff('경비 드론')==='감전'&&foeDebuff('난파선 망령')==='혼란'&&foeDebuff('바위 도마뱀')==='부상'&&foeDebuff('처음 보는 화염 괴수')==='화상'"))
+    check('every_monster_debuff_exists', ev(pg, "mockMonsters().every(m=>BUFFS[foeDebuff(m.name)]&&BUFFS[foeDebuff(m.name)].type==='debuff')") and ev(pg, "new Set(mockMonsters().map(m=>foeDebuff(m.name))).size") >= 6)
+    r = ev(pg, """(()=>{const o=simulateBattle;simulateBattle=()=>({mhp0:10,win:false,rounds:1,lost:2,rs:[{dealt:0,hurt:2,mhp:10}]});
+      const id=Object.keys(ACTIONS).find(k=>ACTIONS[k].kind==='battle'&&monsterBase(ACTIONS[k]).name==='용암 두꺼비');
+      const hp=state.vitals.hp;state.vitals.hp=60;const a=resolveAction(id,1,2,{seed:7,cycles:1,hp0:60,d:0});state.vitals.hp=8;const b=resolveAction(id,1,2,{seed:7,cycles:1,hp0:8,d:0,risk:true});state.vitals.hp=hp;simulateBattle=o;
+      return [a.buff,!!a.death,b.buff,!!b.death,b.deathWhy]})()""")
+    check('battle_loss_gives_enemy_debuff_and_risk_loss_kills', r == ['화상', False, '화상', True, 'battle'], r)
+    r = ev(pg, """(()=>{const id=Object.keys(ACTIONS).find(k=>ACTIONS[k].kind==='battle');state.active=null;state.vitals.hp=8;state.money=100;state.deaths=0;state.pending={id,result:{text:'x',items:[],exp:0,money:0,hp:-2,sp:0,spCost:0,buff:'화상',death:true,deathWhy:'battle'}};const c=claimResult();return [!!c.died,state.location,state.vitals.hp===REBIRTH_HP,state.deaths]})()""")
+    check('risk_battle_death_rebirths_as_clone', r == [True, '본부', True, 1], r)
+    ev(pg, "(()=>{state.buffs=[];state.vitals.hp=state.vitals.hpMax;renderBars();renderBuffs(true)})()")
+    # 1·4: 내 프로필 보기 (채팅의 내 사진) — 편집 화면은 왼쪽 위 사진만
+    ev(pg, "viewUser(state.character.name)"); pg.wait_for_timeout(80)
+    check('self_view_uses_user_card', pg.locator('#modalBody .user-card').count() == 1 and pg.locator('#modalBody [data-act="profile-edit"]').count() == 0 and pg.locator('#cName').count() == 0 and '나' in text(pg, '#modalBody .user-grid'))
+    check('self_view_no_social_buttons', pg.locator('#modalActions [data-act="friend-req"], #modalActions [data-act="ftrade-open"], #modalActions [data-act="party-invite"]').count() == 0)
+    check('room_button_text_and_same_line', text(pg, '#modalBody [data-act="room-self"]').strip().endswith('ROOM 구경') and ev(pg, """(()=>{const h=document.querySelector('#modalBody .equip-head'),s=h.querySelector('span').getBoundingClientRect(),b=h.querySelector('.rm-peek').getBoundingClientRect();return Math.abs((s.top+s.bottom)/2-(b.top+b.bottom)/2)<4&&parseFloat(getComputedStyle(h).marginBottom)>=5})()"""))
+    pg.click('#modalBody [data-act="room-self"]'); pg.wait_for_timeout(120)
+    check('self_room_peek_is_view_only', ev(pg, "!!view.room&&view.room.viewOnly===true&&view.room.name===state.character.name"))
+    ev(pg, "closeModal()"); pg.click('#avatarButton'); pg.wait_for_timeout(80)
+    check('top_left_avatar_still_opens_editor', pg.locator('#modalBody [data-act="profile-edit"]').count() == 1 and pg.locator('#cName').count() == 1)
+    # 6: 칭호 슬라이드
+    ev(pg, "(()=>{view.titleBak=state.titles.slice();state.titles=[state.titles[0]];openProfile()})()"); pg.wait_for_timeout(60)
+    check('few_titles_no_arrows', pg.locator('.title-strip .ts-arrow:not(.hidden)').count() == 0)
+    ev(pg, "(()=>{state.titles=TITLE_DEFS.map(t=>t[0]);openProfile()})()"); pg.wait_for_timeout(80)
+    check('titles_one_line', ev(pg, "(()=>{const cs=[...document.querySelectorAll('#titleChips .tchip')];return cs.length>3&&new Set(cs.map(c=>Math.round(c.getBoundingClientRect().top))).size===1})()"))
+    check('many_titles_show_arrows', pg.locator('.title-strip .ts-arrow:not(.hidden)').count() == 2 and ev(pg, "document.querySelector('#titleChips').scrollWidth>document.querySelector('#titleChips').clientWidth"))
+    x0 = ev(pg, "document.querySelector('#titleChips').scrollLeft"); pg.click('.ts-arrow[data-d="1"]'); pg.wait_for_timeout(500)
+    check('title_arrow_scrolls', ev(pg, "document.querySelector('#titleChips').scrollLeft") > x0)
+    bb = pg.locator('#titleChips').bounding_box(); pg.mouse.move(bb['x'] + bb['width'] - 20, bb['y'] + 10); pg.mouse.down(); pg.mouse.move(bb['x'] + 30, bb['y'] + 10, steps=6); pg.mouse.up(); pg.wait_for_timeout(100)
+    check('title_drag_swipes', ev(pg, "document.querySelector('#titleChips').scrollLeft") > x0 + 50)
+    pg.mouse.wheel(0, 0)
+    ev(pg, "(()=>{state.titles=view.titleBak;closeModal()})()")
+    # 3: UI 기본값
+    ev(pg, "(()=>{state.layout={left:420,right:400,statusH:300,mapH:500};state.collapsed={map:true};state.settings.fontSize='xl';state.settings.cursor=false;state.zoom=2;applyLayout();applyTheme()})()")
+    pg.click('#settingsBtn'); pg.wait_for_timeout(60)
+    check('settings_has_ui_reset', pg.locator('#modalBody [data-act="ui-reset"]').count() == 1)
+    pg.click('#modalBody [data-act="ui-reset"]'); pg.wait_for_timeout(60); pg.click('[data-act="ui-reset-do"]'); pg.wait_for_timeout(80)
+    check('ui_reset_restores_layout_font_cursor', ev(pg, "state.layout.left===292&&state.layout.right===315&&state.layout.statusH===0&&state.layout.mapH===0&&!Object.keys(state.collapsed).length&&state.settings.fontSize==='m'&&state.settings.cursor===true&&state.zoom===1&&getComputedStyle(document.documentElement).getPropertyValue('--left').trim()==='292px'"))
+    check('ui_reset_keeps_theme_and_sound', ev(pg, "typeof state.settings.theme==='string'&&typeof state.settings.bgmOn==='boolean'"))
+    ev(pg, "closeModal()")
+    # 7: 바위 낚시터 오징어 중복
+    r = ev(pg, """(()=>{const z=zoneOf('제2구역'),bak=z.map;z.map=window.__M[1];const sp=FISH_SPOTS['제2구역'];let dup=0;for(let sd=1;sd<80;sd++){const t=z.terrains[terrainIndex(tileOf(z,sp.x,sp.y))];const m=tileMats(z,t,sp.x,sp.y,sd).split('[채집] ')[1].split(' [')[0].split(' · ');if(new Set(m).size!==m.length)dup++}
+      const d0=state.dungeon;let dupC=0;for(let sd=1;sd<80;sd++){state.dungeon={zone:'제2구역',x:sp.x,y:sp.y,seed:sd,seen:{},done:[],rs:{}};const it=currentGroups()[0].items.map(id=>ACTIONS[id].label);if(new Set(it).size!==it.length)dupC++}state.dungeon=d0;z.map=bak;return [dup,dupC]})()""")
+    check('fish_spot_no_duplicate_squid', r == [0, 0], r)
+    # 8·11: 분실물 안내 · 착한 사마리아인
+    check('lost_item_desc_hints_camp', all('캠프' in ev(pg, f"ITEMS['{n}'].desc") for n in ['빛바랜 인식표', '모래에 닳은 고글']))
+    r = ev(pg, """(()=>{const z=zoneOf('제1구역');let cx=0,cy=0;z.map.forEach((row,y)=>{const x=row.indexOf('C');if(x>=0){cx=x;cy=y}});const d0=state.dungeon,l0=state.location;state.dungeon={zone:'제1구역',x:cx,y:cy,seed:1,seen:{},done:[],rs:{}};state.location='제1구역';state.lostCount=17;addItem('빛바랜 인식표',3);const r=turnInLost();awardTitles();const ok=[state.lostCount,state.titles.includes('착한 사마리아인')];state.dungeon=d0;state.location=l0;return ok.concat(typeof r)})()""")
+    check('lost_count_and_samaritan_title', r == [20, True, 'object'], r)
+    check('samaritan_not_before_20', ev(pg, "(()=>{const c=state.lostCount;state.lostCount=19;const ok=!TITLE_DEFS.find(t=>t[0]==='착한 사마리아인')[2]();state.lostCount=c;return ok})()"))
+    check('old_save_gets_lost_count', ev(pg, "(()=>{const s=JSON.parse(JSON.stringify(state));delete s.lostCount;delete s.rescueAt;hardenState(s);return s.lostCount===0&&typeof s.rescueAt==='object'})()"))
+    # 10: 서브잡 납품 → 숙련
+    r = ev(pg, """(()=>{const bak={sj:state.subjob,loc:state.location,m:JSON.stringify(state.mastery),d:state.dungeon};state.dungeon=null;state.location='상점가';joinSubjob('요리사',['요리']);state.subjob.lastAt=0;const need=jobNeed(state.subjob.level);addItem('구운 감자',need);const m0=state.mastery['요리']|0;const r=deliverJob();const got=(state.mastery['요리']|0)-m0;
+      joinSubjob('어부',['낚시']);state.subjob.lastAt=0;addItem('붕어',jobNeed(1));const f0=state.mastery['낚시']|0;const r2=deliverJob();const got2=(state.mastery['낚시']|0)-f0;
+      state.subjob=bak.sj;state.location=bak.loc;state.mastery=JSON.parse(bak.m);state.dungeon=bak.d;return [typeof r,got===need*MASTERY_GAIN.job,typeof r2,got2]})()""")
+    check('subjob_delivery_gives_mastery_except_gathering', r == ['object', True, 'object', 0], r)
+    # 12: 마지막 저널
+    r = ev(pg, """(()=>{const bak=JSON.stringify(state.journals);const ids=Object.keys(QMARKS);state.journals={};ids.slice(1).forEach(k=>state.journals[k]=1);const a=codexEntries('저널');ids.forEach(k=>state.journals[k]=1);const b=codexEntries('저널');codexView.tab='저널';codexView.jIdx=b.length-1;const h=journalHtml();state.journals=JSON.parse(bak);
+      return [a.length===ids.length&&!a.some(e=>e.last),b.length===ids.length+1&&b[b.length-1].last===true,h.includes('보고싶어, 리코.')&&h.includes('j-last')]})()""")
+    check('last_journal_only_after_all', r == [True, True, True], r)
+    check('last_journal_title_and_plain_tail', ev(pg, "LAST_JOURNAL.name") == '저널의 마지막 페이지' and ev(pg, "(()=>{const bak=JSON.stringify(state.journals);Object.keys(QMARKS).forEach(k=>state.journals[k]=1);codexView.tab='저널';codexView.jIdx=codexEntries('저널').length-1;openSystem('도감');const t=document.querySelector('.post-detail .j-last'),b=document.querySelector('.post-detail p');const ok=!!t&&getComputedStyle(t).fontFamily===getComputedStyle(b).fontFamily&&getComputedStyle(t).fontSize===getComputedStyle(b).fontSize&&parseFloat(getComputedStyle(t).marginTop)>200&&document.querySelector('.post-item.last').textContent==='저널의 마지막 페이지';closeModal();state.journals=JSON.parse(bak);return ok})()"))
+    check('last_journal_length_about_600', 500 <= ev(pg, "LAST_JOURNAL.text.replace(/\\n/g,'').length") <= 700 and '리코' not in ev(pg, "LAST_JOURNAL.text"))
+    check('last_journal_counts_future_zones', ev(pg, "(()=>{const bak=JSON.stringify(state.journals);Object.keys(QMARKS).forEach(k=>state.journals[k]=1);QMARKS['제99구역']={name:'x',journal:'y'};const a=allJournals();delete QMARKS['제99구역'];state.journals=JSON.parse(bak);return a===false})()"))
+    check('last_journal_not_in_patch_notes', all('마지막 장' not in p[1] and '저널의 마지막 페이지' not in p[1] and '리코' not in p[1].split('전광판')[0] for p in ev(pg, "POSTS['공지']")))
+    # 13: 대원 구조
+    r = ev(pg, """(()=>{const z=zoneOf('제1구역');state.rescueAt={};state.active=null;state.pending=null;let hit=null;
+      for(let sd=1;sd<400&&!hit;sd++)for(let y=0;y<z.map.length&&!hit;y++)for(let x=0;x<z.map[y].length&&!hit;x++){if(terrainIndex(tileOf(z,x,y))<0)continue;if(rescueShown(z,x,y,sd))hit=[x,y,sd]}
+      if(!hit)return 'none';state.location='제1구역';state.dungeon={zone:'제1구역',x:hit[0],y:hit[1],seed:hit[2],seen:{},done:[],rs:{}};
+      const inGroup=currentGroups()[0].items.includes('제1구역 대원 구조');state.vitals.sp=50;const err=startAction('제1구역 대원 구조');const p=state.pending;
+      return [inGroup,err,!!(p&&p.result.rescue&&Array.isArray(p.result.rescue.log)&&p.result.rescue.log.length>0),rescueShown(z,hit[0],hit[1],hit[2]),state.vitals.sp]})()""")
+    check('rescue_appears_and_runs_once', r == [True, None, True, False, 47], r)
+    check('rescue_preview_lists_reward_and_hp_risk', ev(pg, "(()=>{const p=state.pending;state.pending=null;const v=actionPreview('제1구역 대원 구조');state.pending=p;return /희귀 재료|CR/.test(v.gain)&&v.cost.includes('HP -1~14')})()"))
+    ev(pg, "openRescueFight()"); pg.wait_for_timeout(60)
+    check('rescue_fight_window_holds_result', pg.locator('#rescueLog').count() == 1 and ev(pg, "(()=>{tick();return !!state.pending})()"))
+    pg.click('[data-act="rescue-skip"]'); pg.wait_for_timeout(60)
+    check('rescue_skip_shows_outcome', pg.locator('[data-act="rescue-done"]:not(.hidden)').count() == 1 and pg.locator('#rescueLog .bl').count() >= 2)
+    pg.click('[data-act="rescue-done"]'); pg.wait_for_timeout(80)
+    check('rescue_done_claims', ev(pg, "!state.pending") and pg.locator('#overlay.open').count() == 0)
+    check('rescue_hp_loss_scales_1_to_14', ev(pg, "(()=>{let lo=0,hi=0,mn=99,mx=0;for(let i=0;i<300;i++){const a=rescueHpLoss(0),b=rescueHpLoss(1);lo+=a;hi+=b;mn=Math.min(mn,a,b);mx=Math.max(mx,a,b)}return mn>=1&&mx<=14&&hi/300>lo/300+8})()"))
+    r = ev(pg, """(()=>{const z=zoneOf('제1구역'),o=mockRound;mockRound=(m,st)=>{st.hp-=1000;return {text:'x',kind:'hurt',taken:1000,dealt:0}};state.rescueAt={};let hit=null;
+      for(let sd=500;sd<900&&!hit;sd++)for(let y=0;y<z.map.length&&!hit;y++)for(let x=0;x<z.map[y].length&&!hit;x++){if(terrainIndex(tileOf(z,x,y))>=0&&rescueShown(z,x,y,sd))hit=[x,y,sd]}
+      state.dungeon={zone:'제1구역',x:hit[0],y:hit[1],seed:hit[2],seen:{},done:[],rs:{}};state.vitals.hp=1;state.vitals.sp=50;startAction('제1구역 대원 구조');mockRound=o;const r=state.pending.result;const c=claimResult();return [r.rescue.win,!!c.died,state.vitals.hp>=1,state.location]})()""")
+    check('rescue_loss_never_kills', r == [False, False, True, '제1구역'], r)
+    check('rescue_zone_cooldown', ev(pg, "(()=>{const z=zoneOf('제1구역');for(let sd=1;sd<300;sd++)for(let y=0;y<z.map.length;y++)for(let x=0;x<z.map[y].length;x++)if(terrainIndex(tileOf(z,x,y))>=0&&rescueShown(z,x,y,sd))return false;return true})()"))
+    ev(pg, "(()=>{state.rescueAt={};state.dungeon=null;state.location='본부';state.vitals.hp=state.vitals.hpMax;renderBars();renderMap();renderAction()})()")
+    check('patch_notes_mention_rescue_not_hidden_stuff', (lambda t: '대원 구하기' in t and '사마리아인' not in t and '분실물' not in t)(ev(pg, "POSTS['공지'][0][1]")))
+
+    # ---------- 2026-10-24 (4): 펫 허기 · 이모티콘 · 스탯 칭호 · 배달의 민족 ----------
+    r = ev(pg, """(()=>{const id=Object.keys(PET_SPECIES)[0],bak=state.pets,loc=state.location,pa=state.petActive;state.location='개인실';state.pets=[{id,lv:1,pxp:0,acc:'',bond:100,fedAt:0,full:0,fullAt:Date.now(),decayAt:Date.now(),exp:null,pers:PET_PERS_LIST[0]}];state.petActive=-1;
+      const p=state.pets[0],out=[];removeItem('감자',countItem('감자'));addItem('감자',3);out.push(petFed(p));feedPet(0,'감자');out.push(Math.round(petFull(p)));feedPet(0,'감자');out.push(Math.round(petFull(p)));const e=feedPet(0,'감자');out.push(e,countItem('감자'),Math.round(petFull(p)));
+      p.full=0;p.fullAt=Date.now()-1;p.decayAt=0;const t=Date.now;Date.now=()=>t()+13*3600*1000;petHungerTick();out.push(p.bond);Date.now=t;
+      p.full=100;p.fullAt=Date.now()-12*3600*1000;out.push(Math.round(petFull(p)));
+      state.pets=bak;state.location=loc;state.petActive=pa;return out})()""")
+    check('pet_hunger_fill_full_and_decay', r == [False, 60, 100, None, 0, 100, 96, 50], r)
+    check('two_snacks_a_day_keep_pet_fed', ev(pg, "(()=>{const g=feedFull('감자');return g*2>=PET_FULL_MAX&&g>=PET_FULL_MAX*12*3600*1000/PET_FULL_DRAIN_MS})()"))
+    check('old_pet_fedat_converts_to_fullness', ev(pg, """(()=>{const h=JSON.parse(JSON.stringify(state));h.pets=[{id:Object.keys(PET_SPECIES)[0],bond:30,fedAt:Date.now()-12*3600*1000,exp:null}];hardenState(h);const p=h.pets[0];return Math.abs(p.full-50)<=1&&Number.isFinite(p.fullAt)&&Number.isFinite(p.decayAt)})()"""))
+    check('pet_on_expedition_does_not_starve', ev(pg, """(()=>{const id=Object.keys(PET_SPECIES)[0],bak=state.pets;state.pets=[{id,bond:80,full:0,fullAt:0,decayAt:0,exp:{zone:'제1구역',at:Date.now(),ms:PET_EXP_MS}}];petHungerTick();const b=state.pets[0].bond;state.pets=bak;return b===80})()"""))
+    check('stickers_v2', ev(pg, "STICKERS.map(s=>s[0]).join()") == '인사,확인,감사,웃음,응원,슬픔,신남,당황,걱정,잘 자' and ev(pg, "STICKERS_OLD.length") == 2)
+    check('old_sticker_still_renders', ev(pg, "(()=>{const bak=state.chats['월드'].slice();state.chats['월드'].push(['누군가','[주의]',Date.now()]);state.chatTab='월드';renderChat();const ok=document.querySelectorAll('#chatFeed .sticker-msg').length>0&&[...document.querySelectorAll('#chatFeed .sticker-msg')].some(e=>e.title==='주의');state.chats['월드']=bak;renderChat();return ok})()"))
+    r = ev(pg, """(()=>{const bs=JSON.stringify(state.stats),bt=state.titles.slice(),bp=JSON.stringify(state.statPeak||{});state.titles=state.titles.filter(t=>!Object.values(STAT_PEAK_TITLES).includes(t));state.statPeak={};
+      state.buffs=[];state.stats.str=0;const off=totalStats().str;state.stats.str=Math.max(0,38-off);checkTitles();const a=state.titles.includes('강함의 증표')||totalStats().str!==38;addBuff('여가 · '+Object.keys(LEISURE).find(k=>LEISURE[k].stat==='str'));checkTitles();const b=state.titles.includes('강함의 증표')&&totalStats().str===40;
+      state.stats.str=1;state.buffs=[];checkTitles();const c=state.titles.includes('강함의 증표')&&(state.statPeak.str|0)>=40;
+      state.stats=JSON.parse(bs);state.titles=bt;state.statPeak=JSON.parse(bp);return [a,b,c,Object.values(STAT_PEAK_TITLES).every(n=>TITLE_DEFS.some(t=>t[0]===n))]})()""")
+    check('stat_peak_titles_with_buffs_and_kept', r == [False, True, True, True], r)
+    r = ev(pg, """(()=>{const bt=state.titles.slice(),bf=state.friends.slice(),bm=state.mailItemSent;state.titles=state.titles.filter(t=>t!=='배달의 민족');state.friends=['배달테스트'];state.mailItemSent=18;addItem(MAIL_SHIP_ITEM,3);addItem('감자',3);
+      sendMail('배달테스트','a','',[]);const a=state.mailItemSent;sendMail('배달테스트','b','',[['감자',1]]);checkTitles();const b=state.titles.includes('배달의 민족');sendMail('배달테스트','c','',[['감자',1]]);checkTitles();const c=state.titles.includes('배달의 민족');
+      state.titles=bt;state.friends=bf;state.mailItemSent=bm;return [a,b,c]})()""")
+    check('delivery_title_counts_item_mails_only', r == [18, False, True], r)
     check('no_js_errors', not errs, errs)
     b.close()
 
