@@ -245,3 +245,9 @@ STUB_ICONS=1 python3 tests/smoke.py   # 아이콘 폰트를 못 받는 환경(�
 - 임무 보상 아이템이 가방에 다 안 들어가면(`questOverflow(q, drop)`; 납품으로 비는 칸 반영, 상태는 안 바꿈) `quest-done`이 바로 완수하지 않고 `openQuestFull`(가방이 가득 찼어요) 창을 띄운다. 소지품 칸(스택)을 고르면 확인창 후 `discardStack`으로 통째로 버리고, 못 담는 보상은 `qfull-drop`(확인창)으로 포기(`view.qfull.drop`)한다. 자리가 생기거나 포기하면 `questFinish(q, drop)` → `completeQuest(id, drop)`. 이 임무의 납품·필요 아이템은 버릴 목록에서 빠진다. 테스트 `python3 tests/qfull_test.py`.
 - ROOM 버튼 순서: 이미지 출력, 룸 편집(오른쪽).
 - 색상변경은 네이티브 색 입력 대신 편집기 아래에 뜨는 고르개(`#rmPick`, 팔레트+색조/채도/밝기).
+
+## 2026-10-24 파티 동행
+- 파티원이 상황 탭 '파티' 칸의 `동행 모드`(`follow-toggle`, `state.follow`)를 켜면 파티장이 움직일 때 자동으로 따라간다(파티장은 스위치 없음, 파티가 없어지거나 내가 파티장이 되면 `partySync`가 끈다). 각자 정상 기력·시간이 든다.
+- 파티장은 위치가 바뀔 때만 `partyPlacePush`→`Cloud.setPlace`(RPC `set_place`, `presence.place`)로 올리고, `party_info` 멤버에 `place`가 실려 온다(`friends.sql` 전체 재실행). 위치 문자열: 공중=장소 이름, 지상=`구역:x,y`(`placeNow`). 받은 값은 `parsePlace`가 다시 검증(모르는 구역·벽·글자 거부).
+- 따라가기 `followStep(raw)`(core, DOM 없음): 한 번에 한 걸음 — 공중 이동(`travelTo`), 이동장치→`startTrip`(1분), 같은 구역 칸 이동(`startMove`), 미궁 안에서 파티장이 다른 곳이면 입구로 걸어가 `leaveDungeon`. 개인실은 따라가지 않는다. 행동 진행 중/결과 대기/확인창이 열려 있으면 기다리고, 기력 부족 등 오류는 한 번만 알리고 30초 쉰다(`followTick`, ui.js, 매 틱). 켜 있는 동안 파티 확인은 5초마다.
+- 테스트: cloud_test.py의 `follow_*`/`leader_*` 항목.

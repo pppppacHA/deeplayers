@@ -105,6 +105,7 @@ function hardenState(s) {
   if (!['light', 'dark'].includes(s.settings.customBase)) s.settings.customBase = 'light';
   s.settings.guildAlert = s.settings.guildAlert !== false;
   { const ct = s.settings.chatTabs && typeof s.settings.chatTabs === 'object' ? s.settings.chatTabs : {}; const o = Object.fromEntries(CHAT_TABS.map(k => [k, ct[k] !== false])); s.settings.chatTabs = CHAT_TABS.some(k => o[k]) ? o : Object.fromEntries(CHAT_TABS.map(k => [k, true])); }
+  s.follow = s.follow === true;
   if (s.side === '주위 대원') s.side = '상황'; // 탭 이름이 바뀌었다
   if (!['임무', '서브잡', '펫', '상황'].includes(s.side)) s.side = '임무';
   { const m = {}; TAG_NAMES.forEach(t => { const v = s.mastery && s.mastery[t]; if (Number.isFinite(v) && v > 0) m[t] = Math.min(MASTERY_TOTAL, Math.floor(v)); }); s.mastery = m; }
@@ -785,6 +786,30 @@ const monsterOf = (a, d) => scaleMonster(monsterBase(a), d === undefined ? curDi
 const leisureTaken = () => state.leisure.day === todayIndex() && !!state.leisure.id; // 오늘 이미 버프를 받았나
 /* 파티 정보(서버에서 받아 온다, 저장하지 않음): members = [{ uid, name, leader }] (나 포함) */
 const PARTY = { id: 0, members: [], invites: [] };
+/* ---------- 파티 동행: 파티장의 위치(서버 문자열)를 따라 한 걸음씩 이동한다 ---------- */
+const placeNow = () => state.dungeon ? `${state.dungeon.zone}:${state.dungeon.x},${state.dungeon.y}` : String(state.location || '');
+function parsePlace(raw) { // 서버에서 받은 위치를 믿지 않고 다시 확인한다. { air } / { zone, x, y } / null
+  if (typeof raw !== 'string' || !raw || raw.length > 40) return null;
+  const m = /^(.+):(\d{1,3}),(\d{1,3})$/.exec(raw);
+  if (m) { const z = DANGER_ZONES.find(d => d.id === m[1]); if (!z) return null; const ch = tileOf(zoneOf(z.id), +m[2], +m[3]); if (!ch || ch === '#' || ch === '.') return null; return { zone: z.id, x: +m[2], y: +m[3] }; }
+  const l = LOCATIONS[raw]; return l && !l.danger ? { air: raw } : null;
+}
+function followStep(raw) { // 파티장 위치(raw)에 한 걸음 다가간다. { moved, what } / { err } / { wait } / {}
+  if (!state.created) return {};
+  const t = parsePlace(raw); if (!t || t.air === '개인실') return {};
+  const d = state.dungeon;
+  if (d && !(t.zone && d.zone === t.zone)) { // 다른 곳으로 가려면 먼저 입구로 돌아가 퇴장한다
+    const z = zoneOf(d.zone); let sx = 0, sy = 0; z.map.forEach((row, ry) => { const cx = row.indexOf('S'); if (cx >= 0) { sx = cx; sy = ry; } });
+    if (state.active || state.pending) return { wait: true };
+    if (d.x === sx && d.y === sy) { leaveDungeon(); return { moved: true, what: 'leave' }; }
+    const e = startMove(sx, sy); return e ? { err: e } : { moved: true, what: 'move' };
+  }
+  if (state.active || state.pending) return { wait: true };
+  if (d) { if (d.x === t.x && d.y === t.y) return {}; const e = startMove(t.x, t.y); return e ? { err: e } : { moved: true, what: 'move' }; }
+  if (t.air) { if (state.location === t.air) return {}; const r = travelTo(t.air); return r.err ? { err: r.err } : { moved: true, what: 'travel' }; }
+  if (state.location !== '이동장치') { const r = travelTo('이동장치'); return r.err ? { err: r.err } : { moved: true, what: 'travel' }; }
+  const e = startTrip(t.zone); return e ? { err: e } : { moved: true, what: 'trip' };
+}
 const partyOthers = () => PARTY.members.map(m => m.name).filter(n => n && n !== state.character.name);
 function leisureText(id, rnd = Math.random) {
   const l = LEISURE[id], others = partyOthers().sort(() => rnd() - .5).slice(0, 3);

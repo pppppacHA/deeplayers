@@ -86,6 +86,7 @@ const Cloud = (() => {
     async guildCancel(id) { await call('/rest/v1/rpc/guild_cancel', { p_id: id }, await token()); },
     async guildRename(name) { return await call('/rest/v1/rpc/guild_rename', { p_name: name }, await token()); },
     async guildLeave() { await call('/rest/v1/rpc/guild_leave', {}, await token()); },
+    async setPlace(p) { return await call('/rest/v1/rpc/set_place', { p_place: String(p || '').slice(0, 40) }, await token()); },
     async partyInfo() { return await call('/rest/v1/rpc/party_info', {}, await token()); },
     async partyInvite(uid) { return await call('/rest/v1/rpc/party_invite', { p_to: uid }, await token()); },
     async partyAnswer(id, accept) { return await call('/rest/v1/rpc/party_answer', { p_id: id, p_accept: !!accept }, await token()); },

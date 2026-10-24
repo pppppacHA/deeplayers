@@ -504,6 +504,7 @@ function tick() {
   renderBuffs(); // 펫의 든든함이 끝나면 버프 아이콘도 사라진다
   if (resetBoardQuests()) { renderSide(); toast('완수한 임무가 오전 4시를 지나 다시 받을 수 있게 되었습니다.'); }
   farmRefresh(); petSideRefresh();
+  followTick(); partyPlacePush();
   awardTitles();
   newUnlocks().forEach(t => { addLog(t); toast(t); sfx('levelup'); notifyDone(t); });
   state.pets.forEach(p => { const k = p.id + (p.exp ? p.exp.at : 0); if (expReady(p) && !view.petBack[k]) { view.petBack[k] = true; toast(`${petName(p)}이(가) ${p.exp.zone} 탐험에서 돌아왔어요. 개인실에서 수확물을 받으세요.`); sfx('done'); } });
@@ -598,7 +599,7 @@ function renderSituation() { // '상황' 탭: 접을 수 있는 두 칸 — 주�
   const pn = new Set(pm.map(m => m.name)), np = (view.nearby || []).filter(p => !pn.has(p.name));
   const nearSrv = np.map(p => `<div class="nearby-row"><div class="round-avatar" data-user="${esc(p.name)}">${avatarOf(p.name)}</div><div class="grow"><strong data-user="${esc(p.name)}">${esc(p.name)}</strong><small>같은 칸 · 접속 중</small></div><button data-act="ftrade-open" data-name="${esc(p.name)}">교환</button></div>`).join('');
   const nearAll = NEARBY_PLAYERS.length + pm.length + np.length;
-  const partyBody = partyOn() ? (PARTY.id ? `<div class="party-list">${PARTY.members.map(m => `<div class="party-row"><span>${icon(m.leader ? 'workspace_premium' : 'person')}</span><b data-user="${esc(m.name)}">${esc(m.name)}</b>${m.leader ? '<em class="tag">파티장</em>' : ''}${partyLeader() && m.uid !== Cloud.userUid ? `<button data-act="party-kick" data-uid="${esc(m.uid)}" data-name="${esc(m.name)}" title="파티에서 내보냅니다">내보내기</button>` : ''}</div>`).join('')}</div><div class="party-foot"><small>${PARTY.members.length}/4명 · 파티원은 항상 주위 대원이에요</small><button data-act="party-leave">나가기</button></div>` : '<div class="empty">파티가 없습니다. 친구 창이나 대원 프로필에서 초대해 보세요. (2~4명)</div>')
+  const partyBody = partyOn() ? (PARTY.id ? `<div class="party-list">${PARTY.members.map(m => `<div class="party-row"><span>${icon(m.leader ? 'workspace_premium' : 'person')}</span><b data-user="${esc(m.name)}">${esc(m.name)}</b>${m.leader ? '<em class="tag">파티장</em>' : ''}${partyLeader() && m.uid !== Cloud.userUid ? `<button data-act="party-kick" data-uid="${esc(m.uid)}" data-name="${esc(m.name)}" title="파티에서 내보냅니다">내보내기</button>` : ''}</div>`).join('')}</div>${partyLeader() ? '' : `<div class="party-follow"><button class="${state.follow ? 'primary' : ''}" data-act="follow-toggle" aria-pressed="${state.follow}">${icon('directions_walk')} 동행 모드 ${state.follow ? '켜짐' : '꺼짐'}</button><small>${esc(state.follow ? (view.followMsg || '파티장을 기다리는 중이에요.') : '켜면 파티장이 움직일 때 자동으로 따라가요.')}</small></div>`}<div class="party-foot"><small>${PARTY.members.length}/4명 · 파티원은 항상 주위 대원이에요</small><button data-act="party-leave">나가기</button></div>` : '<div class="empty">파티가 없습니다. 친구 창이나 대원 프로필에서 초대해 보세요. (2~4명)</div>')
     + (PARTY.invites.length ? `<div class="party-inv">${PARTY.invites.map(r => `<div class="party-row"><span>${icon('mail')}</span><b>${esc(r.name)}</b><small>의 파티 초대</small><button class="primary" data-act="party-answer" data-id="${r.id}" data-ok="1">수락</button><button data-act="party-answer" data-id="${r.id}" data-ok="0">거절</button></div>`).join('')}</div>` : '') : '<div class="empty">파티는 서버에 로그인하면 쓸 수 있어요.</div>';
   const near = nearP + nearSrv + (NEARBY_PLAYERS.length ? '' : (nearP || nearSrv) ? '' : '<div class="empty">주위에 다른 대원이 없습니다.</div>') + NEARBY_PLAYERS.map(([n, s]) => `<div class="nearby-row"><div class="round-avatar">${icon('person')}</div><div class="grow"><strong>${esc(n)}</strong><small>${esc(LOCATIONS[state.location].name)} · ${esc(s)}</small></div><button data-act="player" data-player="${esc(n)}">정보</button><button data-act="trade-open" data-player="${esc(n)}">교환</button></div>`).join('');
   const doneN = state.todos.filter(t => t.done).length;
@@ -669,7 +670,7 @@ async function chatPoll() { // 월드·길드 채팅을 서버에서 가져온�
   if (!chatOnline() || !state.created || document.hidden || view.chatBusy) return;
   view.chatBusy = true; let changed = false;
   try {
-    if (nowMs() - (view.partyAt || 0) > 20000) { view.partyAt = nowMs(); await partySync(); } // 파티 초대·구성은 20초마다 확인
+    if (nowMs() - (view.partyAt || 0) > (state.follow && PARTY.id ? 5000 : 20000)) { view.partyAt = nowMs(); await partySync(); } // 파티 초대·구성은 20초마다 확인
     for (const tab of ['월드', '길드', '파티']) {
       if (!chatTabOn(tab)) continue; // 꺼 둔 탭은 가져오지 않는다
       if (tab === '길드' && !state.guild) { if (view.chatSrv['길드'].length) { view.chatSrv['길드'] = []; view.chatLast['길드'] = 0; changed = true; } continue; }
@@ -994,15 +995,39 @@ async function partySync(quiet) { // 서버에서 내 파티와 받은 초대를
   let pi; try { pi = await Cloud.partyInfo(); } catch (e) { return; } // 서버 준비 전
   const p = pi && pi.party, before = PARTY.id, names0 = partyOthers().join('|');
   PARTY.id = p && Number.isFinite(+p.id) ? +p.id : 0;
-  PARTY.members = p && Array.isArray(p.members) ? p.members.slice(0, 4).map(m => ({ uid: /^[0-9a-f-]{36}$/i.test(m.uid) ? m.uid : '', name: cleanText(m.name, 12) || '?', leader: !!m.leader, online: m.online === true || m.uid === Cloud.userUid })).filter(m => m.uid) : [];
+  PARTY.members = p && Array.isArray(p.members) ? p.members.slice(0, 4).map(m => ({ uid: /^[0-9a-f-]{36}$/i.test(m.uid) ? m.uid : '', name: cleanText(m.name, 12) || '?', leader: !!m.leader, online: m.online === true || m.uid === Cloud.userUid, place: typeof m.place === 'string' ? m.place.slice(0, 40) : '' })).filter(m => m.uid) : [];
   if (!PARTY.members.length) PARTY.id = 0;
   PARTY.invites = (pi && Array.isArray(pi.incoming) ? pi.incoming : []).slice(0, 10).map(r => ({ id: sid9(r.id), name: cleanText(r.name, 12) })).filter(r => r.id && r.name);
   view.partyUid = {}; PARTY.members.forEach(m => { view.partyUid[m.name] = m.uid; });
+  if (state.follow && (!PARTY.id || partyLeader())) { state.follow = false; save(); } // 파티가 없거나 내가 파티장이면 동행은 꺼진다
+  if (before !== PARTY.id) { view.placeSent = ''; view.followMsg = ''; }
   if (PARTY.invites.length > Math.max(view.partyInvN || 0, 0) && !quiet) toast(`파티 초대가 ${PARTY.invites.length}건 와 있어요. (상황 탭에서 확인)`);
   view.partyInvN = PARTY.invites.length;
   if (before !== PARTY.id) { view.chatSrv['파티'] = []; view.chatLast['파티'] = 0; if (!PARTY.id && before && !quiet) toast('파티에서 나왔어요.'); }
   if (state.side === '상황') renderSituation();
   if ($('#chatFeed') && (state.chatTab === '파티' || before !== PARTY.id || names0 !== partyOthers().join('|'))) renderChat();
+}
+/* ---- 파티 동행: 파티원이 켜면 파티장이 움직일 때 따라간다 (각자 정상 기력·시간) ---- */
+const FOLLOW_GAP_MS = 2500, FOLLOW_RETRY_MS = 30000;
+function followLeader() { return PARTY.members.find(m => m.leader); }
+function followTick() {
+  if (!state.created || !state.follow || !PARTY.id || partyLeader() || view.phase !== 'idle') return;
+  if (nowMs() < (view.followAt || 0)) return;
+  const L = followLeader();
+  if (!L || !L.online) { view.followMsg = '파티장이 접속 중이 아니에요.'; return; }
+  const r = followStep(L.place);
+  view.followAt = nowMs() + FOLLOW_GAP_MS;
+  if (r.err) { view.followMsg = r.err; view.followAt = nowMs() + FOLLOW_RETRY_MS; if (view.followErr !== r.err) { view.followErr = r.err; toast(`동행을 이어가지 못했어요: ${r.err}`); sfx('error'); if (state.side === '상황') renderSituation(); } return; }
+  view.followErr = '';
+  if (r.wait) return;
+  if (r.moved) { view.followMsg = '파티장을 따라가는 중이에요.'; resetPhase(); renderBars(); renderMapHead(); renderMap(); renderAction(); renderSide(); save(); return; }
+  const was = view.followMsg; view.followMsg = L.place && parsePlace(L.place) && parsePlace(L.place).air === '개인실' ? '파티장이 개인실에 있어요.' : '파티장과 같은 곳에 있어요.';
+  if (was !== view.followMsg && state.side === '상황') renderSituation();
+}
+async function partyPlacePush() { // 내가 파티장이면 내 위치가 바뀔 때만 서버에 올린다
+  if (!partyOn() || !PARTY.id || !partyLeader() || !state.created || view.placeBusy) return;
+  const p = placeNow(); if (p === view.placeSent) return;
+  view.placeBusy = true; try { await Cloud.setPlace(p); view.placeSent = p; } catch (e) { /* 서버 준비 전: 다음에 다시 */ } view.placeBusy = false;
 }
 async function partyDo(fn, okMsg) { // 파티 요청 공통 처리
   if (!partyOn()) { toast('파티는 서버에 로그인해야 쓸 수 있어요.'); sfx('error'); return false; }
@@ -1410,6 +1435,12 @@ const A = {
     el.disabled = false; if (ok) addLog(`${name} 대원에게 파티 초대를 보냈습니다.`);
   },
   'party-answer': async el => { const id = +el.dataset.id, yes = el.dataset.ok === '1'; el.disabled = true; await partyDo(() => Cloud.partyAnswer(id, yes), yes ? '파티에 들어왔어요.' : '초대를 거절했어요.'); renderChat(); },
+  'follow-toggle': () => {
+    if (!PARTY.id || partyLeader()) { toast('파티원일 때만 쓸 수 있어요. (파티장은 따라가는 쪽이 아니에요)'); sfx('error'); return; }
+    state.follow = !state.follow; view.followAt = 0; view.followErr = ''; view.followMsg = ''; save(); sfx('click');
+    toast(state.follow ? '동행 모드를 켰어요. 파티장이 움직이면 따라갑니다.' : '동행 모드를 껐어요.');
+    renderSituation(); if (state.follow) followTick();
+  },
   'party-leave': () => askConfirm('파티 나가기', '파티에서 나갈까요? 파티장이 나가면 다음 사람이 파티장이 되고, 혼자 남으면 파티가 사라져요.', '나가기', 'party-leave-do', {}, closeModal),
   'party-leave-do': async () => { closeModal(); await partyDo(() => Cloud.partyLeave(), '파티에서 나왔어요.'); renderChat(); },
   'party-kick': async el => { if (!partyLeader()) return; el.disabled = true; await partyDo(() => Cloud.partyKick(el.dataset.uid), `${el.dataset.name} 대원을 파티에서 내보냈어요.`); },

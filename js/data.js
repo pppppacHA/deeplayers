@@ -1266,6 +1266,7 @@ function createDefaultState() {
     logs: [],
     questTaken: {},     // 수주한 임무 { id: true } (수주/승급 시험)
     questAt: {},        // 수주 임무를 받은 시각 { id: ms } — 다음 오전 4시(KST)에 리셋
+    follow: false,      // 파티 동행 모드 (파티원이 켜면 파티장이 움직일 때 따라간다)
     farm: { plots: [] }, // 농장 밭 [{ crop, at } | null ...]
     pets: [],           // 길들인 펫 [{ id(종), bond, fedAt }]
     deaths: 0, // 죽은 횟수
