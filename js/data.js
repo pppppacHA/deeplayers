@@ -1133,7 +1133,7 @@ const PET_ACC = {
   '물고기 비늘 핀': { icon: 'set_meal', desc: '붕어와 잉어의 비늘을 붙여 만든 핀. 물결처럼 반짝여서 보는 사람도 즐겁다.', mats: { '붕어': 2, '잉어': 1 }, sec: 70, spd: .015, text: '이동 시간 -1.5%' }
 };
 Object.entries(PET_ACC).forEach(([n, a]) => {
-  if (!ITEMS[n]) ITEMS[n] = { tab: '재료', icon: a.icon, desc: `${a.desc} 펫에게 달아 줄 수 있다. (${a.text})`, petAcc: true, sell: Math.max(4, Math.floor(.8 * Object.entries(a.mats).reduce((s, [m, q]) => s + q * ((ITEMS[m] && ITEMS[m].sell) || 0), 0))) };
+  if (!ITEMS[n]) ITEMS[n] = { tab: '장비', icon: a.icon, desc: `${a.desc} 펫에게 달아 줄 수 있다.`, group: '펫 악세서리', petAcc: true, sell: Math.max(4, Math.floor(.8 * Object.entries(a.mats).reduce((s, [m, q]) => s + q * ((ITEMS[m] && ITEMS[m].sell) || 0), 0))) };
   if (!RECIPES.some(r => r.out === n)) RECIPES.push({ out: n, mats: a.mats, sec: a.sec, rank: 'F' });
 });
 /* 낚시: 낚은 물고기의 크기(cm)와 최고 기록. [최소, 최대] */

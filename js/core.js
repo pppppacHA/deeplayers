@@ -260,7 +260,7 @@ function rollEnchant() {
   return { k: pick_[0], v: rand(...pick_[2]) };
 }
 /* 강화할 수 있는 장비: 장착 중이거나 소지품에 있는 장비 (이름별로 하나) */
-const enchantables = () => [...new Set([...Object.values(state.equipment).filter(Boolean), ...state.inventory['장비'].map(s => s.n)])].filter(n => ITEMS[n] && ITEMS[n].tab === '장비');
+const enchantables = () => [...new Set([...Object.values(state.equipment).filter(Boolean), ...state.inventory['장비'].map(s => s.n)])].filter(n => ITEMS[n] && ITEMS[n].tab === '장비' && !ITEMS[n].petAcc);
 /* 강화 시도. 성공 { old, now } / 실패 사유 문자열 */
 function enchantItem(name) {
   if (!ITEMS[name] || ITEMS[name].tab !== '장비' || !enchantables().includes(name)) return '강화할 수 없는 장비입니다.';
@@ -291,7 +291,7 @@ function reinforceItem(name, rnd = Math.random) { // 성공 { ok, lv } / 실패 
 const DISMANTLE_BACK = .5, DISMANTLE_CR = .25; // 레시피 재료의 절반(내림, 최소 1종 1개) / 판매가의 1/4 CR
 function dismantleYield(name) { // { mats:[[이름,수량]], cr } 또는 null(분해 불가)
   const it = ITEMS[name];
-  if (!it || it.tab !== '장비' || it.hidden || it.hold) return null; // 소지만으로 효과가 있는 물건(반지)은 분해하지 않는다
+  if (!it || it.tab !== '장비' || it.hidden || it.hold || it.petAcc) return null; // 소지만으로 효과가 있는 물건(반지)은 분해하지 않는다
   const rc = RECIPES.find(r => r.out === name), bag = {};
   if (rc) {
     Object.entries(rc.mats).forEach(([k, q]) => { const n = MAT_GROUPS[k] ? MAT_GROUPS[k][0] : k, g = Math.floor(q * DISMANTLE_BACK); if (g > 0 && ITEMS[n]) bag[n] = (bag[n] || 0) + g; });
@@ -1465,7 +1465,7 @@ function itemEffect(name) { return itemEffectRaw(name) || '제작 재료'; }
 function itemLines(name, plain) {
   const it = ITEMS[name]; if (!it) return ['', ''];
   const { base, extra } = itemEffectParts(name, plain), b = base.join(' · ');
-  const eff = [b && !it.desc.includes(b) ? b : '', ...extra].filter(Boolean).join(' · '); // 기본 효과가 설명에 이미 있으면 빼고, 강화·세공은 항상 붙인다
+  const eff = [b && !it.desc.includes(b) ? b : '', it.petAcc && PET_ACC[name] ? `펫 악세서리 효과: ${PET_ACC[name].text}` : '', ...extra].filter(Boolean).join(' · '); // 기본 효과가 설명에 이미 있으면 빼고, 강화·세공은 항상 붙인다
   const l2 = [it.group ? `[분류] ${it.group}` : '', (it.tags || []).length ? `[태그] ${it.tags.join(' · ')}` : '', it.sell ? `[판매가] ${it.sell}CR` : ''].filter(Boolean).join(' ');
   return [it.desc + (eff ? ` | ${eff}` : ''), l2];
 }

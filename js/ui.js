@@ -2777,7 +2777,7 @@ const storQ = () => String(view.storQ || '').trim().toLowerCase();
 document.addEventListener('input', e => { // 소지품·창고 검색: 입력창은 그대로 두고 목록만 다시 그린다
   if (!e.target) return;
   if (e.target.id === 'invQ') { view.invQ = cleanText(e.target.value, 20); state.page = 1; renderInventory(); }
-  else if (e.target.id === 'storQ') { view.storQ = cleanText(e.target.value, 20); openStorage(true); const q = $('#storQ'); if (q) { q.focus(); q.setSelectionRange(q.value.length, q.value.length); } }
+  else if (e.target.id === 'storQ') { view.storQ = cleanText(e.target.value, 20); const b = $('#storBox'); if (b && view.storList) b.innerHTML = view.storList(); } // 입력창은 그대로 두고 창고 목록만 바꾼다 (한글 조합이 끊기지 않게)
 });
 function openStorage(keepScroll) {
   if (keepScroll !== true) view.storQ = ''; // 개인실 창고: 소지품 격자와 창고 격자를 한 화면에서 보고, 칸을 눌러 고른 뒤 옮긴다 (세이브에 이름→수량만 저장)
@@ -2790,6 +2790,7 @@ function openStorage(keepScroll) {
   const cell = (side, n, q) => `<button class="slot clickable filled ${sel && sel.side === side && sel.name === n ? 'selected' : ''}" data-act="storage-pick" data-side="${side}" data-name="${esc(n)}" data-tip-title="${esc(shownName(n))} ×${q}" data-tip-desc="${esc(itemTip(n))}" aria-label="${esc(n)}">${icon(ITEMS[n].icon)}<span class="qty">${q}</span></button>`;
   const grid = (cells, min) => { const c = cells.slice(); while (c.length < min) c.push('<div class="slot" aria-label="빈 칸"></div>'); return `<div class="inv-grid stor-grid">${c.join('')}</div>`; };
   const btns = (act, n, max) => [1, 10].filter(q => q < max).map(q => `<button data-act="${act}" data-name="${esc(n)}" data-qty="${q}">${q}</button>`).join('') + `<button data-act="${act}" data-name="${esc(n)}" data-qty="${max}">${max > 1 ? '전부' : '1'}</button>`;
+  const storHtml = view.storList = () => { const sq2 = storQ(); return grid(storageList().filter(([n]) => !sq2 || `${n} ${shownName(n)}`.toLowerCase().includes(sq2)).map(([n, q]) => cell('stor', n, q)), 18); };
   let bar = '<p class="tiny stor-hint">옮길 물건의 칸을 눌러 고르세요. 소지품에서 고르면 창고로, 창고에서 고르면 소지품으로 옮깁니다.</p>';
   if (sel) {
     const n = sel.name, put = sel.side === 'bag', max = put ? Math.min(bag[n], STORAGE_STACK) : state.storage[n];
@@ -2797,7 +2798,7 @@ function openStorage(keepScroll) {
   }
   modal('개인실 창고', `<p class="tiny">창고 <b>${storageKinds()} / ${STORAGE_KINDS}</b>종 · 가방 ${usedSlots()} / ${bagCapacity()} · 한 종류에 ${STORAGE_STACK}개까지. 창고에 둔 물건은 소지품이 아니라서 소지 효과(반지 등)가 없어요.</p>` +
     `<div class="choice-label">소지품</div>${grid(bagNames.map(n => cell('bag', n, bag[n])), 18)}${bar}` +
-    `<div class="choice-label">창고 <small class="tiny">${storageKinds()} / ${STORAGE_KINDS}종</small></div><div class="search-row stor-search"><input id="storQ" type="search" maxlength="20" placeholder="창고에서 검색" aria-label="창고 검색" autocomplete="off" value="${esc(view.storQ || '')}"></div>${grid(stor.map(([n, q]) => cell('stor', n, q)), 18)}`, [btnClose], true);
+    `<div class="choice-label">창고 <small class="tiny">${storageKinds()} / ${STORAGE_KINDS}종</small></div><div class="search-row stor-search"><input id="storQ" type="search" maxlength="20" placeholder="창고에서 검색" aria-label="창고 검색" autocomplete="off" value="${esc(view.storQ || '')}"></div><div id="storBox">${storHtml()}</div>`, [btnClose], true);
   $('#modalBody').scrollTop = st0;
 }
 function jobPanelHtml(side) { // 서브잡 납품 화면 (창과 오른쪽 '서브잡' 탭이 함께 쓴다. 탭에서는 그만두기가 없다)
