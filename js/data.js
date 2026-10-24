@@ -1374,7 +1374,8 @@ const ROOM_W = 600, ROOM_H = 600, ROOM_MAX = 40, ROOM_SCALE = 4; // 방 창(배�
 const ROOM_GEO = { // 이소메트릭 방 (가로 500 × 세로 400, 창 안에서 가운데): 바닥 마름모 + 뒤쪽 벽 두 면
   floor: [[50, 375], [300, 250], [550, 375], [300, 500]],
   left: [[50, 225], [300, 100], [300, 250], [50, 375]],
-  right: [[300, 100], [550, 225], [550, 375], [300, 250]]
+  right: [[300, 100], [550, 225], [550, 375], [300, 250]],
+  wall: [[50, 225], [300, 100], [550, 225], [550, 375], [300, 250], [50, 375]] // 벽 두 면을 하나로 (가운데 모서리 선 없음)
 };
 const ROOM_BG_MAX = 100000, ROOM_BG_PX = 600; // 내 배경 이미지: 600×600 JPEG 으로 압축해 저장한 글자(100000자 이하). 서버 부담을 줄이려고 세이브에는 넣지 않고 따로 둔다
 const ROOM_BG_RE = /^data:image\/(jpeg|webp|png);base64,[A-Za-z0-9+\/=]+$/;
@@ -1390,19 +1391,17 @@ function furnMap(w, h, ops) { // [['r', x, y, w, h, 글자], ['p', x, y, 글자]
 const FR = (x, y, w, h, c) => ['r', x, y, w, h, c];
 const FURN = [];
 const defFurn = (id, cat, name, desc, o) => { if (!FURN.some(f => f.id === id)) FURN.push({ id, cat, name, desc, layer: 'floor', ...o }); };
-// 벽지·바닥·배경은 색으로만 만든 '꾸밈' (하나만 고른다)
-[['w_cream', '크림 벽지', '#e9dcc0', '#dccfb0'], ['w_sky', '하늘 벽지', '#bcd8ee', '#a9c8e2'], ['w_lav', '라벤더 벽지', '#d6cbe9', '#c6b9dd'], ['w_mint', '민트 벽지', '#c4e6d6', '#b0d8c5']].forEach(([id, n, a, b]) => defFurn(id, '벽지', n, '방의 벽을 바꾼다.', { skin: { l: a, r: b } }));
-[['f_wood', '나무 바닥', '#a77c58', '#966d4b'], ['f_gray', '회색 바닥', '#a8abb3', '#999ca5'], ['f_green', '잔디 바닥', '#8fbf7a', '#7fae6a'], ['f_pink', '분홍 바닥', '#e3b5c4', '#d6a4b5']].forEach(([id, n, a, b]) => defFurn(id, '바닥', n, '방의 바닥을 바꾼다.', { skin: { a, b } }));
+// 배경은 색으로만 만든 '꾸밈' (하나만 고른다). 벽지·바닥은 아래 ROOM_SKIN_PNG 그림만 쓴다
 [['b_white', '하얀 배경', '#ffffff', '#ffffff'], ['b_custom', '내 배경 이미지', '#ffffff', '#ffffff']].forEach(([id, n, a, b]) => defFurn(id, '배경', n, '방 밖의 배경을 바꾼다.', { skin: { a, b } }));
 /* ===== ROOM 가구 목록 (PNG) =====
    가구는 이 표에만 한 줄씩 추가하면 된다. 그림 파일은 assets/room/ 폴더에 넣는다 (자세한 방법: assets/room/README.md).
    [아이디, 분류, 이름, 설명, 옵션]   분류: '침대' '의자' '책상' '수납' '소품' '벽소품'
    옵션: layer:'wall'(벽에 거는 소품은 항상 바닥 가구 뒤), mask:true(색상변경이 되는 가구: <아이디>_mask.png 필요),
          scale(그림을 몇 배로 보여 줄지, 기본 1 — 작은 도트 그림은 4처럼 키운다), w·h(그림이 불러와지기 전 임시 크기)
-   예) ['bed_basic', '침대', '기본 침대', '포근한 침대다.', { mask: true }]  →  assets/room/bed_basic.png, bed_basic_mask.png
+   예) ['bed_basic', '침대', '기본 침대', '포근한 침대다.', { mask: true, w: 96, h: 78 }]  →  assets/room/bed_basic.png, bed_basic_mask.png
    분류를 '벽소품'으로 하면 layer 는 자동으로 'wall' 이다. */
 const ROOM_FURNITURE = [
-  ['bed_00', '침대', '기본 침대', '포근한 침대다.', { mask: true }],
+  ['bed_00', '침대', '기본 침대', '포근한 침대다.', { mask: true, w: 96, h: 78 }],
 ];
 ROOM_FURNITURE.forEach(([id, cat, name, desc, o]) => { o = o || {}; defFurn(id, cat, name, desc, { src: `assets/room/${id}.png`, maskSrc: o.mask ? `assets/room/${id}_mask.png` : '', layer: o.layer || (cat === '벽소품' ? 'wall' : 'floor'), scale: o.scale || 1, w: o.w || 64, h: o.h || 64 }); });
 /* ===== ROOM 벽지·바닥·배경 PNG (직접 그린 틀) =====
@@ -1413,8 +1412,8 @@ const ROOM_SKIN_PNG = [
   ['wall_00', '벽지', '기본 벽지', '보급품으로 주어지는 기본 벽지.'],
   ['floor_00', '바닥', '기본 바닥', '보급품으로 주어지는 기본 바닥.'],
 ];
-const ROOM_SKIN_FALLBACK = { '벽지': { l: '#dcdcdc', r: '#cfcfcf' }, '바닥': { a: '#bdbdbd', b: '#aaaaaa' }, '배경': { a: '#ffffff', b: '#ffffff' } };
+const ROOM_SKIN_FALLBACK = { '벽지': { l: '#dcdcdc', r: '#dcdcdc' }, '바닥': { a: '#bdbdbd', b: '#aaaaaa' }, '배경': { a: '#ffffff', b: '#ffffff' } };
 ROOM_SKIN_PNG.forEach(([id, cat, name, desc]) => { if (ROOM_SKIN_FALLBACK[cat]) defFurn(id, cat, name, desc, { skin: ROOM_SKIN_FALLBACK[cat], src: `assets/room/${id}.png` }); });
 const furnDef = id => FURN.find(f => f.id === id);
-const ROOM_DEFAULT_SKIN = { wall: 'w_cream', floor: 'f_wood', bg: 'b_white' };
+const ROOM_DEFAULT_SKIN = { wall: 'wall_00', floor: 'floor_00', bg: 'b_white' };
 const defaultRoom = () => ({ ...ROOM_DEFAULT_SKIN, zc: 0, items: [] });

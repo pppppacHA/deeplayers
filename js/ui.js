@@ -1722,20 +1722,18 @@ const A = {
       [btnClose, `<button class="primary" data-act="friend-add" data-name="${esc(n)}" ${fr ? 'disabled' : ''}>${fr ? '친구' : '친구 추가'}</button>`], true); },
   quest: el => { view.quest = view.quest === el.dataset.id ? null : el.dataset.id; renderSide(); },
   'quest-done': el => {
-    const q = QUESTS.find(x => x.id === el.dataset.id), r = completeQuest(q.id);
-    if (!r) { toast('아직 임무 조건을 달성하지 못했습니다.'); return; }
-    renderProfile(); renderBars(); renderStatus(); renderSide(); sfx(r.ups ? 'levelup' : 'ok');
-    renderInventory(); renderLeftTab();
-    addLog(`임무 완수: ${q.title} (${rewardText(q)})`);
-    toast(`임무 완수! ${q.title}${r.ups ? ` · 레벨 업 Lv.${state.character.level}` : ''}${r.ticket ? ' · 뽑기권 1장 획득!' : ''}`);
-    if (r.ticket) addLog(`뽑기권 1장을 받았습니다. (상점가 뽑기 기계)`);
-    if (r.promo) {
-      const news = RECIPES.filter(rc => rc.rank === r.promo && !recipeKnown(rc)).map(rc => rc.out);
-      renderCraft(); renderLeftTab();
-      if (r.promo === 'A') { state.flags.annoA = 'pending'; save(); announceRankA(); } // A급이 되면 월드 채팅에 축하 공지가 올라간다
-      if (news.length) { addLog(`${r.promo}등급 승급! 단련으로 배울 수 있는 레시피 ${news.length}종 추가`); toast(`${r.promo}등급 승급! 단련으로 새 레시피 ${news.length}종을 배울 수 있게 되었습니다.`); }
-    }
+    const q = QUESTS.find(x => x.id === el.dataset.id);
+    if (!q || !questReady(q)) { toast('아직 임무 조건을 달성하지 못했습니다.'); return; }
+    if (questOverflow(q).length) { view.qfull = { id: q.id, drop: {} }; openQuestFull(); return; } // 가방이 가득 차면 먼저 자리를 만든다
+    questFinish(q, {});
   },
+  'qfull-pick': el => { const st = (state.inventory[el.dataset.tab] || [])[+el.dataset.idx]; if (!st || st.n !== el.dataset.item) { openQuestFull(); return; }
+    askConfirm('소지품 버리기', `「${shownName(st.n)}」 ×${st.q}을(를) 버려서 자리를 만들까요? 버린 물건은 되돌릴 수 없어요.`, '버리기', 'qfull-pick-do', { tab: el.dataset.tab, idx: el.dataset.idx, item: st.n }, openQuestFull); },
+  'qfull-pick-do': el => { const r = discardStack(el.dataset.tab, +el.dataset.idx, el.dataset.item); if (typeof r === 'string') { toast(r); sfx('error'); } else { sfx('click'); renderBag(); renderBars(); renderProfile(); renderAction(); toast(`${shownName(r.name)} ×${r.q}을(를) 버렸습니다.`); } openQuestFull(); },
+  'qfull-drop': el => { const q = view.qfull && QUESTS.find(x => x.id === view.qfull.id); if (!q) { closeModal(); return; } const o = questOverflow(q, view.qfull.drop).find(x => x[0] === el.dataset.item); if (!o) { openQuestFull(); return; }
+    askConfirm('보상 버리기', `보상 「${shownName(o[0])}」 ×${o[1]}은(는) 가방에 들어가지 않습니다. 받지 않고 버릴까요? 버린 보상은 다시 받을 수 없어요.`, '버리기', 'qfull-drop-do', { item: o[0], qty: o[1] }, openQuestFull); },
+  'qfull-drop-do': el => { const f = view.qfull; if (!f) { closeModal(); return; } f.drop[el.dataset.item] = (f.drop[el.dataset.item] || 0) + intIn(el.dataset.qty, 1, 9999, 1); sfx('click'); openQuestFull(); },
+  'qfull-cancel': () => { view.qfull = null; closeModal(); },
   sticker: el => { if (state.chatTab === '알림') { setTray(false); return; } sendChat(`[${el.dataset.name}]`); setTray(false); },
   post: el => {
     const p = POSTS[el.dataset.board][+el.dataset.post];
@@ -2620,6 +2618,38 @@ function renderLive(force) { // 바뀐 것이 있을 때만 다시 그린다 (�
   $('#modalBody').scrollTop = sc;
 }
 /* 되돌릴 수 없는 일을 하기 전에 "정말로 할지" 묻는 작은 창. 취소하면 back()으로 원래 창으로 돌아간다 */
+function questFinish(q, drop) {
+  const r = completeQuest(q.id, drop); view.qfull = null;
+  if (!r) { toast('아직 임무 조건을 달성하지 못했습니다.'); return; }
+  renderProfile(); renderBars(); renderStatus(); renderSide(); sfx(r.ups ? 'levelup' : 'ok');
+  renderInventory(); renderLeftTab();
+  addLog(`임무 완수: ${q.title} (${rewardText(q)})`);
+  toast(`임무 완수! ${q.title}${r.ups ? ` · 레벨 업 Lv.${state.character.level}` : ''}${r.ticket ? ' · 뽑기권 1장 획득!' : ''}`);
+  if (r.ticket) addLog(`뽑기권 1장을 받았습니다. (상점가 뽑기 기계)`);
+  if (r.promo) {
+    const news = RECIPES.filter(rc => rc.rank === r.promo && !recipeKnown(rc)).map(rc => rc.out);
+    renderCraft(); renderLeftTab();
+    if (r.promo === 'A') { state.flags.annoA = 'pending'; save(); announceRankA(); } // A급이 되면 월드 채팅에 축하 공지가 올라간다
+    if (news.length) { addLog(`${r.promo}등급 승급! 단련으로 배울 수 있는 레시피 ${news.length}종 추가`); toast(`${r.promo}등급 승급! 단련으로 새 레시피 ${news.length}종을 배울 수 있게 되었습니다.`); }
+  }
+  const lost = Object.entries(drop).filter(([, c]) => c > 0).map(([n, c]) => `${shownName(n)} ×${c}`);
+  if (lost.length) toast(`보상 ${lost.join(', ')}은(는) 받지 않고 버렸습니다.`);
+}
+/* 임무 보상이 가방에 다 안 들어갈 때: 소지품 한 칸을 버리거나, 못 받는 보상을 버리거나 */
+function openQuestFull() {
+  const f = view.qfull, q = f && QUESTS.find(x => x.id === f.id); if (!q) { closeModal(); return; }
+  if (!questReady(q)) { view.qfull = null; closeModal(); toast('아직 임무 조건을 달성하지 못했습니다.'); return; }
+  const ov = questOverflow(q, f.drop);
+  if (!ov.length) { closeModal(); questFinish(q, f.drop); return; }
+  const need = new Set(needParts(q).filter(n => n.name).map(n => n.name)); // 이 임무에 쓰이는 물건은 버릴 수 없다
+  const cells = []; ['장비', '소모품', '재료'].forEach(tab => (state.inventory[tab] || []).forEach((st, i) => { if (!ITEMS[st.n] || need.has(st.n)) return;
+    cells.push(`<button class="slot clickable filled" data-act="qfull-pick" data-tab="${tab}" data-idx="${i}" data-item="${esc(st.n)}" data-tip-title="${esc(shownName(st.n))}" data-tip-desc="${esc(itemTip(st.n))}" aria-label="${esc(st.n)}">${icon(ITEMS[st.n].icon)}${st.q > 1 ? `<span class="qty">${st.q}</span>` : ''}</button>`); }));
+  modal('가방이 가득 찼어요',
+    `<p class="detail-desc">임무 보상을 모두 담을 자리가 없습니다. 소지품에서 한 칸을 골라 버리거나, 받을 수 없는 보상을 버려야 해요.</p>` +
+    `<p class="tiny">담지 못하는 보상</p>` + ov.map(([n, c]) => `<div class="row-gap"><span>${icon(ITEMS[n].icon)} ${esc(shownName(n))} ×${c}</span><button class="danger" data-act="qfull-drop" data-item="${esc(n)}">이 보상 버리기</button></div>`).join('') +
+    `<p class="tiny">버릴 소지품 고르기 (누르면 한 번 더 물어요)</p>` + (cells.length ? `<div class="inv-grid">${cells.join('')}</div>` : '<div class="empty">버릴 수 있는 소지품이 없습니다.</div>'),
+    ['<button data-act="qfull-cancel">취소</button>'], true);
+}
 function askConfirm(title, msg, okLabel, act, data, back) {
   view.confirmBack = back;
   const attrs = Object.entries(data || {}).map(([k, v]) => `data-${k}="${esc(v)}"`).join(' ');

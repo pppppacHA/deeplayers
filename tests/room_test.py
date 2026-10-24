@@ -24,12 +24,15 @@ with sync_playwright() as p:
       defFurn('t_chair','의자','테스트 의자','',{src:mk(16,20,'#996633'),maskSrc:'',layer:'floor',scale:1,w:16,h:20});
       defFurn('t_wall','벽지','테스트 벽지','',{skin:{l:'#ddd',r:'#ccc'},src:mk(600,600,'#aa5555')});
       defFurn('t_floor','바닥','테스트 바닥','',{skin:{a:'#bbb',b:'#aaa'},src:mk(600,600,'#55aa55')});
+      defFurn('t_nowall','벽지','없는 벽지','',{skin:{l:'#ddd',r:'#ccc'},src:'assets/room/nope_w.png'});
+      defFurn('t_nofloor','바닥','없는 바닥','',{skin:{a:'#bbb',b:'#aaa'},src:'assets/room/nope_f.png'});
       defFurn('t_bg','배경','테스트 배경','',{skin:{a:'#8c8c8c',b:'#8c8c8c'},src:mk(600,600,'#5555aa')});
       defFurn('t_clock','벽소품','테스트 시계','',{src:mk(12,12,'#223344'),maskSrc:'',layer:'wall',scale:1,w:12,h:12})})()""")
     ev("(()=>{state.location='개인실';renderAction()})()")
     check('home_choice', ev("LOCATIONS['개인실'].groups.some(g=>g.items.includes('ROOM'))"))
     pg.click('[data-choice="ROOM"]'); pg.wait_for_timeout(150)
     check('room_opens', pg.locator('#roomRoot').count() == 1 and 'ROOM' in pg.inner_text('#modalTitle') and pg.locator('#modal.room').count() == 1)
+    check('bar_order_export_then_edit', ev("[...document.querySelectorAll('.room-bar button')].map(b=>b.dataset.act).join()") == 'room-export,room-edit')
     check('room_view_buttons', pg.locator('[data-act="room-edit"]').count() == 1 and pg.locator('[data-act="room-export"]').count() == 1)
     sz = ev("(()=>{const r=document.querySelector('#roomVp').getBoundingClientRect();return [r.width,r.height]})()")
     check('vp_square', abs(sz[0]-sz[1]) < 2 and sz[0] > 300, sz)
@@ -43,7 +46,7 @@ with sync_playwright() as p:
     while pg.locator('[data-act="room-tab"][data-tab="침대"]').count() == 0:
         pg.click('[data-act="room-tabs"][data-d="-1"]')
     pg.click('[data-act="room-tab"][data-tab="침대"]')
-    pg.click('.rm-slot'); pg.wait_for_timeout(60)
+    pg.click('.rm-slot[data-id="t_bed"]'); pg.wait_for_timeout(60)
     check('placed', ev("view.room.draft.items.length") == 1 and pg.locator('#rmEd').count() == 1 and pg.locator('#roomItems .rm-item').count() == 1)
     pg.click('[data-act="room-tab"][data-tab="의자"]'); pg.click('.rm-slot'); pg.wait_for_timeout(60)
     while pg.locator('[data-act="room-tab"][data-tab="벽소품"]').count() == 0:
@@ -68,8 +71,18 @@ with sync_playwright() as p:
     check('editor_draggable', ev("document.querySelector('#rmEd').offsetLeft") != l0)
     # 반전/색
     f0 = ev("view.room.draft.items[1].flip"); pg.click('[data-act="room-flip"]'); check('flip', ev("view.room.draft.items[1].flip") != f0)
-    ev("(()=>{const i=document.querySelector('#rmColor');i.value='#ff0000';i.dispatchEvent(new Event('input',{bubbles:true}))})()")
-    check('color', ev("view.room.draft.items[1].c") == '#ff0000')
+    ev("roomSelect(view.room.draft.items[0].u)")
+    check('color_btn_enabled', ev("!document.querySelector('[data-act=room-color]').disabled"))
+    pg.click('[data-act="room-color"]'); pg.wait_for_timeout(60)
+    geo = ev("(()=>{const e=document.querySelector('#rmEd').getBoundingClientRect(),p=document.querySelector('#rmPick');if(!p)return null;const r=p.getBoundingClientRect();return [e.top,e.bottom,e.left,e.width,r.top,r.bottom,r.left,r.width,window.innerHeight]})()")
+    check('picker_opens_below_editor', geo and (geo[4] >= geo[1] or geo[5] <= geo[0]) and abs(geo[6]-geo[2]) < 2 and geo[5] <= geo[8], geo)
+    pg.click('#rmPick [data-act="room-color-set"][data-c="#e57373"]'); check('color', ev("view.room.draft.items[0].c") == '#e57373')
+    ev("(()=>{const i=document.querySelector('#rmH');i.value='200';i.dispatchEvent(new Event('input',{bubbles:true}))})()")
+    check('color_slider', ev("/^#[0-9a-f]{6}$/.test(view.room.draft.items[0].c)") and ev("view.room.draft.items[0].c") != '#e57373')
+    ev("(()=>{view.room.draft.items[0].c='#ff0000';roomEdRefresh()})()")
+    l1 = ev("document.querySelector('#rmEd').offsetLeft"); pg.mouse.move(1,1)
+    pg.click('[data-act="room-color"]'); check('picker_closes', pg.locator('#rmPick').count() == 0)
+    ev("(()=>{view.room.draft.items[0].c='#ff0000';roomEdRefresh()})()")
     # 새 레이아웃: 버튼은 오버레이 창 밖, 편집기는 fixed 이고 창 밖으로 이동, 삭제 후에도 보임
     check('bar_outside_modal', ev("(()=>{const b=document.querySelector('.room-bar');return !!b&&!document.querySelector('#modal').contains(b)&&getComputedStyle(b).position==='fixed'})()"))
     check('footer_same_line', ev("(()=>{const f=document.querySelector('#roomSide .inv-footer');const a=f.querySelector('[data-act=room-save]').getBoundingClientRect(),b=f.querySelector('.pages span').getBoundingClientRect();return Math.abs((a.top+a.bottom)/2-(b.top+b.bottom)/2)<8&&a.left<b.left})()"))
@@ -81,14 +94,22 @@ with sync_playwright() as p:
     check('editor_fits', ev("(()=>{const e=document.querySelector('#rmEd .rm-ed-body');return e.scrollWidth<=e.clientWidth+1})()"))
     check('bar_attached_to_modal', ev("(()=>{const b=document.querySelector('.room-bar').getBoundingClientRect(),m=document.querySelector('#modal').getBoundingClientRect();return Math.abs(b.right-m.right)<6&&b.bottom<=m.top+1&&m.top-b.bottom<14})()"))
     check('bg_static_on_pan', ev("(()=>{const bg=document.querySelector('.room-bg');return !document.querySelector('#roomStage').contains(bg)})()"))
+    pg.wait_for_timeout(300)
     px = ev("(()=>{const c=furnCanvas(furnDef('t_bed'),'#ff0000');const d=c.getContext('2d').getImageData(5,5,1,1).data;return [d[0],d[1],d[2]]})()")
     check('png_mask_tint_applies', px[0] > px[1] + 60 and px[1] == px[2], px)
     check('png_scale_size', ev("furnSize(furnDef('t_bed')).w")==80 and ev("furnSize(furnDef('t_chair')).w")==16)
     ev("(()=>{const R=view.room;R.draft.wall='t_wall';R.draft.floor='t_floor';R.draft.bg='t_bg';roomRender()})()")
+    pg.wait_for_timeout(300)
     check('skin_png_rendered', pg.locator('.room-svg image').count() == 2 and pg.locator('img.room-bg').count() == 1 and pg.locator('.room-svg polygon').count() == 0)
-    ev("(()=>{const R=view.room;R.draft.wall='w_cream';R.draft.floor='f_wood';R.draft.bg='b_custom';roomRender()})()")
-    check('skin_png_removed_falls_back_to_colors', pg.locator('.room-svg polygon').count() >= 3 and pg.locator('.room-svg image').count() == 0)
-    check('clean_keeps_png_skin', ev("cleanRoom({wall:'t_wall',floor:'t_floor',bg:'t_bg'}).wall")=='t_wall' and ev("cleanRoom({wall:'t_floor'}).wall")=='w_cream')
+    ev("(()=>{const R=view.room;R.draft.wall='t_nowall';R.draft.floor='t_nofloor';R.draft.bg='b_custom';roomRender()})()")
+    check('missing_png_skin_shows_colors', ev("(()=>{const s=roomSkins({wall:'t_nowall',floor:'t_nofloor',bg:'b_white'});return !s.wp&&!s.fp&&cleanRoom({wall:'wall_00'}).wall==='wall_00'})()"))
+    check('skin_png_removed_falls_back_to_colors', pg.locator('.room-svg polygon').count() == 2 and pg.locator('.room-svg image').count() == 0)
+    check('clean_keeps_png_skin', ev("cleanRoom({wall:'t_wall',floor:'t_floor',bg:'t_bg'}).wall")=='t_wall' and ev("cleanRoom({wall:'t_floor'}).wall")==ev("ROOM_DEFAULT_SKIN.wall"))
+    pg.wait_for_timeout(300)
+    ev("defFurn('t_missing','침대','없음','없는 파일',{src:'assets/room/nope_zz.png',maskSrc:'assets/room/nope_zz_mask.png',w:64,h:64})")
+    ev("furnUrl(furnDef('t_missing'),'')"); pg.wait_for_timeout(800)
+    check('missing_png_gets_temp_marker', ev("furnUrl(furnDef('t_missing'),'').startsWith('data:image/png')") and ev("furnSize(furnDef('t_missing')).w")==64 and not ev("furnMaskable(furnDef('t_missing'))"))
+    check('real_bed_png_size', ev("furnSize(furnDef('bed_00')).w")==96 and ev("furnSize(furnDef('bed_00')).h")==78)
     # 확대/이동
     s0 = ev("view.room.scale"); pg.click('[data-act="room-zoom"][data-d="1"]'); check('zoom', ev("view.room.scale") > s0)
     # 배경 이미지 올리기
@@ -113,7 +134,8 @@ with sync_playwright() as p:
     pg.click('[data-act="room-save"]'); pg.wait_for_timeout(80)
     check('saved', ev("state.room.items.length") == 3 and ev("JSON.parse(localStorage.getItem('deeplayer-ui')).room.items.length") == 3 and ev("state.room.bg") == 'b_custom')
     check('saved_color_kept', ev("state.room.items.some(i=>i.c==='#ff0000')"))
-    # 이미지 출력
+    # 이미지 출력 (file:// 에서는 실제 PNG가 캔버스를 막으므로 data: 스킨으로 확인)
+    ev("(()=>{[state.room,view.room.data].forEach(r=>{r.wall='t_wall';r.floor='t_floor'});roomRender()})()"); pg.wait_for_timeout(300)
     with pg.expect_download() as d: pg.click('[data-act="room-export"]')
     check('export_png', d.value.suggested_filename == 'myroom.png')
     # 취소는 버림
@@ -125,7 +147,7 @@ with sync_playwright() as p:
     pg.click('[data-act="room-cancel"]')
     # 한도
     check('limit', ev("(()=>{const r=cleanRoom({items:Array.from({length:99},(_,i)=>({u:i+1,f:'t_chair',x:1,y:1}))});return r.items.length<=ROOM_MAX})()"))
-    check('clean_rejects_bad', ev("(()=>{const r=cleanRoom({wall:'x',items:[{u:1,f:'nope',x:9,y:9},{u:2,f:'w_cream',x:1,y:1},{u:3,f:'t_bed',x:99999,y:-99999,c:'red'}]});return r.items.length===1&&r.items[0].x<=600&&r.items[0].y>=-300&&r.items[0].c===''})()"))
+    check('clean_rejects_bad', ev("(()=>{const r=cleanRoom({wall:'x',items:[{u:1,f:'nope',x:9,y:9},{u:2,f:'wall_00',x:1,y:1},{u:3,f:'t_bed',x:99999,y:-99999,c:'red'}]});return r.items.length===1&&r.items[0].x<=600&&r.items[0].y>=-300&&r.items[0].c===''})()"))
     # 구경 (상대 프로필)
     ev("closeModal()")
     ev("Object.defineProperty(Cloud,'enabled',{get:()=>true});Cloud.user=()=>({id:'u'});Cloud.getRoom=async n=>({name:n,room:state.room,bg:localStorage.getItem('deeplayer-roombg')})")

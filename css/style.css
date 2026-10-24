@@ -1198,7 +1198,15 @@ textarea#mailBody{width:100%;min-height:80px;resize:vertical}
 .rm-ed-body button,.rm-colorbtn{flex:none;white-space:nowrap;font-size:calc(10px*var(--fs));padding:4px 5px}
 .rm-colorbtn{position:relative;display:grid;place-items:center;border:1px solid var(--line);border-radius:7px;cursor:pointer;background:var(--panel-2)}
 .rm-colorbtn.off{opacity:.45;cursor:not-allowed}
-.rm-colorbtn input{position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer}
+.rm-colorbtn:disabled{opacity:.45;cursor:not-allowed}
+.rm-colorbtn.on{border-color:var(--accent)}
+.rm-pick{position:fixed;box-sizing:border-box;padding:6px;border:1px solid var(--line);border-radius:8px;background:var(--panel);box-shadow:0 6px 24px #0005;display:flex;flex-direction:column;gap:5px}
+.rm-pick-sw{display:grid;grid-template-columns:repeat(8,1fr);gap:3px}
+.rm-pick-sw button{aspect-ratio:1;padding:0;border:1px solid var(--line);border-radius:4px;cursor:pointer}
+.rm-pick label{display:flex;align-items:center;gap:5px;font-size:calc(10px*var(--fs));color:var(--muted)}
+.rm-pick input[type=range]{flex:1;min-width:0;height:10px;border-radius:5px;border:1px solid var(--line);-webkit-appearance:none;appearance:none}
+.rm-pick input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:10px;height:14px;border-radius:3px;background:var(--text);border:1px solid var(--bg)}
+.rm-pick input[type=range]::-moz-range-thumb{width:10px;height:14px;border-radius:3px;background:var(--text);border:1px solid var(--bg)}
 .rm-swatch{flex:1 1 0;min-width:10px;border:1px solid var(--line);border-radius:5px}
 .equip-head{display:flex;align-items:center;justify-content:space-between}
 .rm-peek{margin-right:4px;padding:2px 10px;font-size:calc(12px*var(--fs))}

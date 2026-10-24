@@ -1678,7 +1678,29 @@ function questProgress(q) {
   return { cur: ps.reduce((a, p) => a + p.cur, 0), max: ps.reduce((a, p) => a + p.max, 0), text: ps.map(p => p.text).join(' · '), ready: ps.every(p => p.ready) };
 }
 /* 임무 완수. 성공하면 { ups, items }, 아니면 null */
-function completeQuest(id) {
+const questReady = q => !!q && isTaken(q) && !state.questDone[q.id] && questProgress(q).ready;
+/* 보상 아이템 중 가방에 못 들어가는 몫: [[이름, 수량]...]. 납품으로 비는 칸을 반영하고, drop(이름→수량)은 미리 포기한 보상. 상태는 바꾸지 않는다 */
+function questOverflow(q, drop = {}) {
+  const inv = JSON.parse(JSON.stringify(state.inventory)), cap = bagCapacity(), used = () => Object.values(inv).reduce((a, l) => a + l.length, 0), out = [], dl = { ...drop };
+  needParts(q).forEach(n => { if (!n.consume) return; const l = inv[ITEMS[n.name].tab]; let left = n.qty; for (let i = l.length - 1; i >= 0 && left > 0; i--) { if (l[i].n !== n.name) continue; const a = Math.min(left, l[i].q); l[i].q -= a; left -= a; if (!l[i].q) l.splice(i, 1); } });
+  (q.reward.items || []).forEach(([name, c]) => {
+    if (!ITEMS[name]) return; const cut = Math.min(c, dl[name] || 0); dl[name] = (dl[name] || 0) - cut; let left = c - cut; const it = ITEMS[name], list = inv[it.tab], stack = it.tab !== '장비';
+    if (stack) for (const x of list) { if (x.n !== name || x.q >= STACK_MAX) continue; const a = Math.min(left, STACK_MAX - x.q); x.q += a; left -= a; }
+    while (left > 0 && used() < cap) { const a = stack ? Math.min(left, STACK_MAX) : 1; list.push({ n: name, q: a }); left -= a; }
+    if (left > 0) out.push([name, left]);
+  });
+  return out;
+}
+/* 소지품 한 칸(스택)을 통째로 버린다. 성공하면 { name, q }, 실패하면 사유 */
+function discardStack(tab, idx, name) {
+  const l = state.inventory[tab], st = l && l[idx];
+  if (!st || st.n !== name) return '그 칸이 바뀌었습니다.';
+  l.splice(idx, 1);
+  if (tab === '장비' && !l.some(s => s.n === name) && !Object.values(state.equipment).includes(name) && !(state.storage[name] > 0)) { delete state.enchants[name]; delete state.reinforce[name]; delete state.nicks[name]; delete state.engraves[name]; }
+  syncMax(); save();
+  return { name, q: st.q };
+}
+function completeQuest(id, drop = {}) {
   const q = QUESTS.find(x => x.id === id);
   if (!q || !isTaken(q) || state.questDone[id] || !questProgress(q).ready) return null;
   needParts(q).forEach(n => { if (n.consume) removeItem(n.name, n.qty); });
@@ -1686,7 +1708,7 @@ function completeQuest(id) {
   state.questCount = (state.questCount || 0) + 1; const ticket = state.questCount % TICKET_EVERY === 0; if (ticket) state.tickets = Math.min(9999, (state.tickets || 0) + 1);
   if (q.promo) { state.character.rank = q.promo; } // 승급 시험을 마치면 등급이 오른다
   state.money += q.reward.money || 0;
-  (q.reward.items || []).forEach(([n, c]) => addItem(n, c));
+  const dl = { ...drop }; (q.reward.items || []).forEach(([n, c]) => { const cut = Math.min(c, dl[n] || 0); dl[n] = (dl[n] || 0) - cut; if (c - cut > 0) addItem(n, c - cut); });
   const ups = gainExp(q.reward.exp || 0);
   save();
   return { ups, promo: q.promo || null, ticket };

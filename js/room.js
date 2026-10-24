@@ -17,12 +17,21 @@ function srcInfo(def) { // PNG 그림 불러오기 (한 번만). 다 불러오�
   let im = _srcImg[def.id];
   if (!im) {
     im = _srcImg[def.id] = { base: new Image(), mask: null };
-    im.base.onload = () => roomFurnLoaded(def.id); im.base.src = def.src;
-    if (def.maskSrc) { im.mask = new Image(); im.mask.onload = () => roomFurnLoaded(def.id); im.mask.src = def.maskSrc; }
+    im.base.onload = () => roomFurnLoaded(def.id); im.base.onerror = () => { im.failed = true; roomFurnLoaded(def.id); }; im.base.src = def.src;
+    if (def.maskSrc) { im.mask = new Image(); im.mask.onload = () => roomFurnLoaded(def.id); im.mask.onerror = () => { im.maskFailed = true; roomFurnLoaded(def.id); }; im.mask.src = def.maskSrc; }
   }
   return im;
 }
-const srcReady = (def, needMask) => { const im = srcInfo(def); return im.base.complete && im.base.naturalWidth > 0 && (!needMask || (im.mask && im.mask.complete && im.mask.naturalWidth > 0)); };
+const srcReady = (def, needMask) => { const im = srcInfo(def); return im.base.complete && im.base.naturalWidth > 0 && (!needMask || im.maskFailed || (im.mask && im.mask.complete && im.mask.naturalWidth > 0)); };
+const srcFailed = def => !!def.src && !def.map && !!srcInfo(def).failed;
+function tempCanvas(def) { // 그림 파일이 아직 없을 때 대신 보이는 임시 표시 (회색 점선 상자 + 이름)
+  const cv = document.createElement('canvas'), w = def.w || 64, h = def.h || 64; cv.width = w; cv.height = h; const c = cv.getContext('2d');
+  c.fillStyle = 'rgba(200,200,205,.75)'; c.fillRect(0, 0, w, h); c.strokeStyle = '#6b6b75'; c.lineWidth = 2; c.setLineDash([5, 4]); c.strokeRect(1, 1, w - 2, h - 2);
+  c.setLineDash([]); c.lineWidth = 1; c.beginPath(); c.moveTo(2, 2); c.lineTo(w - 2, h - 2); c.moveTo(w - 2, 2); c.lineTo(2, h - 2); c.strokeStyle = 'rgba(107,107,117,.45)'; c.stroke();
+  c.fillStyle = '#2b2b33'; c.font = '10px sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; const t = String(def.name || def.id).slice(0, Math.max(2, Math.floor(w / 7)));
+  c.fillStyle = 'rgba(255,255,255,.8)'; c.fillRect(2, h / 2 - 7, w - 4, 14); c.fillStyle = '#2b2b33'; c.fillText(t, w / 2, h / 2 + 1);
+  return cv;
+}
 function furnCanvas(def, color) { // 문자 도트(map)나 PNG(src) 를 캔버스로. 색상 변경은 mask 부분에만 곱한다
   const key = def.id + '|' + (color || ''); if (_furnCv[key]) return _furnCv[key];
   const cv = document.createElement('canvas'), tint = color && /^#[0-9a-fA-F]{6}$/.test(color) ? hexRgb(color) : null;
@@ -37,6 +46,7 @@ function furnCanvas(def, color) { // 문자 도트(map)나 PNG(src) 를 캔버�
     ctx.putImageData(img, 0, 0);
   } else if (def.src) {
     const im = srcInfo(def);
+    if (im.failed) { const t = tempCanvas(def); _furnCv[key] = t; return t; }
     if (!srcReady(def, !!def.maskSrc)) { cv.width = def.w || 64; cv.height = def.h || 64; return cv; } // 아직 불러오는 중 (캐시하지 않는다)
     const w = im.base.naturalWidth, h = im.base.naturalHeight; cv.width = w; cv.height = h; const ctx = cv.getContext('2d'); ctx.drawImage(im.base, 0, 0);
     if (tint && im.mask) {
@@ -51,29 +61,37 @@ function furnCanvas(def, color) { // 문자 도트(map)나 PNG(src) 를 캔버�
   _furnCv[key] = cv; return cv;
 }
 const furnUrl = (def, color) => { // 색을 바꾸지 않은 PNG 는 파일 그대로 쓴다 (캔버스를 거치지 않아 어디서든 보인다)
-  if (def.src && !def.map && !color) return def.src;
+  if (def.src && !def.map && !color && !srcFailed(def)) return def.src;
   try { return furnCanvas(def, color).toDataURL(); } catch (e) { return def.src || ''; }
 };
 const furnScale = def => (def.map ? ROOM_SCALE : (def.scale || 1));
 function furnSize(def) { const cv = furnCanvas(def, ''), k = furnScale(def); return { w: Math.round(cv.width * k), h: Math.round(cv.height * k) }; }
-const furnMaskable = def => !!(def.maskSrc || (def.map && def.map.some(r => [...r].some(c => FURN_MASK.includes(c)))));
+const furnMaskable = def => !!((def.maskSrc && !srcInfo(def).failed && !srcInfo(def).maskFailed) || (def.map && def.map.some(r => [...r].some(c => FURN_MASK.includes(c)))));
 
 /* ----- 방 그림 (배경·벽·바닥) ----- */
+const _skinImg = {};
+let _skinT = 0;
+function skinOk(def) { // 직접 그린 PNG 틀은 파일이 실제로 불러와졌을 때만 쓴다 (없으면 색으로 보여 주다가, 불러와지면 바꾼다)
+  if (!def.src) return false;
+  let im = _skinImg[def.src];
+  if (!im) { im = _skinImg[def.src] = new Image(); im.onload = () => { clearTimeout(_skinT); _skinT = setTimeout(() => { if (isRoomOpen() && !view.room.dragging) roomRender(); }, 60); }; im.src = def.src; }
+  return im.complete && im.naturalWidth > 0;
+}
 function roomSkins(room) {
   const w = furnDef(room.wall) || furnDef(ROOM_DEFAULT_SKIN.wall), f = furnDef(room.floor) || furnDef(ROOM_DEFAULT_SKIN.floor), b = furnDef(room.bg) || furnDef(ROOM_DEFAULT_SKIN.bg);
-  return { w: w.skin, f: f.skin, b: b.skin, wd: w, fd: f, bd: b, custom: b.id === 'b_custom' };
+  return { w: w.skin, f: f.skin, b: b.skin, wd: w, fd: f, bd: b, wp: skinOk(w) ? w.src : '', fp: skinOk(f) ? f.src : '', bp: skinOk(b) ? b.src : '', custom: b.id === 'b_custom' };
 }
 const polyStr = pts => pts.map(p => p.join(',')).join(' ');
 function roomBgHtml(room, bg) { // 배경: 방을 움직이거나 확대해도 그대로 있는 층
   const s = roomSkins(room);
-  if (s.bd.src && !s.custom) return `<img class="room-bg" src="${esc(s.bd.src)}" alt="" draggable="false">`;
+  if (s.bp && !s.custom) return `<img class="room-bg" src="${esc(s.bp)}" alt="" draggable="false">`;
   return s.custom && roomBgOk(bg) ? `<img class="room-bg" src="${bg}" alt="" draggable="false">` : `<div class="room-bg" style="background:linear-gradient(${s.b.a},${s.b.b})"></div>`;
 }
 function roomSvg(room) { // 방(벽·바닥)만 — 움직이고 확대된다
   const s = roomSkins(room), G = ROOM_GEO;
   const lines = []; for (let i = 1; i < 6; i++) { const t = i / 6, a = [G.floor[0][0] + (G.floor[3][0] - G.floor[0][0]) * t, G.floor[0][1] + (G.floor[3][1] - G.floor[0][1]) * t], b = [G.floor[1][0] + (G.floor[2][0] - G.floor[1][0]) * t, G.floor[1][1] + (G.floor[2][1] - G.floor[1][1]) * t]; lines.push(`<line x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}"/>`); }
-  const wall = s.wd.src ? `<image href="${esc(s.wd.src)}" x="0" y="0" width="${ROOM_W}" height="${ROOM_H}"/>` : `<polygon points="${polyStr(G.left)}" fill="${s.w.l}" stroke="#0003" stroke-width="2"/><polygon points="${polyStr(G.right)}" fill="${s.w.r}" stroke="#0003" stroke-width="2"/>`;
-  const floor = s.fd.src ? `<image href="${esc(s.fd.src)}" x="0" y="0" width="${ROOM_W}" height="${ROOM_H}"/>` : `<polygon points="${polyStr(G.floor)}" fill="${s.f.a}" stroke="#0003" stroke-width="2"/><g stroke="${s.f.b}" stroke-width="3" opacity=".7">${lines.join('')}</g>`;
+  const wall = s.wp ? `<image href="${esc(s.wp)}" x="0" y="0" width="${ROOM_W}" height="${ROOM_H}"/>` : `<polygon points="${polyStr(G.wall)}" fill="${s.w.l}" stroke="#0003" stroke-width="2"/>`;
+  const floor = s.fp ? `<image href="${esc(s.fp)}" x="0" y="0" width="${ROOM_W}" height="${ROOM_H}"/>` : `<polygon points="${polyStr(G.floor)}" fill="${s.f.a}" stroke="#0003" stroke-width="2"/><g stroke="${s.f.b}" stroke-width="3" opacity=".7">${lines.join('')}</g>`;
   return `<svg class="room-svg" viewBox="0 0 ${ROOM_W} ${ROOM_H}" width="${ROOM_W}" height="${ROOM_H}" aria-hidden="true">${wall}${floor}</svg>`;
 }
 const roomItemZ = (it, def) => (def.layer === 'wall' ? 10 : 5000) + it.z; // 벽 소품은 항상 바닥 가구 뒤
@@ -88,7 +106,7 @@ const roomData = () => (view.room && view.room.edit ? view.room.draft : view.roo
 function roomTileHtml(d, room) { // 소지품 칸(.slot)과 같은 모양
   const on = d.skin ? room[ROOM_SKIN_KEY[d.cat]] === d.id : false;
   const pos = d.cat === '벽지' ? '50% 38%' : d.cat === '바닥' ? '50% 62%' : '50% 50%';
-  const face = d.skin && d.src ? `<span class="rm-sw" style="background:${d.cat === '배경' ? `url('${esc(d.src)}') center/cover` : `url('${esc(d.src)}') ${pos}/300% auto no-repeat`}"></span>` : d.skin ? `<span class="rm-sw" style="background:${d.skin.l ? `linear-gradient(90deg,${d.skin.l} 50%,${d.skin.r} 50%)` : `linear-gradient(${d.skin.a},${d.skin.b})`}"></span>` : `<img src="${furnUrl(d, '')}" alt="" draggable="false">`;
+  const face = d.skin && d.src && skinOk(d) ? `<span class="rm-sw" style="background:${d.cat === '배경' ? `url('${esc(d.src)}') center/cover` : `url('${esc(d.src)}') ${pos}/300% auto no-repeat`}"></span>` : d.skin ? `<span class="rm-sw" style="background:${d.skin.l ? `${d.skin.l}` : `linear-gradient(${d.skin.a},${d.skin.b})`}"></span>` : `<img src="${furnUrl(d, '')}" alt="" draggable="false">`;
   return `<button class="slot clickable filled rm-slot ${on ? 'selected' : ''}" data-act="room-pick" data-id="${esc(d.id)}" data-tip-title="${esc(d.name)}" data-tip-desc="${esc(d.desc || '')}" aria-label="${esc(d.name)}">${face}</button>`;
 }
 function roomSideHtml() {
@@ -111,12 +129,12 @@ function roomEditorHtml() { // 화면 어디로든 옮길 수 있는 떠 있는 
   const can = d && furnMaskable(d);
   return `<div class="rm-ed" id="rmEd" style="left:${ed.x}px;top:${ed.y}px"><div class="rm-ed-bar" id="rmEdBar">가구 편집기${d ? ` · ${esc(d.name)}` : ''}</div><div class="rm-ed-body">` +
     `<button data-act="room-flip" ${it ? '' : 'disabled'}>좌우반전</button>` +
-    `<label class="rm-colorbtn ${can ? '' : 'off'}" title="${d && !can ? '이 가구는 색을 바꿀 수 있는 부분이 없어요' : ''}">색상변경<input type="color" id="rmColor" value="${it && it.c ? it.c : '#ffffff'}" ${can ? '' : 'disabled'}></label>` +
+    `<button class="rm-colorbtn ${R.pick && can ? 'on' : ''}" data-act="room-color" ${can ? '' : 'disabled'} title="${d && !can ? '이 가구는 색을 바꿀 수 있는 부분이 없어요' : ''}">색상변경</button>` +
     `<span class="rm-swatch" style="background:${it && it.c ? it.c : 'transparent'}"></span><button data-act="room-del" ${it ? '' : 'disabled'}>삭제</button></div></div>`;
 }
 function roomBarHtml() { // 오버레이 안이 아니라 바깥(흐린 부분) 오른쪽 위에 작게 뜬다
   const R = view.room;
-  return `<div class="room-bar">${R.viewOnly || R.edit ? '' : '<button class="primary" data-act="room-edit">룸 편집</button>'}<button data-act="room-export">이미지 출력</button></div>`;
+  return `<div class="room-bar"><button data-act="room-export">이미지 출력</button>${R.viewOnly || R.edit ? '' : '<button class="primary" data-act="room-edit">룸 편집</button>'}</div>`;
 }
 function roomHtml() {
   const R = view.room, room = roomData(), bg = R.viewOnly ? R.bg : roomBgLocal();
@@ -128,7 +146,7 @@ function roomFloatRender() {
   const R = view.room, ov = $('#overlay'); if (!R || !ov) return;
   let f = $('#roomFloat'); if (!f) { f = document.createElement('div'); f.id = 'roomFloat'; ov.appendChild(f); }
   if (R.edit && !R.ed) { const v = $('#roomVp'); if (v) { const r = v.getBoundingClientRect(); R.ed = { x: Math.round(r.left + 8), y: Math.round(r.bottom - 72) }; } }
-  f.innerHTML = roomBarHtml() + roomEditorHtml(); roomBarPlace();
+  f.innerHTML = roomBarHtml() + roomEditorHtml(); roomBarPlace(); roomPickRender();
 }
 function roomBarPlace() { // 룸 편집/이미지 출력: ROOM 창 오른쪽 위 바깥에 살짝 띄워 붙인다
   const bar = $('#roomFloat .room-bar'), m = $('#modal'); if (!bar || !m) return;
@@ -170,7 +188,34 @@ function roomSelect(u, refresh = true) {
   $$('#roomItems .rm-item').forEach(e => e.classList.toggle('sel', +e.dataset.u === u));
   if (refresh) roomEdRefresh();
 }
-function roomEdRefresh() { const w = $('#rmEd'), wrap = document.createElement('div'); wrap.innerHTML = roomEditorHtml(); if (w && wrap.firstChild) w.replaceWith(wrap.firstChild); }
+function roomEdRefresh() { const w = $('#rmEd'), wrap = document.createElement('div'); wrap.innerHTML = roomEditorHtml(); if (w && wrap.firstChild) w.replaceWith(wrap.firstChild); roomPickRender(); }
+/* ----- 색상 고르개: 편집기 바로 아래(자리가 없으면 위)에 떠서 방이 가려지지 않는다 ----- */
+const ROOM_SWATCHES = ['#ffffff', '#d9d9d9', '#8c8c8c', '#333333', '#e57373', '#f2a65a', '#f2d96b', '#9ccc65', '#4db6ac', '#64b5f6', '#9575cd', '#f48fb1', '#a1887f', '#ffccbc', '#c5e1a5', '#b3e5fc'];
+const hex2hsl = h => { const m = /^#([0-9a-f]{6})$/i.exec(h || ''); if (!m) return [0, 0, 100]; const n = parseInt(m[1], 16), r = (n >> 16) / 255, g = ((n >> 8) & 255) / 255, b = (n & 255) / 255, mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2; let hh = 0, ss = 0; if (mx !== mn) { const d = mx - mn; ss = l > .5 ? d / (2 - mx - mn) : d / (mx + mn); hh = mx === r ? (g - b) / d + (g < b ? 6 : 0) : mx === g ? (b - r) / d + 2 : (r - g) / d + 4; hh *= 60; } return [Math.round(hh), Math.round(ss * 100), Math.round(l * 100)]; };
+const hsl2hex = (h, s, l) => { s /= 100; l /= 100; const k = n => (n + h / 30) % 12, a = s * Math.min(l, 1 - l), f = n => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1))); return '#' + [f(0), f(8), f(4)].map(x => Math.round(x * 255).toString(16).padStart(2, '0')).join(''); };
+function roomPickHtml(c) {
+  const [h, s, l] = hex2hsl(c || '#ffffff');
+  return `<div class="rm-pick-sw">${ROOM_SWATCHES.map(x => `<button data-act="room-color-set" data-c="${x}" style="background:${x}" title="${x}"></button>`).join('')}</div>` +
+    `<label>색조<input type="range" id="rmH" min="0" max="360" value="${h}" style="background:linear-gradient(90deg,#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00)"></label>` +
+    `<label>채도<input type="range" id="rmS" min="0" max="100" value="${s}" style="background:linear-gradient(90deg,#888,${hsl2hex(h, 100, 50)})"></label>` +
+    `<label>밝기<input type="range" id="rmL" min="0" max="100" value="${l}" style="background:linear-gradient(90deg,#000,${hsl2hex(h, s, 50)},#fff)"></label>`;
+}
+function roomPickRender() {
+  const R = view.room, f = $('#roomFloat'); let w = $('#rmPick'); const it = R && R.edit && R.draft.items.find(x => x.u === R.sel), d = it && furnDef(it.f);
+  if (!R || !f || !R.pick || !d || !furnMaskable(d)) { if (R) R.pick = false; if (w) w.remove(); return; }
+  if (!w) { w = document.createElement('div'); w.id = 'rmPick'; w.className = 'rm-pick'; f.appendChild(w); }
+  if (!w.dataset.u || +w.dataset.u !== it.u) { w.dataset.u = it.u; w.innerHTML = roomPickHtml(it.c); }
+  roomPickPlace();
+}
+function roomPickPlace() {
+  const w = $('#rmPick'), e = $('#rmEd'); if (!w || !e) return; const r = e.getBoundingClientRect(), h = w.offsetHeight || 150;
+  w.style.width = r.width + 'px'; w.style.left = Math.max(0, Math.min(window.innerWidth - r.width, r.left)) + 'px';
+  w.style.top = (r.bottom + 4 + h <= window.innerHeight ? r.bottom + 4 : Math.max(0, r.top - 4 - h)) + 'px';
+}
+function roomPickApply(c) { // 고르는 동안 바로 보인다
+  const R = view.room, it = R.draft.items.find(x => x.u === R.sel), d = it && furnDef(it.f); if (!it || !d) return;
+  it.c = c.toLowerCase(); const el = $(`#roomItems .rm-item[data-u="${it.u}"]`); if (el) el.src = furnUrl(d, it.c); const sw = $('#rmEd .rm-swatch'); if (sw) sw.style.background = it.c;
+}
 function roomAdd(d) {
   const R = view.room, room = R.draft;
   if (d.skin) { room[ROOM_SKIN_KEY[d.cat]] = d.id; roomRender(); return; }
@@ -192,7 +237,7 @@ function roomPointer() { // 끌어서 이동 (가구) / 끌어서 이동 (빈 �
       const u = +itEl.dataset.u, it = R.draft.items.find(x => x.u === u); if (!it) return;
       roomSelect(u); drag = { kind: 'item', it, el: itEl, sx: e.clientX, sy: e.clientY, ox: it.x, oy: it.y, moved: false };
     } else { if (R.edit && R.sel) { R.sel = 0; $$('#roomItems .rm-item').forEach(x => x.classList.remove('sel')); roomSelect(0); } drag = { kind: 'pan', sx: e.clientX, sy: e.clientY, ox: R.px || 0, oy: R.py || 0 }; }
-    vp.setPointerCapture(e.pointerId); e.preventDefault();
+    R.dragging = true; vp.setPointerCapture(e.pointerId); e.preventDefault();
   });
   document.addEventListener('pointermove', e => {
     if (!drag || !isRoomOpen()) return; const R = view.room, dx = e.clientX - drag.sx, dy = e.clientY - drag.sy;
@@ -202,15 +247,15 @@ function roomPointer() { // 끌어서 이동 (가구) / 끌어서 이동 (빈 �
       drag.it.x = Math.round(Math.max(-sz.w / 2, Math.min(ROOM_W - sz.w / 2, drag.ox + dx / s))); drag.it.y = Math.round(Math.max(-sz.h / 2, Math.min(ROOM_H - sz.h / 2, drag.oy + dy / s)));
       drag.el.style.left = drag.it.x + 'px'; drag.el.style.top = drag.it.y + 'px';
     } else if (drag.kind === 'pan') { R.px = drag.ox + dx; R.py = drag.oy + dy; roomFit(); }
-    else if (drag.kind === 'ed') { const w = drag.w; R.ed = { x: Math.max(0, Math.min(window.innerWidth - w.offsetWidth, drag.ox + dx)), y: Math.max(0, Math.min(window.innerHeight - w.offsetHeight, drag.oy + dy)) }; w.style.left = R.ed.x + 'px'; w.style.top = R.ed.y + 'px'; }
+    else if (drag.kind === 'ed') { const w = drag.w; R.ed = { x: Math.max(0, Math.min(window.innerWidth - w.offsetWidth, drag.ox + dx)), y: Math.max(0, Math.min(window.innerHeight - w.offsetHeight, drag.oy + dy)) }; w.style.left = R.ed.x + 'px'; w.style.top = R.ed.y + 'px'; roomPickPlace(); }
   });
-  const end = () => { drag = null; };
+  const end = () => { drag = null; if (view.room) view.room.dragging = false; };
   document.addEventListener('pointerup', end); document.addEventListener('pointercancel', end);
   document.addEventListener('wheel', e => { if (isRoomOpen() && e.target.closest('#roomVp')) { e.preventDefault(); roomZoom(e.deltaY < 0 ? 1 : -1); } }, { passive: false });
   window.addEventListener('resize', () => { if (isRoomOpen()) { roomFit(); roomBarPlace(); } });
-  document.addEventListener('input', e => { // 색상: 고르는 동안 바로 보인다
-    if (e.target.id !== 'rmColor' || !isRoomOpen()) return; const R = view.room, it = R.draft.items.find(x => x.u === R.sel), d = it && furnDef(it.f); if (!it || !d) return;
-    it.c = e.target.value.toLowerCase(); const el = $(`#roomItems .rm-item[data-u="${it.u}"]`); if (el) el.src = furnUrl(d, it.c); const sw = $('#rmEd .rm-swatch'); if (sw) sw.style.background = it.c;
+  document.addEventListener('input', e => { // 색상 슬라이더
+    if (!isRoomOpen() || !/^rm[HSL]$/.test(e.target.id || '')) return; const g = id => +$('#' + id).value, h = g('rmH'), sa = g('rmS'), l = g('rmL');
+    roomPickApply(hsl2hex(h, sa, l)); $('#rmS').style.background = `linear-gradient(90deg,#888,${hsl2hex(h, 100, 50)})`; $('#rmL').style.background = `linear-gradient(90deg,#000,${hsl2hex(h, sa, 50)},#fff)`;
   });
   document.addEventListener('change', e => { if (e.target.id === 'rmBgFile' && isRoomOpen() && e.target.files && e.target.files[0]) roomBgFromFile(e.target.files[0]); });
 }
@@ -249,12 +294,12 @@ function roomExport() {
   const room = cleanRoom(roomData()), bg = view.room.viewOnly ? view.room.bg : roomBgLocal(), s = roomSkins(room), G = ROOM_GEO;
   const cv = document.createElement('canvas'); cv.width = ROOM_W; cv.height = ROOM_H; const ctx = cv.getContext('2d');
   const load = src => new Promise(r => { if (!src) { r(null); return; } const im = new Image(); im.onload = () => r(im); im.onerror = () => r(null); im.src = src; });
-  Promise.all([load(!s.custom && s.bd.src), load(s.custom && roomBgOk(bg) && bg), load(s.wd.src), load(s.fd.src)]).then(([bgPng, bgUser, wallPng, floorPng]) => {
+  Promise.all([load(!s.custom && s.bp), load(s.custom && roomBgOk(bg) && bg), load(s.wp), load(s.fp)]).then(([bgPng, bgUser, wallPng, floorPng]) => {
     const poly = (pts, fill) => { ctx.beginPath(); pts.forEach((p, i) => (i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]))); ctx.closePath(); ctx.fillStyle = fill; ctx.fill(); ctx.strokeStyle = 'rgba(0,0,0,.2)'; ctx.lineWidth = 2; ctx.stroke(); };
     const g = ctx.createLinearGradient(0, 0, 0, ROOM_H); g.addColorStop(0, s.b.a); g.addColorStop(1, s.b.b); ctx.fillStyle = g; ctx.fillRect(0, 0, ROOM_W, ROOM_H);
     ctx.imageSmoothingEnabled = true;
     if (bgPng || bgUser) ctx.drawImage(bgPng || bgUser, 0, 0, ROOM_W, ROOM_H);
-    if (wallPng) ctx.drawImage(wallPng, 0, 0, ROOM_W, ROOM_H); else { poly(G.left, s.w.l); poly(G.right, s.w.r); }
+    if (wallPng) ctx.drawImage(wallPng, 0, 0, ROOM_W, ROOM_H); else poly(G.wall, s.w.l);
     if (floorPng) ctx.drawImage(floorPng, 0, 0, ROOM_W, ROOM_H); else poly(G.floor, s.f.a);
     room.items.map(it => ({ it, d: furnDef(it.f) })).filter(x => x.d).sort((a, b) => roomItemZ(a.it, a.d) - roomItemZ(b.it, b.d)).forEach(({ it, d }) => {
       const sp = furnCanvas(d, it.c), sz = furnSize(d); ctx.imageSmoothingEnabled = furnScale(d) <= 1; ctx.save(); ctx.translate(it.x + (it.flip ? sz.w : 0), it.y); if (it.flip) ctx.scale(-1, 1); ctx.drawImage(sp, 0, 0, sz.w, sz.h); ctx.restore();
@@ -272,6 +317,8 @@ Object.assign(A, {
   'room-tab': el => { const R = view.room; R.tab = el.dataset.tab; R.page = 0; $('#roomSide').innerHTML = roomSideHtml(); },
   'room-page': el => { const R = view.room; R.page = Math.max(0, (R.page || 0) + intIn(el.dataset.d, -1, 1, 0)); $('#roomSide').innerHTML = roomSideHtml(); },
   'room-pick': el => { const R = view.room, d = furnDef(el.dataset.id); if (!R || !R.edit || !d) return; if (d.id === 'b_custom' && !roomBgLocal()) { toast('먼저 「내 이미지 올리기」로 이미지를 올려 주세요.'); return; } roomAdd(d); },
+  'room-color': () => { const R = view.room; if (!R || !R.edit) return; R.pick = !R.pick; const w = $('#rmPick'); if (w) w.remove(); roomEdRefresh(); sfx('click'); },
+  'room-color-set': el => { const c = el.dataset.c; if (!/^#[0-9a-f]{6}$/i.test(c || '')) return; roomPickApply(c); const w = $('#rmPick'); if (w) { w.innerHTML = roomPickHtml(c); } },
   'room-flip': () => { const R = view.room, it = R && R.draft.items.find(x => x.u === R.sel); if (!it) return; it.flip = it.flip ? 0 : 1; const el = $(`#roomItems .rm-item[data-u="${it.u}"]`); if (el) el.style.transform = it.flip ? 'scaleX(-1)' : ''; sfx('click'); },
   'room-del': () => { const R = view.room, i = R && R.draft.items.findIndex(x => x.u === R.sel); if (i == null || i < 0) return; R.draft.items.splice(i, 1); R.sel = 0; roomRender(); sfx('click'); },
   'room-zoom': el => roomZoom(intIn(el.dataset.d, -1, 1, 0)),
