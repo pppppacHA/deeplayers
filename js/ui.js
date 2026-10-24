@@ -599,7 +599,7 @@ function renderSituation() { // '상황' 탭: 접을 수 있는 두 칸 — 주�
   const pn = new Set(pm.map(m => m.name)), np = (view.nearby || []).filter(p => !pn.has(p.name));
   const nearSrv = np.map(p => `<div class="nearby-row"><div class="round-avatar" data-user="${esc(p.name)}">${avatarOf(p.name)}</div><div class="grow"><strong data-user="${esc(p.name)}">${esc(p.name)}</strong><small>같은 칸 · 접속 중</small></div><button data-act="ftrade-open" data-name="${esc(p.name)}">교환</button></div>`).join('');
   const nearAll = NEARBY_PLAYERS.length + pm.length + np.length;
-  const partyBody = partyOn() ? (PARTY.id ? `<div class="party-list">${PARTY.members.map(m => `<div class="party-row"><span>${icon(m.leader ? 'workspace_premium' : 'person')}</span><b data-user="${esc(m.name)}">${esc(m.name)}</b>${m.leader ? '<em class="tag">파티장</em>' : ''}${partyLeader() && m.uid !== Cloud.userUid ? `<button data-act="party-kick" data-uid="${esc(m.uid)}" data-name="${esc(m.name)}" title="파티에서 내보냅니다">내보내기</button>` : ''}</div>`).join('')}</div>${partyLeader() ? '' : `<div class="party-follow"><button class="${state.follow ? 'primary' : ''}" data-act="follow-toggle" aria-pressed="${state.follow}">${icon('directions_walk')} 동행 모드 ${state.follow ? '켜짐' : '꺼짐'}</button><small>${esc(state.follow ? (view.followMsg || '파티장을 기다리는 중이에요.') : '켜면 파티장이 움직일 때 자동으로 따라가요.')}</small></div>`}<div class="party-foot"><small>${PARTY.members.length}/4명 · 파티원은 항상 주위 대원이에요</small><button data-act="party-leave">나가기</button></div>` : '<div class="empty">파티가 없습니다. 친구 창이나 대원 프로필에서 초대해 보세요. (2~4명)</div>')
+  const partyBody = partyOn() ? (PARTY.id ? `<div class="party-list">${PARTY.members.map(m => `<div class="party-row"><span>${icon(m.leader ? 'workspace_premium' : 'person')}</span><b data-user="${esc(m.name)}">${esc(m.name)}</b>${m.leader ? '<em class="tag">파티장</em>' : ''}${partyLeader() && m.uid !== Cloud.userUid ? `<button data-act="party-kick" data-uid="${esc(m.uid)}" data-name="${esc(m.name)}" title="파티에서 내보냅니다">내보내기</button>` : ''}</div>`).join('')}</div>${partyLeader() ? '' : `<div class="party-follow"><button class="${state.follow ? 'primary' : ''}" data-act="follow-toggle" aria-pressed="${state.follow}">${icon('directions_walk')} 동행 모드 ${state.follow ? '켜짐' : '꺼짐'}</button><small>${esc(state.follow ? (view.followMsg || '파티장을 기다리는 중이에요.') : '켜면 파티장이 움직일 때 자동으로 따라가요.')}${paceSec() < stepSec() - .5 ? esc(` · 이동 속도를 파티에서 가장 빠른 사람에 맞춰 한 칸 ${Math.round(paceSec())}초`) : ''}</small></div>`}<div class="party-foot"><small>${PARTY.members.length}/4명 · 파티원은 항상 주위 대원이에요</small><button data-act="party-leave">나가기</button></div>` : '<div class="empty">파티가 없습니다. 친구 창이나 대원 프로필에서 초대해 보세요. (2~4명)</div>')
     + (PARTY.invites.length ? `<div class="party-inv">${PARTY.invites.map(r => `<div class="party-row"><span>${icon('mail')}</span><b>${esc(r.name)}</b><small>의 파티 초대</small><button class="primary" data-act="party-answer" data-id="${r.id}" data-ok="1">수락</button><button data-act="party-answer" data-id="${r.id}" data-ok="0">거절</button></div>`).join('')}</div>` : '') : '<div class="empty">파티는 서버에 로그인하면 쓸 수 있어요.</div>';
   const near = nearP + nearSrv + (NEARBY_PLAYERS.length ? '' : (nearP || nearSrv) ? '' : '<div class="empty">주위에 다른 대원이 없습니다.</div>') + NEARBY_PLAYERS.map(([n, s]) => `<div class="nearby-row"><div class="round-avatar">${icon('person')}</div><div class="grow"><strong>${esc(n)}</strong><small>${esc(LOCATIONS[state.location].name)} · ${esc(s)}</small></div><button data-act="player" data-player="${esc(n)}">정보</button><button data-act="trade-open" data-player="${esc(n)}">교환</button></div>`).join('');
   const doneN = state.todos.filter(t => t.done).length;
@@ -995,7 +995,7 @@ async function partySync(quiet) { // 서버에서 내 파티와 받은 초대를
   let pi; try { pi = await Cloud.partyInfo(); } catch (e) { return; } // 서버 준비 전
   const p = pi && pi.party, before = PARTY.id, names0 = partyOthers().join('|');
   PARTY.id = p && Number.isFinite(+p.id) ? +p.id : 0;
-  PARTY.members = p && Array.isArray(p.members) ? p.members.slice(0, 4).map(m => ({ uid: /^[0-9a-f-]{36}$/i.test(m.uid) ? m.uid : '', name: cleanText(m.name, 12) || '?', leader: !!m.leader, online: m.online === true || m.uid === Cloud.userUid, place: typeof m.place === 'string' ? m.place.slice(0, 40) : '' })).filter(m => m.uid) : [];
+  PARTY.members = p && Array.isArray(p.members) ? p.members.slice(0, 4).map(m => ({ uid: /^[0-9a-f-]{36}$/i.test(m.uid) ? m.uid : '', name: cleanText(m.name, 12) || '?', leader: !!m.leader, online: m.online === true || m.uid === Cloud.userUid, place: typeof m.place === 'string' ? m.place.slice(0, 40) : '', spd: Number.isFinite(+m.spd) ? +m.spd : 0, fol: m.fol === true })).filter(m => m.uid) : [];
   if (!PARTY.members.length) PARTY.id = 0;
   PARTY.invites = (pi && Array.isArray(pi.incoming) ? pi.incoming : []).slice(0, 10).map(r => ({ id: sid9(r.id), name: cleanText(r.name, 12) })).filter(r => r.id && r.name);
   view.partyUid = {}; PARTY.members.forEach(m => { view.partyUid[m.name] = m.uid; });
@@ -1024,10 +1024,10 @@ function followTick() {
   const was = view.followMsg; view.followMsg = L.place && parsePlace(L.place) && parsePlace(L.place).air === '개인실' ? '파티장이 개인실에 있어요.' : '파티장과 같은 곳에 있어요.';
   if (was !== view.followMsg && state.side === '상황') renderSituation();
 }
-async function partyPlacePush() { // 내가 파티장이면 내 위치가 바뀔 때만 서버에 올린다
-  if (!partyOn() || !PARTY.id || !partyLeader() || !state.created || view.placeBusy) return;
-  const p = placeNow(); if (p === view.placeSent) return;
-  view.placeBusy = true; try { await Cloud.setPlace(p); view.placeSent = p; } catch (e) { /* 서버 준비 전: 다음에 다시 */ } view.placeBusy = false;
+async function partyPlacePush() { // 내 위치·이동 시간·동행 여부가 바뀔 때만 서버에 올린다 (파티원은 파티장 위치와 가장 빠른 이동 시간을 이 값으로 안다)
+  if (!partyOn() || !PARTY.id || !state.created || view.placeBusy) return;
+  const p = placeNow(), spd = Math.round(stepSec()), key = `${p}|${spd}|${state.follow ? 1 : 0}`; if (key === view.placeSent) return;
+  view.placeBusy = true; try { await Cloud.setPlace(p, spd, state.follow); view.placeSent = key; } catch (e) { /* 서버 준비 전: 다음에 다시 */ } view.placeBusy = false;
 }
 async function partyDo(fn, okMsg) { // 파티 요청 공통 처리
   if (!partyOn()) { toast('파티는 서버에 로그인해야 쓸 수 있어요.'); sfx('error'); return false; }

@@ -787,7 +787,22 @@ const leisureTaken = () => state.leisure.day === todayIndex() && !!state.leisure
 /* 파티 정보(서버에서 받아 온다, 저장하지 않음): members = [{ uid, name, leader }] (나 포함) */
 const PARTY = { id: 0, members: [], invites: [] };
 /* ---------- 파티 동행: 파티장의 위치(서버 문자열)를 따라 한 걸음씩 이동한다 ---------- */
-const placeNow = () => state.dungeon ? `${state.dungeon.zone}:${state.dungeon.x},${state.dungeon.y}` : String(state.location || '');
+const PACE_MIN_SEC = 10; // 서버에서 받은 이동 시간이 이보다 짧으면 믿지 않는다
+/* 함께 움직이는 파티(파티장 + 동행을 켠 파티원, 접속 중)에서는 가장 빠른 사람의 칸당 시간에 맞춘다. 더 느려지는 일은 없다 */
+function paceSec() {
+  const mine = stepSec(); if (!PARTY.id || PARTY.members.length < 2) return mine;
+  const me = PARTY.members.find(m => m.uid && m.uid === Cloud.userUid); if (!((me && me.leader) || state.follow)) return mine;
+  let best = mine; PARTY.members.forEach(m => { if (m === me || !m.online || !(m.leader || m.fol) || !(m.spd >= PACE_MIN_SEC && m.spd <= DUNGEON_STEP_SEC)) return; best = Math.min(best, m.spd); });
+  return best;
+}
+function entranceOf(zoneId) { const z = zoneOf(zoneId); let x = 0, y = 0; z.map.forEach((row, ry) => { const cx = row.indexOf('S'); if (cx >= 0) { x = cx; y = ry; } }); return [x, y]; }
+/* 파티원에게 알리는 내 위치. 이동 중이면 가는 곳(목적지)을 알려 주어 파티원이 함께 출발한다 */
+function placeNow() {
+  const a = state.active;
+  if (a && a.id === '타일 이동' && state.dungeon && Array.isArray(a.path) && a.path.length) { const [x, y] = a.path[a.path.length - 1]; return `${state.dungeon.zone}:${x},${y}`; }
+  if (a && a.id === '구역 이동' && a.to && zoneOf(a.to)) { const [x, y] = entranceOf(a.to); return `${a.to}:${x},${y}`; }
+  return state.dungeon ? `${state.dungeon.zone}:${state.dungeon.x},${state.dungeon.y}` : String(state.location || '');
+}
 function parsePlace(raw) { // 서버에서 받은 위치를 믿지 않고 다시 확인한다. { air } / { zone, x, y } / null
   if (typeof raw !== 'string' || !raw || raw.length > 40) return null;
   const m = /^(.+):(\d{1,3}),(\d{1,3})$/.exec(raw);
@@ -799,7 +814,7 @@ function followStep(raw) { // 파티장 위치(raw)에 한 걸음 다가간다. 
   const t = parsePlace(raw); if (!t || t.air === '개인실') return {};
   const d = state.dungeon;
   if (d && !(t.zone && d.zone === t.zone)) { // 다른 곳으로 가려면 먼저 입구로 돌아가 퇴장한다
-    const z = zoneOf(d.zone); let sx = 0, sy = 0; z.map.forEach((row, ry) => { const cx = row.indexOf('S'); if (cx >= 0) { sx = cx; sy = ry; } });
+    const [sx, sy] = entranceOf(d.zone);
     if (state.active || state.pending) return { wait: true };
     if (d.x === sx && d.y === sy) { leaveDungeon(); return { moved: true, what: 'leave' }; }
     const e = startMove(sx, sy); return e ? { err: e } : { moved: true, what: 'move' };
@@ -1493,9 +1508,9 @@ function tileInfo(z, ch) {
 }
 /* E 칸의 번호(읽는 순서) */
 const eventIndex = (z, x, y) => z.map.slice(0, y).join('').split('E').length - 1 + z.map[y].slice(0, x).split('E').length - 1;
-function revealAround(d) {
+function revealAround(d, mark = true) { // mark=false: 지나가기만 한 칸 — 주변은 보이지만 '밟은 칸'(색이 켜지는 칸)으로는 치지 않는다
   const ex = state.explored[d.zone] || (state.explored[d.zone] = {});
-  (state.visited[d.zone] || (state.visited[d.zone] = {}))[`${d.x},${d.y}`] = 1;
+  if (mark) (state.visited[d.zone] || (state.visited[d.zone] = {}))[`${d.x},${d.y}`] = 1;
   for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) { const k = `${d.x + dx},${d.y + dy}`; d.seen[k] = 1; ex[k] = 1; }
 }
 function enterDungeon(zoneId) {
@@ -1519,7 +1534,7 @@ function currentGroups() {
 }
 /* 타일 이동 계획: 지금 칸에서 (tx,ty)까지 벽을 피한 최단 경로. { path:[[x,y]..], steps, sec, sp } / { err } */
 /* 칸에 들어갈 때 걸리는 초: 기본 + 험난한 지형 추가 시간 */
-function tileSec(z, x, y) { const ti = terrainIndex(tileOf(z, x, y)), r = ti >= 0 ? (z.terrains[ti].rough || 0) : 0; return Math.round(stepSec() + ROUGH_EXTRA_SEC[r]); }
+function tileSec(z, x, y) { const ti = terrainIndex(tileOf(z, x, y)), r = ti >= 0 ? (z.terrains[ti].rough || 0) : 0; return Math.round(paceSec() + ROUGH_EXTRA_SEC[r]); }
 function planMove(tx, ty) {
   const d = state.dungeon, z = zoneOf(d.zone), ch = tileOf(z, tx, ty);
   if (!ch || ch === '#' || ch === '.') return { err: '갈 수 없는 칸입니다.' };
@@ -1541,7 +1556,7 @@ function planMove(tx, ty) {
   const path = []; let k = `${tx},${ty}`;
   while (prev[k]) { path.unshift(k.split(',').map(Number)); k = prev[k]; }
   let acc = 0; const cum = path.map(([x, y]) => (acc += tileSec(z, x, y)));
-  return { path, cum, steps: path.length, sec: acc, sp: path.length * DUNGEON_STEP_SP, rough: path.filter(([x, y]) => tileSec(z, x, y) > Math.round(stepSec())).length };
+  return { path, cum, steps: path.length, sec: acc, sp: path.length * DUNGEON_STEP_SP, rough: path.filter(([x, y]) => tileSec(z, x, y) > Math.round(paceSec())).length };
 }
 /* 이동 시작. 성공 null / 실패 사유 */
 function startMove(tx, ty) {
@@ -1569,7 +1584,7 @@ function applyMove(path, done) {
   refreshEvents(d);
   for (let i = 0; i < done; i++) {
     const [x, y] = path[i];
-    d.x = x; d.y = y; revealAround(d);
+    d.x = x; d.y = y; revealAround(d, i === path.length - 1); // 누른 칸(경로의 끝)만 밟은 칸으로 친다
     const tz = terrainIndex(tileOf(z, x, y));
     if (tz >= 0) {
       discover('zones', `${z.id}:${z.terrains[tz].name}`);
