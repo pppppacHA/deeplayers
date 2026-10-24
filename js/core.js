@@ -1515,7 +1515,8 @@ const terrainIndex = ch => 'abcde'.indexOf(ch);
 /* 타일 정보 { name, desc, terrain } */
 const spotAt = (z, x, y) => { const s = FISH_SPOTS[z.id]; return s && s.x === x && s.y === y ? s : null; };
 const isNightNow = () => { const h = new Date(nowMs() + 9 * 3600e3).getUTCHours(); return h < 6 || h >= 18; }; // 한국 시간 18시~06시는 밤
-function tileInfo(z, ch, x, y) {
+function tileInfo(z, ch, x, y, hide) { // hide: 지도 위 마우스오버·이동 확인처럼 멀리서 보는 경우 ('?' 칸은 정체를 감춘다)
+  if (hide && ch === '?') return { name: '?', desc: '이 장소에 무언가가 있는 것 같습니다.' };
   const ti = terrainIndex(ch), sp = x === undefined ? null : spotAt(z, x, y);
   if (sp && ti >= 0) return { name: sp.name, desc: sp.desc + ' (큰 물고기가 잡힐 확률 +) ' + z.terrains[ti].desc, terrain: z.terrains[ti], spot: sp };
   if (ti >= 0) { const t = z.terrains[ti]; return { name: t.name, desc: t.desc + (t.rough && ROUGH_EXTRA_SEC[t.rough] ? ` (험난한 지형: 이 칸에 들어갈 때 이동 시간 +${ROUGH_EXTRA_SEC[t.rough] / 60}분)` : ''), terrain: t }; }
@@ -1725,6 +1726,7 @@ function takePromo() {
 function partProgress(q, n, i) {
   if (n.type === 'visit') { const cur = n.zones.filter(id => state.codex.zones[id]).length; return { cur, max: n.zones.length, text: `${cur}/${n.zones.length} 구역 방문`, ready: cur >= n.zones.length }; }
   if (n.type === 'item') { const cur = Math.min(countItem(n.name), n.qty); return { cur, max: n.qty, text: `${n.name} ${cur}/${n.qty}${n.consume ? ' (납품)' : ''}`, ready: cur >= n.qty }; }
+  if (n.type === 'recipe') { const cur = Math.min(state.learned.length, n.qty); return { cur, max: n.qty, text: `레시피 습득 ${cur}/${n.qty}`, ready: cur >= n.qty }; }
   if (n.type === 'kill') { const cur = Math.min(state.qprog[progKey(q, i)] || 0, n.qty); return { cur, max: n.qty, text: `${n.monster || '몬스터'} 처치 ${cur}/${n.qty}`, ready: cur >= n.qty }; }
   const ok = !!state.flags[n.flag];
   return { cur: +ok, max: 1, text: `${n.text} ${ok ? '완료' : '미완료'}`, ready: ok };

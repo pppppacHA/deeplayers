@@ -322,7 +322,7 @@ function renderDungeon() {
     if (ch === '.') return '<div class="tile void"></div>';
     if (!d.seen[`${x},${y}`]) return '<div class="tile unseen"></div>';
     if (ch === '#') return '<div class="tile wall"></div>';
-    const ti = terrainIndex(ch), info = tileInfo(z, ch, x, y), me = d.x === x && d.y === y;
+    const ti = terrainIndex(ch), info = tileInfo(z, ch, x, y, true), me = d.x === x && d.y === y;
     const evDone = ch === 'E' && d.done.includes(eventIndex(z, x, y)), going = dest && dest[0] === x && dest[1] === y;
     const glyph = me ? '<i class="pawn"></i>' : ch === 'S' ? icon('logout') : ch === 'C' ? icon('camping') : ch === 'E' ? icon(evDone ? 'check' : 'priority_high') : ch === '?' ? icon('question_mark') : info.spot ? icon('phishing') : ti >= 0 ? icon(z.terrains[ti].icon) : '';
     const hl = ti >= 0 && mq && matTerrains(z, mq).includes(ti); if (hl) hlCount++;
@@ -405,7 +405,7 @@ function previewOf(id, mi) {
   if (a.kind !== 'step') return actionPreview(id, mi);
   const m = state.dungeon && view.target ? planMove(...view.target) : { err: '이동할 수 없습니다.' };
   if (m.err) return m;
-  const z = zoneOf(state.dungeon.zone), info = tileInfo(z, tileOf(z, ...view.target), ...view.target);
+  const z = zoneOf(state.dungeon.zone), info = tileInfo(z, tileOf(z, ...view.target), ...view.target, true);
   return { time: `${fmtDur(m.sec)} (${m.steps}칸${m.rough ? ` · 험난한 지형 ${m.rough}칸 포함` : ''})`, gain: `${info.name} 도착`, cost: `기력 -${m.sp}`, desc: `${info.name} — ${info.desc}` };
 }
 /* 본부 전광판: 들어올 때마다 리코가 읽어 주는 문구가 바뀐다 (이벤트 문구가 있으면 그것만) */

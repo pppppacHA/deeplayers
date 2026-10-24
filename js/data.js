@@ -1002,18 +1002,18 @@ const QUESTS = [
   { id: 'z3_fire', board: '제3구역', kind: '서브', title: '화염 정령 진압', desc: '화산 중턱의 화염 정령을 2마리 처치한다.', need: { type: 'kill', monster: '화염 정령', qty: 2 }, reward: { exp: 70, money: 200 } },
   { id: 'z3_crystal', board: '제3구역', kind: '서브', title: '화염 결정 수집', desc: '연구실에서 요청한 화염 결정 3개를 납품한다.', need: { type: 'item', name: '화염 결정', qty: 3, consume: true }, reward: { exp: 60, money: 180, items: [['응급 키트', 2]] } }
 ];
-/* 승급 시험: 메인 임무 형식. 본부 '승급'에서 받고, 임무를 마치면 등급이 오른다 (D등급까지). need.type 'multi' = 여러 조건을 모두 달성 */
+/* 승급 시험: 메인 임무 형식. 본부 '승급'에서 받고, 임무를 마치면 등급이 오른다 (D등급까지). need.type 'multi' = 여러 조건을 모두 달성, 'recipe' = 단련·구입으로 익힌 레시피 수 */
 QUESTS.push(
-  { id: 'promo_e', promo: 'E', lv: 3, kind: '메인', title: '승급 시험 · E등급', desc: '숲 늑대 3마리를 처치하고 약초 3개를 납품한다.',
-    need: { type: 'multi', parts: [{ type: 'kill', monster: '숲 늑대', qty: 3 }, { type: 'item', name: '약초', qty: 3, consume: true }] }, reward: { exp: 70, money: 150, items: [['응급 키트', 2], ['정찰 배낭', 1]] } },
-  { id: 'promo_d', promo: 'D', lv: 6, kind: '메인', title: '승급 시험 · D등급', desc: '모래게 3마리와 화염 정령 1마리를 처치하고 합금 파편 8개를 납품한다.',
-    need: { type: 'multi', parts: [{ type: 'kill', monster: '모래게', qty: 3 }, { type: 'kill', monster: '화염 정령', qty: 1 }, { type: 'item', name: '합금 파편', qty: 8, consume: true }] }, reward: { exp: 180, money: 400, items: [['고급 응급 키트', 2], ['원정 배낭', 1]] } },
-  { id: 'promo_c', promo: 'C', lv: 10, kind: '메인', title: '승급 시험 · C등급', desc: '제4구역(협곡)의 급류 수달 3마리·석상 골렘 2마리·동굴 거미 2마리를 처치하고, 구리 광석 6개와 수정 원석 4개를 납품한다.',
-    need: { type: 'multi', parts: [{ type: 'kill', monster: '급류 수달', qty: 3 }, { type: 'kill', monster: '석상 골렘', qty: 2 }, { type: 'kill', monster: '동굴 거미', qty: 2 }, { type: 'item', name: '구리 광석', qty: 6, consume: true }, { type: 'item', name: '수정 원석', qty: 4, consume: true }] }, reward: { exp: 350, money: 900, items: [['고급 응급 키트', 3], ['개척 배낭', 1]] } },
-  { id: 'promo_b', promo: 'B', lv: 15, kind: '메인', title: '승급 시험 · B등급', desc: '제5구역(설원)의 빙하 곰 2마리·서리 정령 2마리·설원 늑대 3마리를 처치하고, 서리 결정 8개와 설산 약초 6개를 납품한다.',
-    need: { type: 'multi', parts: [{ type: 'kill', monster: '빙하 곰', qty: 2 }, { type: 'kill', monster: '서리 정령', qty: 2 }, { type: 'kill', monster: '설원 늑대', qty: 3 }, { type: 'item', name: '서리 결정', qty: 8, consume: true }, { type: 'item', name: '설산 약초', qty: 6, consume: true }] }, reward: { exp: 800, money: 2200, items: [['고급 응급 키트', 4], ['에너지 젤', 3], ['정예 배낭', 1]] } },
-  { id: 'promo_a', promo: 'A', lv: 20, kind: '메인', title: '승급 시험 · A등급', desc: '제6구역(정글)의 정글 재규어 3마리·덩굴 괴수 2마리·아나콘다 2마리·맹독 두꺼비 2마리를 처치하고, 코코넛 4개·아로와나 3마리·파인애플 6개를 납품한다.',
-    need: { type: 'multi', parts: [{ type: 'kill', monster: '정글 재규어', qty: 3 }, { type: 'kill', monster: '덩굴 괴수', qty: 2 }, { type: 'kill', monster: '아나콘다', qty: 2 }, { type: 'kill', monster: '맹독 두꺼비', qty: 2 }, { type: 'item', name: '코코넛', qty: 4, consume: true }, { type: 'item', name: '아로와나', qty: 3, consume: true }, { type: 'item', name: '파인애플', qty: 6, consume: true }] }, reward: { exp: 1800, money: 5000, items: [['고급 응급 키트', 5], ['에너지 젤', 5], ['선봉 배낭', 1]] } }
+  { id: 'promo_e', promo: 'E', lv: 3, kind: '메인', title: '승급 시험 · E등급', desc: '숲 늑대 5마리를 처치하고, 약초 5개를 납품하고, 레시피 3개를 익힌다.',
+    need: { type: 'multi', parts: [{ type: 'kill', monster: '숲 늑대', qty: 5 }, { type: 'item', name: '약초', qty: 5, consume: true }, { type: 'recipe', qty: 3 }] }, reward: { exp: 70, money: 150, items: [['응급 키트', 2], ['정찰 배낭', 1]] } },
+  { id: 'promo_d', promo: 'D', lv: 6, kind: '메인', title: '승급 시험 · D등급', desc: '모래게 6마리·화염 정령 3마리를 처치하고, 합금 파편 15개를 납품하고, 레시피 10개를 익힌다.',
+    need: { type: 'multi', parts: [{ type: 'kill', monster: '모래게', qty: 6 }, { type: 'kill', monster: '화염 정령', qty: 3 }, { type: 'item', name: '합금 파편', qty: 15, consume: true }, { type: 'recipe', qty: 10 }] }, reward: { exp: 220, money: 500, items: [['고급 응급 키트', 2], ['원정 배낭', 1]] } },
+  { id: 'promo_c', promo: 'C', lv: 10, kind: '메인', title: '승급 시험 · C등급', desc: '제4구역(협곡)의 급류 수달 5마리·석상 골렘 4마리·동굴 거미 4마리를 처치하고, 구리 광석 12개와 수정 원석 8개를 납품하고, 레시피 22개를 익힌다.',
+    need: { type: 'multi', parts: [{ type: 'kill', monster: '급류 수달', qty: 5 }, { type: 'kill', monster: '석상 골렘', qty: 4 }, { type: 'kill', monster: '동굴 거미', qty: 4 }, { type: 'item', name: '구리 광석', qty: 12, consume: true }, { type: 'item', name: '수정 원석', qty: 8, consume: true }, { type: 'recipe', qty: 22 }] }, reward: { exp: 450, money: 1200, items: [['고급 응급 키트', 3], ['개척 배낭', 1]] } },
+  { id: 'promo_b', promo: 'B', lv: 15, kind: '메인', title: '승급 시험 · B등급', desc: '제5구역(설원)의 빙하 곰 6마리·서리 정령 6마리·설원 늑대 8마리를 처치하고, 서리 결정 15개와 설산 약초 12개를 납품하고, 레시피 36개를 익힌다.',
+    need: { type: 'multi', parts: [{ type: 'kill', monster: '빙하 곰', qty: 6 }, { type: 'kill', monster: '서리 정령', qty: 6 }, { type: 'kill', monster: '설원 늑대', qty: 8 }, { type: 'item', name: '서리 결정', qty: 15, consume: true }, { type: 'item', name: '설산 약초', qty: 12, consume: true }, { type: 'recipe', qty: 36 }] }, reward: { exp: 1100, money: 3000, items: [['고급 응급 키트', 4], ['에너지 젤', 3], ['정예 배낭', 1]] } },
+  { id: 'promo_a', promo: 'A', lv: 20, kind: '메인', title: '승급 시험 · A등급', desc: '제6구역(정글)의 정글 재규어 10마리·덩굴 괴수 8마리·아나콘다 8마리·맹독 두꺼비 8마리와 제7구역(사막)의 황금 전갈 6마리·모래 지네 6마리를 처치하고, 코코넛 12개·아로와나 10마리·파인애플 15개를 납품하고, 레시피 50개를 익힌다.',
+    need: { type: 'multi', parts: [{ type: 'kill', monster: '정글 재규어', qty: 10 }, { type: 'kill', monster: '덩굴 괴수', qty: 8 }, { type: 'kill', monster: '아나콘다', qty: 8 }, { type: 'kill', monster: '맹독 두꺼비', qty: 8 }, { type: 'kill', monster: '황금 전갈', qty: 6 }, { type: 'kill', monster: '모래 지네', qty: 6 }, { type: 'item', name: '코코넛', qty: 12, consume: true }, { type: 'item', name: '아로와나', qty: 10, consume: true }, { type: 'item', name: '파인애플', qty: 15, consume: true }, { type: 'recipe', qty: 50 }] }, reward: { exp: 2600, money: 8000, items: [['고급 응급 키트', 5], ['에너지 젤', 5], ['선봉 배낭', 1]] } }
 );
 const PROMO_ORDER = ['F', 'E', 'D', 'C', 'B', 'A']; // 지금은 A등급까지 승급할 수 있다
 const BOARD_RESET_HOUR = 4; // 수주 임무는 수주한 다음 한국 시간 오전 4시에 리셋된다
@@ -1246,6 +1246,7 @@ const POSTS = {
 · 설정에 '채팅창 탭' 켜기/끄기가 생겼습니다. (월드 끄기 등)
 · 개인실 '창고': 물건을 따로 보관합니다(60종·종류마다 999개, 세이브 안에 저장되어 서버에 부담이 없습니다).
 · 제작 숙련(요리·목공·재봉·대장·가죽공예·보석공예·약학) 5/20/30레벨이 되면 '초보/숙련/레전드 ○○' 칭호를 얻습니다. 숙련 화면에서 확인할 수 있어요.
+· 승급 시험이 더 어려워졌습니다. 몬스터 처치 수와 재료 납품이 늘고, '레시피 N개 익히기' 조건이 추가됐어요. A등급 시험은 확실히 빡셉니다.
 · 파티: 파티장이 '파티 이동'을 켜야 동행 모드를 켠 파티원이 함께 움직입니다. 동행 모드는 '파티장이 파티 이동을 켰을 때 따라간다'는 뜻이에요.
 · 낚시터: 지상 구역마다 낚시터가 1곳씩 생겼어요(낚시 아이콘 칸). 여기서 낚으면 큰 물고기가 잡힐 확률이 높아요. 제3구역 열수 웅덩이에서는 새 물고기 '열수 뱀장어'가 잡혀요.
 · 제7구역(사막): 모래언덕·오아시스·선인장 군락·붉은 바위지대·모래 속 폐허. 새 재료 석영 모래·선인장·대추야자·사막 유리·오아시스 틸라피아, 새 작물 사막 수박이 있고 오아시스에도 낚시터가 있어요. 이동장치에서 갈 수 있습니다.
