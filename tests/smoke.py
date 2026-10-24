@@ -1929,7 +1929,7 @@ with sync_playwright() as p:
     # ================= 2026-10-22 추가 기능 =================
     ev(pg, "(()=>{closeModal();state.active=null;state.pending=null;state.dungeon=null;state.location='본부';state.vitals.hp=100;state.vitals.sp=100;state.money=2000;renderBars();renderMapHead();renderMap();renderAction()})()")
     # --- 4. 아이템 설명 통일 ---
-    check('item_lines_format', ev(pg, "(()=>{const a=itemLines('돌'),b=itemLines('곡괭이'),c=itemLines('건조 식량'),d=itemLines('정찰용 바이저');return d[0].includes(' | ')&& a[0]===ITEMS['돌'].desc&&a[1]==='[태그] 채굴 · 대장 [판매가] 2CR'&&!b[0].includes('|')&&c[0].includes(' | 기력 +25 회복')&&itemTip('돌').includes('\\n')})()"))
+    check('item_lines_format', ev(pg, "(()=>{const a=itemLines('돌'),b=itemLines('훈련용 검'),c=itemLines('건조 식량'),d=itemLines('정찰용 바이저');return d[0].includes(' | ')&& a[0]===ITEMS['돌'].desc&&a[1]==='[태그] 채굴 · 대장 [판매가] 2CR'&&!b[0].includes('|')&&c[0].includes(' | 기력 +25 회복')&&itemTip('돌').includes('\\n')})()"))
     check('item_lines_effect_omitted_when_none', ev(pg, "!itemLines('목재')[0].includes('|')&&!itemLines('목재')[0].includes('제작 재료')"))
     check('item_lines_equip_effect', ev(pg, "(()=>{const l=itemLines('경량 방탄복');return l[0].includes(' | ')&&l[1].includes('[판매가] 120CR')})()"))
     ev(pg, "addItem('돌',2);addItem('건조 식량',1);state.invTab=null;renderInventory()")
@@ -2198,6 +2198,8 @@ with sync_playwright() as p:
     check('stat_pages_same_height_even_if_page2_taller', ev(pg, "[0,1,0,1].map(p=>{view.statusPage=p;renderStatus();return Math.round(document.querySelector('#statusBody .stat-grid').getBoundingClientRect().height)}).every((h,i,a)=>h===a[0])") is True)
     ev(pg, "(()=>{document.head.lastElementChild.remove();remeasureStat();view.statusPage=0;renderStatus()})()")
     # ---- 2026-10-23 추가: 여가구역 · 무기 · 주/부 스탯 · 장비 묘사 · 채팅 탭 ----
+    check('weapons_give_small_stat', ev(pg, "(()=>{const w=Object.entries(ITEMS).filter(([n,i])=>i.slot==='무기'&&!n.startsWith('훈련용')&&n!=='플라즈마 블레이드');return w.every(([n,i])=>i.mods&&Object.values(i.mods).reduce((a,b)=>a+b,0)===1)&&ITEMS['채찍'].mods.agi===1&&ITEMS['주사기'].mods.int===1&&itemEffect('채찍').includes('민첩')})()"))
+    check('weapon_atk_close_per_grade', ev(pg, "(()=>{const by={};Object.entries(ITEMS).filter(([n,i])=>i.slot==='무기'&&!n.startsWith('훈련용')&&!(typeof GACHA_SETS!=='undefined'&&JSON.stringify(GACHA_SETS).includes(n))).forEach(([n,i])=>{const g=(i.desc.match(/등급 ([A-F])/)||[])[1];(by[g]=by[g]||[]).push(i.atk)});const ok=(g,lo)=>by[g].every(a=>a>=lo&&a<=lo+1);return ok('F',4)&&ok('E',6)&&ok('D',8)&&Math.max(...by.D)===9})()"))
     check('weapons_added', ev(pg, "['채찍','빗자루','요요'].every(n=>ITEMS[n]&&ITEMS[n].slot==='무기'&&ITEMS[n].atk>0&&SHOPS['종합 상가'].sections['무기'].some(r=>r[0]===n&&r[1]>ITEMS[n].sell))"))
     check('broom_has_flying_rumor', ev(pg, "ITEMS['빗자루'].desc.includes('하늘')"))
     check('leisure_zone_exists_6_choices', ev(pg, "LOCATIONS['여가구역']&&LOCATIONS['여가구역'].groups[0].items.length===6&&MAP_NODES.some(n=>n.id==='여가구역')&&!!ACTIONS['이동 여가구역']"))

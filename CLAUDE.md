@@ -240,3 +240,8 @@ STUB_ICONS=1 python3 tests/smoke.py   # 아이콘 폰트를 못 받는 환경(�
 - 가구는 이제 PNG: data.js `ROOM_FURNITURE` 표에 한 줄 + `assets/room/<id>.png`(+색상변경은 `<id>_mask.png`). 방법은 `assets/room/README.md`. 더미 도트 가구는 삭제(옛 저장의 그 가구는 불러올 때 사라진다). 색 없는 PNG는 파일을 그대로 쓰고(file://에서도 보임) 색을 입힐 때만 캔버스(file://에서는 색 없이 폴백). 테스트는 `defFurn`으로 data: PNG 가구를 만들어 쓴다.
 - 벽지·바닥·배경도 직접 그린 PNG(각 600×600, 방 무대와 같은 좌표): data.js `ROOM_SKIN_PNG` 표 한 줄 + `assets/room/<id>.png`, 안내 그림 `assets/room/_guide_room.png`(꼭짓점 좌표는 `ROOM_GEO`). PNG가 있으면 SVG `<image>`로 벽지/바닥을 그리고(없으면 색 다각형), 배경은 `.room-bg` img. 내보내기도 같은 순서로 합친다.
 - 기본 배경 색은 '하얀 배경'(`b_white`)과 '내 배경 이미지'(`b_custom`) 둘뿐(나머지 색 배경 삭제, 저장된 옛 배경 id는 하얀 배경으로 돌아간다). PNG 배경은 `ROOM_SKIN_PNG`로 추가.
+
+## 2026-10-24 임무 보상 · 가방 가득 참 / ROOM 버튼 순서
+- 임무 보상 아이템이 가방에 다 안 들어가면(`questOverflow(q, drop)`; 납품으로 비는 칸 반영, 상태는 안 바꿈) `quest-done`이 바로 완수하지 않고 `openQuestFull`(가방이 가득 찼어요) 창을 띄운다. 소지품 칸(스택)을 고르면 확인창 후 `discardStack`으로 통째로 버리고, 못 담는 보상은 `qfull-drop`(확인창)으로 포기(`view.qfull.drop`)한다. 자리가 생기거나 포기하면 `questFinish(q, drop)` → `completeQuest(id, drop)`. 이 임무의 납품·필요 아이템은 버릴 목록에서 빠진다. 테스트 `python3 tests/qfull_test.py`.
+- ROOM 버튼 순서: 이미지 출력, 룸 편집(오른쪽).
+- 색상변경은 네이티브 색 입력 대신 편집기 아래에 뜨는 고르개(`#rmPick`, 팔레트+색조/채도/밝기).

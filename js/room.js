@@ -13,12 +13,18 @@ const _furnCv = {}, _srcImg = {};
 const hexRgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
 let _loadT = 0;
 function roomFurnLoaded(id) { Object.keys(_furnCv).forEach(k => { if (k.startsWith(id + '|')) delete _furnCv[k]; }); clearTimeout(_loadT); _loadT = setTimeout(() => { if (!isRoomOpen()) return; const room = roomData(); $$('#roomItems .rm-item').forEach(el => { const it = room.items.find(x => x.u === +el.dataset.u), d = it && furnDef(it.f); if (!d) return; const sz = furnSize(d); el.style.width = sz.w + 'px'; el.style.height = sz.h + 'px'; el.src = furnUrl(d, it.c); }); }, 60); } // 그림이 다 불러와지면 화면을 통째로 다시 그리지 않고 크기만 고친다 (끌고 있는 중에도 안전)
+let _roomWarned = false;
+function roomImgFail(src) { // 그림 파일을 못 불러왔을 때: 어떤 주소를 찾았는지 한 번 알려 준다 (배포된 곳에 파일이 있는지 확인용)
+  let u = src; try { u = new URL(src, location.href).href; } catch (e) { /* 그대로 */ }
+  try { console.warn('[ROOM] 그림 파일을 불러오지 못했어요:', u); } catch (e) { /* 무시 */ }
+  if (!_roomWarned && isRoomOpen()) { _roomWarned = true; toast(`그림 파일을 못 찾았어요: ${u}`); }
+}
 function srcInfo(def) { // PNG 그림 불러오기 (한 번만). 다 불러오면 화면을 다시 그린다
   let im = _srcImg[def.id];
   if (!im) {
     im = _srcImg[def.id] = { base: new Image(), mask: null };
-    im.base.onload = () => roomFurnLoaded(def.id); im.base.onerror = () => { im.failed = true; roomFurnLoaded(def.id); }; im.base.src = def.src;
-    if (def.maskSrc) { im.mask = new Image(); im.mask.onload = () => roomFurnLoaded(def.id); im.mask.onerror = () => { im.maskFailed = true; roomFurnLoaded(def.id); }; im.mask.src = def.maskSrc; }
+    im.base.onload = () => roomFurnLoaded(def.id); im.base.onerror = () => { im.failed = true; roomImgFail(def.src); roomFurnLoaded(def.id); }; im.base.src = def.src;
+    if (def.maskSrc) { im.mask = new Image(); im.mask.onload = () => roomFurnLoaded(def.id); im.mask.onerror = () => { im.maskFailed = true; roomImgFail(def.maskSrc); roomFurnLoaded(def.id); }; im.mask.src = def.maskSrc; }
   }
   return im;
 }
@@ -74,7 +80,7 @@ let _skinT = 0;
 function skinOk(def) { // 직접 그린 PNG 틀은 파일이 실제로 불러와졌을 때만 쓴다 (없으면 색으로 보여 주다가, 불러와지면 바꾼다)
   if (!def.src) return false;
   let im = _skinImg[def.src];
-  if (!im) { im = _skinImg[def.src] = new Image(); im.onload = () => { clearTimeout(_skinT); _skinT = setTimeout(() => { if (isRoomOpen() && !view.room.dragging) roomRender(); }, 60); }; im.src = def.src; }
+  if (!im) { im = _skinImg[def.src] = new Image(); im.onerror = () => roomImgFail(def.src); im.onload = () => { clearTimeout(_skinT); _skinT = setTimeout(() => { if (isRoomOpen() && !view.room.dragging) roomRender(); }, 60); }; im.src = def.src; }
   return im.complete && im.naturalWidth > 0;
 }
 function roomSkins(room) {
