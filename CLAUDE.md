@@ -222,7 +222,7 @@ STUB_ICONS=1 python3 tests/smoke.py   # 아이콘 폰트를 못 받는 환경(�
 
 ## 2026-10-23 (3) 창고 · 칭호 · 실시간 교환 · CR 거래 · A 승급
 - 창고 `state.storage`(이름→수량, `STORAGE_KINDS`=60/`STORAGE_STACK`=999, 개인실에서만, `storeItem/takeStored`). 소지품 버리기 `discardItem`.
-- 숙련 10/20/30 칭호 `MASTERY_RANKS`/`masteryTitleOf`(TITLE_DEFS 33개). 아이템에 도장 찍는 방식이 아니라 칭호.
+- 숙련 칭호(제작 계열만: 초보 5 · 숙련 20 · 레전드 30) `MASTERY_RANKS`/`masteryTitleOf`(TITLE_DEFS 33개). 아이템에 도장 찍는 방식이 아니라 칭호.
 - 실시간 교환: `state.bench={id,items,cr}`가 맡긴 물건의 기준(늘릴 땐 내 쪽에서 먼저 빼고 서버, 줄일 땐 서버 먼저). `settleLive`가 `state.ltSeen`으로 멱등 정산. 서버 `live_trades`/`live_trade_*`, 상대 물건은 메일(sid `lt<id>`)로 지급.
 - 상대 조건(`_lt_near`): 같은 파티(어디서든)/같은 `presence.loc`(둘 다 90초 안 접속). 위치 `locKey()`(던전 `zone:x,y`, 개인실 ''), `nearbyPoll()` 10초마다 `nearby_players` RPC → `view.nearby`(상황 탭 목록). 상단 `#tradeHubBtn`(openTradeHub).
 - **교환(실시간 교환대)은 물건만**(CR 칸 없음), `TRADE_DAILY`=3. **거래**=상점가 '대원 간 상점'(ACTIONS kind `market`) + 상단 `#tradeHubBtn` 아이콘(어디서든, `openMarket`). 탭 사기/팔기/내 목록. 교환은 상황 탭 사람/프로필(`viewUser`)의 '교환' 버튼(파티원·같은 칸 대원)으로 시작.
@@ -253,3 +253,4 @@ STUB_ICONS=1 python3 tests/smoke.py   # 아이콘 폰트를 못 받는 환경(�
 - 테스트: cloud_test.py의 `follow_*`/`leader_*` 항목.
 - 동행 개선(10/24): 파티장은 이동을 시작하면 목적지(`타일 이동`=경로 끝 칸, `구역 이동`=그 구역 입구)를 위치로 올려(`placeNow`) 파티원이 함께 출발한다. 지도에서 '밟은 칸'(`state.visited`)은 이제 직접 누른 칸(경로의 끝)과 입구만 친다(`revealAround(d, mark)`); 지나간 칸은 주변이 보이기만 하고(`explored`/`seen`) 흑백 그대로.
 - 이동 속도 맞추기(10/24): 모든 파티원이 `partyPlacePush`로 위치·칸당 이동 시간(`stepSec`)·동행 여부를 올리고(RPC `set_place(p_place,p_spd,p_fol)`, 이전 1인자 버전은 SQL이 drop), `party_info` 멤버에 `spd/fol`이 실린다. `paceSec()`: 나(파티장이거나 동행 켬)와 함께 움직이는(파티장이거나 동행 켠, 접속 중) 파티원 중 가장 짧은 칸당 시간을 쓴다(더 느려지지 않고, 10초 미만·60초 초과 값은 무시). `tileSec`/`planMove`가 이 값을 쓴다. 이동속도는 지금 펫(`petSpeed`)에서만 나온다.
+- 거래 '사기' 목록(10/24): 올라온 상품을 전부(서버 `market_browse` 최대 300건) 보여 주고 판매자 이름은 내려보내지도 않는다. 내가 올린 상품은 `mine:true`로 같이 보이되 '내 상품' 표시만 있고 구매 버튼은 없다(취소는 '내 목록'). `friends.sql` 재실행 필요.

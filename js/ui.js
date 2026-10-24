@@ -2109,7 +2109,7 @@ async function marketSync() { // 내가 올린 것·처리 중인 구매를 서�
 }
 async function marketBrowse() {
   view.mkList = null; if (isMkOpen()) renderMarket(true);
-  try { const r = await Cloud.marketBrowse(view.mkQ || ''); view.mkList = (Array.isArray(r) ? r : []).slice(0, 40).map(x => ({ id: intIn(x && x.id, 1, 9e15, 0), seller: cleanText(x && x.seller, 12), item: x && x.item, qty: intIn(x && x.qty, 1, 99, 1), price: intIn(x && x.price, 1, MARKET_TOTAL_MAX, 1) })).filter(x => x.id && ITEMS[x.item]); }
+  try { const r = await Cloud.marketBrowse(view.mkQ || ''); view.mkList = (Array.isArray(r) ? r : []).slice(0, 300).map(x => ({ id: intIn(x && x.id, 1, 9e15, 0), mine: !!(x && x.mine === true), item: x && x.item, qty: intIn(x && x.qty, 1, 99, 1), price: intIn(x && x.price, 1, MARKET_TOTAL_MAX, 1) })).filter(x => x.id && ITEMS[x.item]); }
   catch (e) { view.mkList = []; view.mkErr = true; }
   if (isMkOpen()) renderMarket(true);
 }
@@ -2118,7 +2118,7 @@ function marketHtml() {
   const tabs = `<div class="tabs flush">${['사기', '팔기', '내 목록'].map(t => `<button class="${t === tab ? 'active' : ''}" data-act="mk-tab" data-tab="${t}">${t}${t === '내 목록' && state.market.sell.length ? ` ${state.market.sell.length}` : ''}</button>`).join('')}</div>`;
   let body;
   if (tab === '사기') {
-    const rows = view.mkList == null ? '<div class="empty">불러오는 중…</div>' : view.mkList.map(x => `<div class="shop-row"><span class="shop-ic">${icon(ITEMS[x.item].icon)}</span><div class="grow"><strong>${esc(shownName(x.item))} <span class="tiny">남은 ${x.qty}개</span></strong><small class="tiny">판매자 ${esc(x.seller)} · 개당 ${x.price} CR${tradeValue(x.item) ? ` (상점 시세 ${tradeValue(x.item)} CR)` : ''}</small></div><input type="number" class="mk-n" id="mkN${x.id}" min="1" max="${x.qty}" value="1" aria-label="살 개수"><button class="primary" data-act="mk-buy" data-id="${x.id}">구매</button></div>`).join('') || `<div class="empty">${view.mkErr ? '서버에 연결하지 못했어요.' : '올라온 물건이 없어요.'}</div>`;
+    const rows = view.mkList == null ? '<div class="empty">불러오는 중…</div>' : view.mkList.map(x => `<div class="shop-row"><span class="shop-ic">${icon(ITEMS[x.item].icon)}</span><div class="grow"><strong>${esc(shownName(x.item))} <span class="tiny">남은 ${x.qty}개</span></strong><small class="tiny">개당 ${x.price} CR${tradeValue(x.item) ? ` (상점 시세 ${tradeValue(x.item)} CR)` : ''}</small></div>${x.mine ? '<em class="tag" title="내가 올린 상품이에요. 내 목록에서 취소할 수 있어요.">내 상품</em>' : `<input type="number" class="mk-n" id="mkN${x.id}" min="1" max="${x.qty}" value="1" aria-label="살 개수"><button class="primary" data-act="mk-buy" data-id="${x.id}">구매</button>`}</div>`).join('') || `<div class="empty">${view.mkErr ? '서버에 연결하지 못했어요.' : '올라온 물건이 없어요.'}</div>`;
     body = `<div class="mk-search"><input id="mkQ" maxlength="20" placeholder="물건 이름 검색" value="${esc(view.mkQ || '')}"><button data-act="mk-search">검색</button><button data-act="mk-refresh">새로고침</button></div><div class="shop-list">${rows}</div>`;
   } else if (tab === '팔기') {
     const bag = {}; Object.values(state.inventory).flat().forEach(s => { bag[s.n] = (bag[s.n] || 0) + s.q; });

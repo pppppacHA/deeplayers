@@ -70,7 +70,7 @@ def api(route):
             r = next((x for x in M['rows'] if x['ckey'] == body.get('p_ckey')), None)
             if not r: r = {'id': 100 + len(M['rows']), 'ckey': body['p_ckey'], 'item': body['p_item'], 'qty': body['p_qty'], 'price': body['p_price'], 'sold': 0, 'status': 'open', 'ack': False}; M['rows'].append(r)
             return J({'ok': True, 'id': r['id']})
-        if op == 'browse': return J([{'id': x['id'], 'seller': x['seller_name'], 'item': x['item'], 'qty': x['qty'], 'price': x['price']} for x in M['other'] if x['status'] == 'open' and x['qty'] > 0])
+        if op == 'browse': return J([{'id': x['id'], 'item': x['item'], 'qty': x['qty'], 'price': x['price'], 'mine': bool(x.get('mine'))} for x in M['other'] if x['status'] == 'open' and x['qty'] > 0])
         if op == 'mine': return J([{k: x[k] for k in ('id', 'ckey', 'item', 'qty', 'price', 'status', 'sold')} for x in M['rows'] if not x.get('ack')])
         if op == 'buy':
             M.setdefault('reqs', {})
@@ -510,6 +510,10 @@ with sync_playwright() as p:
     check('market_list_retry_same_key', any(c[1].get('p_ckey') == k for c in server['mk']['calls'] if c[0] == 'list') and pg.evaluate("state.market.sell[0].id") > 0, pg.evaluate("state.market.sell"))
     # 사기: 개수를 직접 정해 1개만
     pg.evaluate("state.market={sell:[],buy:[]};openMarket('사기')"); pg.wait_for_timeout(700)
+    check('market_browse_hides_seller_name', '판매자' not in pg.inner_text('#modalBody'))
+    server['mk']['other'].append({'id': 901, 'seller_name': '나', 'item': '목재', 'qty': 2, 'price': 5, 'status': 'open', 'mine': True}); pg.evaluate("marketBrowse()"); pg.wait_for_timeout(600)
+    check('market_browse_shows_own_listing_without_buy', pg.locator('[data-act="mk-buy"][data-id="901"]').count() == 0 and '내 상품' in pg.inner_text('#modalBody') and pg.locator('[data-act="mk-buy"][data-id="900"]').count() == 1)
+    server['mk']['other'] = [x for x in server['mk']['other'] if x['id'] != 901]; pg.evaluate("marketBrowse()"); pg.wait_for_timeout(500)
     check('market_browse_lists_other_listing', pg.locator('[data-act="mk-buy"][data-id="900"]').count() == 1 and pg.locator('#mkN900').count() == 1)
     m0 = pg.evaluate("state.money"); h0 = pg.evaluate("countItem('약초')"); pg.fill('#mkN900', '1'); pg.click('[data-act="mk-buy"][data-id="900"]'); pg.wait_for_timeout(900)
     check('market_buy_one_goes_straight_to_bag', pg.evaluate("state.money") == m0 - 7 and pg.evaluate("countItem('약초')") == h0 + 1 and pg.evaluate("state.mail.length") == 0 and pg.evaluate("state.market.buy.length") == 0 and server['mk']['other'][0]['qty'] == 2, pg.evaluate("state.money"))
