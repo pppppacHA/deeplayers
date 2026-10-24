@@ -262,7 +262,7 @@ with sync_playwright() as p:
     em = ev(pg, "expMax(state.character.level)")
     check('bars_hp_sp_exp_only', len(rows) == 3 and ev(pg, "[...document.querySelectorAll('.bar-row b')].map(b=>b.textContent)") == ['HP', '기력', 'EXP'])
     check('bars_one_line_exp_3digits', all(r['h'] < 20 for r in rows) and rows[2]['v'] == f'180 / {em}' and em < 1000, rows)
-    check('exp_curve_hard', ev(pg, "expMax(29)")== 999 and ev(pg, "(()=>{let t=0;for(let l=12;l<30;l++)t+=expMax(l);return t})()") > 10000)
+    check('exp_curve_hard', ev(pg, "expMax(29)")>= 2400 and ev(pg, "[...Array(29).keys()].map(i=>i+1).every((l,i,a)=>i===0||expMax(l)>expMax(a[i-1]))") and ev(pg, "expMax(20)")>= 1100 and ev(pg, "(()=>{let t=0;for(let l=12;l<30;l++)t+=expMax(l);return t})()") > 10000)
     gp = ev(pg, "[...document.querySelectorAll('.bar-row')].map(r=>r.getBoundingClientRect().top)")
     check('bars_tight', gp[1] - gp[0] < 16, gp)
 
@@ -1672,7 +1672,7 @@ with sync_playwright() as p:
     pg.click('#choices button:has-text("펫 돌보기")'); pg.wait_for_timeout(60)
     check('pet_button_locked_toast', pg.locator('#overlay.open').count() == 0 and 'Lv.7' in text(pg, '#toast'))
     pg.click('#choices button:has-text("서브잡")') if pg.locator('#choices button:has-text("서브잡")').count() else None
-    check('level_up_slower_than_before', ev(pg, "[1,5,10,15].every(l=>expMax(l)>=Math.round(Math.min(999,Math.round(50+4*l**1.85))*1.15))") and ev(pg, "EXP_SLOW")== 1.18)
+    check('level_up_slower_than_before', ev(pg, "[1,5,10,15].every(l=>expMax(l)>=Math.round(Math.round(50+4*l**1.85)*1.15))") and ev(pg, "EXP_SLOW")== 1.18)
     check('cr_reward_not_lower', ev(pg, "CR_BONUS")>= 1 and ev(pg, "DANGER_ZONES.every(z=>z.terrains.every(t=>t.monster.cr>=Math.round((8+z.terrains.indexOf(t))*ZONE_REWARD[z.n])))"))
     ev(pg, "state.character.level=14")
     # ---------- 장비 강화 ----------
@@ -2130,6 +2130,7 @@ with sync_playwright() as p:
     check('journal_locked_entries_disabled', pg.locator('#codexRoot .post-item[disabled]').count() == 7 - ev(pg, "Object.keys(state.journals).length"))
     check('peak_title_defined_and_granted', ev(pg, "(()=>{const t=TITLE_DEFS.find(x=>x[0]==='정점에 다다른');if(!t)return false;const l=state.character.level;state.character.level=MAX_LEVEL-1;const a=t[2]();state.character.level=MAX_LEVEL;const b=t[2]();state.character.level=l;return !a&&b&&TITLES.includes('정점에 다다른')})()"))
     check('peak_award_sets_announce_pending', ev(pg, "(()=>{const l=state.character.level;state.character.level=MAX_LEVEL;state.titles=state.titles.filter(x=>x!=='정점에 다다른');state.flags.annoMax='';awardTitles();state.character.level=l;return state.flags.annoMax==='pending'&&state.titles.includes('정점에 다다른')})()"))
+    check('all_journals_give_footsteps_title', ev(pg, "(()=>{const bak=JSON.stringify(state.journals);const t=TITLE_DEFS.find(x=>x[0]==='걸음을 따라서');if(!t||!TITLES.includes('걸음을 따라서'))return false;state.journals={};const a=t[2]();const ids=Object.keys(QMARKS);ids.slice(0,-1).forEach(z=>state.journals[z]=1);const b=t[2]();state.journals[ids[ids.length-1]]=1;const c=t[2]();state.journals=JSON.parse(bak);return !a&&!b&&c&&ids.length===7})()"))
     ev(pg, "state.annoMax=0;view.invQ='';state.invTab=null;state.page=1;state.leftTab='INVENTORY';renderLeftTab();state.inventory['소모품']=[{n:'응급 키트',q:3}];state.inventory['재료']=[{n:'약초',q:2},{n:'수초',q:1}];renderInventory()")
     check('inv_search_input_exists_in_tab_row', pg.locator('#invTabs #invQ').count() == 1)
     pg.fill('#invQ', '약초'); pg.wait_for_timeout(60)

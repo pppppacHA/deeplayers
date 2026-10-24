@@ -1213,6 +1213,7 @@ const TITLE_DEFS = [
   ['정예 대원', '승급 시험을 통과해 C등급이 된다', () => 'CBAS'.includes(state.character.rank)],
   ['상급 대원', '승급 시험을 통과해 B등급이 된다', () => 'BAS'.includes(state.character.rank)],
   ['에이스 대원', '승급 시험을 통과해 A등급이 된다', () => 'AS'.includes(state.character.rank)],
+  ['걸음을 따라서', '지상 일곱 구역의 저널을 모두 발견한다', () => Object.keys(QMARKS).length > 0 && Object.keys(QMARKS).every(id => (state.journals || {})[id])],
   ['정점에 다다른', '최고 레벨(Lv.30)에 도달한다', () => state.character.level >= MAX_LEVEL],
   ['새싹 농부', '농장에서 작물을 수확해 도감에 등록한다', () => Object.keys(CROPS).some(n => state.codex.items[n])],
   ['길들이는 자', '지상에서 펫을 길들인다', () => state.pets.length > 0],

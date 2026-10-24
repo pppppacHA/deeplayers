@@ -706,8 +706,8 @@ function commitStatDraft(draft) {
 }
 
 /* ---------- 경험치 / 레벨 ---------- */
-/* 레벨 곡선: 갈수록 급격히 늘어 만렙(30)은 오래 걸린다. 표시는 3자리를 넘지 않게 999로 제한 */
-const expMax = lv => Math.min(999, Math.round((50 + 4 * lv ** 1.85) * EXP_SLOW));
+/* 레벨 곡선: 갈수록 급격히 늘어 만렙(30)은 오래 걸린다. 상한을 두지 않아 뒤로 갈수록 계속 힘들어진다 (Lv.20쯤 1천 이상, Lv.29는 2천 후반) */
+const expMax = lv => Math.round((50 + 4 * lv ** 1.85) * EXP_SLOW);
 /* 레벨이 모자라 못 쓰는 기능이면 사유, 아니면 '' */
 function levelGate(id) {
   const a = ACTIONS[id], lv = state.character.level;
@@ -827,6 +827,23 @@ function followStep(raw) { // 파티장 위치(raw)에 한 걸음 다가간다. 
   if (state.location !== '이동장치') { const r = travelTo('이동장치'); return r.err ? { err: r.err } : { moved: true, what: 'travel' }; }
   const e = startTrip(t.zone); return e ? { err: e } : { moved: true, what: 'trip' };
 }
+/* 동행 묘사: 파티장이 '파티 이동', 파티원이 '동행'을 켠 채 함께 움직일 때 이동·전투·채집·채굴·낚시 결과에 붙는 한 줄 */
+const TOGETHER_LINES = {
+  move: [n => `동료(${n})와 발을 맞춰 걷는다. 앞서거니 뒤서거니 하는 발소리가 든든하다.`, n => `뒤돌아보면 ${n}이(가) 한 걸음 거리에서 따라온다. 혼자였다면 길이 더 길었을 것이다.`, n => `${n}과(와) 나란히 걸으니 폐허의 바람도 덜 차다.`],
+  battle: [n => `등 뒤를 ${n}이(가) 맡아 준 덕에 한결 마음 놓고 싸웠다.`, n => `${n}과(와) 눈짓으로 신호를 주고받으며 몬스터를 몰아붙였다.`, n => `쓰러진 몬스터 곁에서 ${n}과(와) 가볍게 주먹을 맞부딪쳤다.`],
+  채집: [n => `${n}과(와) 나란히 쭈그려 앉아 풀숲을 뒤졌다. 누가 더 많이 찾나 내기도 했다.`, n => `${n}이(가) 찾은 것을 내밀며 웃었다. 같이 하니 시간이 금방 갔다.`],
+  채굴: [n => `${n}과(와) 번갈아 곡괭이를 휘둘렀다. 땀을 닦는 사이 쉴 틈을 서로 내주었다.`, n => `광석 부딪치는 소리가 ${n}의 곡괭이 소리와 박자를 맞췄다.`],
+  낚시: [n => `${n}과(와) 나란히 낚싯대를 드리웠다. 말없이 앉아 있어도 어색하지 않았다.`, n => `찌를 바라보다 ${n}과(와) 눈이 마주쳐 같이 웃었다. 누가 먼저 낚나 내기하는 중이다.`]
+};
+/* 지금 함께 움직이는 파티원 이름들 (내가 파티장이면 '동행'을 켠 파티원, 파티원이면 '파티 이동'을 켠 파티장과 다른 동행자) */
+function togetherNames() {
+  if (!PARTY.id) return [];
+  const me = state.character.name, ms = PARTY.members.filter(m => m.name !== me && m.online && m.fol);
+  if (partyLeader()) return state.partyMove ? ms.map(m => m.name) : [];
+  const L = PARTY.members.find(m => m.leader);
+  return state.follow && L && L.online && L.fol ? ms.map(m => m.name) : [];
+}
+function togetherLine(kind, rnd = Math.random) { const ns = togetherNames(), l = TOGETHER_LINES[kind]; return ns.length && l ? pickR(rnd, l)(ns.slice(0, 3).join('·')) : ''; }
 const partyOthers = () => PARTY.members.map(m => m.name).filter(n => n && n !== state.character.name);
 function leisureText(id, rnd = Math.random) {
   const l = LEISURE[id], others = partyOthers().sort(() => rnd() - .5).slice(0, 3);
@@ -1356,6 +1373,7 @@ function resolveAction(id, cycles = 1, spPaid = 0, act = null) {
   const tail = [lowered ? (a.kind === 'gather' ? `빈손 ${lowered}회` : `재료를 못 얻은 회차 ${lowered}회`) : '', greats ? `대성공 ${greats}회` : '', accidents ? `사고 ${accidents}회` : '', stop].filter(Boolean).join(' · ');
   if (a.kind === 'gather') r.text = `${t.name}에서 ${done}회 「${a.label}」 했습니다.${tail ? ' ' + tail : ''}${r.fishShow && r.fishShow.length ? `\n낚은 물고기: ${r.fishShow.join(' · ')}` : ''}`;
   else r.text = `${monsterBase(a).name}와(과) ${done}회 교전: ${wins}승 ${losses}패.${tail ? ' ' + tail : ''}`;
+  const tg = togetherLine(a.kind === 'gather' ? a.method : 'battle'); if (tg) r.text += `\n${tg}`; // 동행 중이면 함께한 묘사가 붙는다
   return r;
 }
 
