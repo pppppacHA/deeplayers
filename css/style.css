@@ -754,6 +754,8 @@ button.danger{color:#c0392b;border-color:#c0392b}
 .pet-row .grow{display:flex;flex-direction:column;gap:3px;min-width:0}
 .pet-row small{color:var(--muted)}
 .col-btns{display:flex;flex-direction:column;gap:4px;flex:none}
+.pet-row .col-btns{flex:1 1 100%;flex-direction:row;flex-wrap:wrap;gap:5px}
+.pet-row .col-btns button{flex:1 1 auto;min-width:72px}
 .bar.thin{height:5px}
 .job-lore{display:flex;gap:9px;padding:9px 10px;margin-bottom:8px;border-left:3px solid var(--accent);background:var(--accent-soft);border-radius:0 8px 8px 0}
 .job-lore p{margin:0;font-size:calc(11.5px*var(--fs));line-height:1.55;color:var(--text-2)}
@@ -1222,3 +1224,5 @@ textarea#mailBody{width:100%;min-height:80px;resize:vertical}
 .tile.spot{color:var(--accent,#4a9);border-color:currentColor;box-shadow:inset 0 0 0 1px currentColor}
 .tile.qm{color:var(--accent);border-style:dashed;border-color:currentColor}
 .nearby-row small.journal{white-space:pre-line;line-height:1.6}
+.pet-row button.pen,.pet-side-row button.pen{padding:0 4px;margin-left:2px;vertical-align:middle;border-color:transparent;background:transparent;color:var(--muted);font-size:13px}
+.pet-row button.pen:hover,.pet-side-row button.pen:hover{color:var(--accent-2)}

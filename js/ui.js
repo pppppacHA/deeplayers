@@ -504,6 +504,7 @@ function tick() {
   if (pruneBuffs()) { renderBuffs(); save(); }
   renderBuffs(); // 펫의 든든함이 끝나면 버프 아이콘도 사라진다
   if (resetBoardQuests()) { renderSide(); toast('완수한 임무가 오전 4시를 지나 다시 받을 수 있게 되었습니다.'); }
+  for (let n = 0; petLevelUps.length && n < 5; n++) { const u = petLevelUps.shift(); toast(`${u.name}이(가) Lv.${u.lv}이 되었어요! 이동 속도가 조금 빨라졌습니다.`); addLog(`펫 레벨업: ${u.name} Lv.${u.lv}`); sfx('levelup'); } petLevelUps.length = 0;
   farmRefresh(); petSideRefresh();
   followTick(); partyPlacePush();
   awardTitles();
@@ -541,6 +542,15 @@ function renderLogs() {
 const rewardText = q => `보상 · EXP +${q.reward.exp} · CR +${q.reward.money}${(q.reward.items || []).map(([n, c]) => ` · ${n} ×${c}`).join('')}`;
 /* 오른쪽 '펫' 탭: 보유 펫과 탐험 중인 펫의 상태를 한눈에 */
 const petRoot = el => (el && el.closest && el.closest('#sideView')) || $('#modalBody');
+const petLvText = p => `Lv.${p.lv || 1}${(p.lv || 1) >= PET_MAX_LV ? ' (최대)' : ` · EXP ${p.pxp || 0}/${petXpMax(p.lv || 1)}`} · 악세서리 ${p.acc || '없음'}`;
+function openPetAcc(i) { // 펫 악세서리 창: 가진 악세서리를 달거나 벗긴다
+  const p = state.pets[i]; if (!p) return;
+  const have = Object.keys(PET_ACC).filter(n => countItem(n) > 0);
+  const row = (n, on) => `<div class="nearby-row"><div class="round-avatar">${icon(PET_ACC[n].icon)}</div><div class="grow"><strong>${esc(n)}</strong><small>${esc(PET_ACC[n].text)}</small><small>${esc(PET_ACC[n].desc)}</small></div>${on ? `<button data-act="pet-acc-off" data-i="${i}">벗기기</button>` : `<button class="primary" data-act="pet-acc-set" data-i="${i}" data-name="${esc(n)}">달아 주기</button>`}</div>`;
+  modal(`${petName(p)}의 악세서리`, `<p class="tiny">잘 쓰이지 않는 재료로 제작한 악세서리를 펫에게 달아 줍니다. 한 번에 하나만 달 수 있고, 벗기면 소지품으로 돌아옵니다. 효과는 함께 다니는 든든한 펫에게만 적용돼요.</p>` +
+    `<div class="choice-label">달고 있는 악세서리</div>${p.acc ? row(p.acc, true) : '<div class="empty">달고 있는 악세서리가 없습니다.</div>'}` +
+    `<div class="choice-label">가진 악세서리</div>${have.map(n => row(n, false)).join('') || '<div class="empty">가진 악세서리가 없습니다. 제작 탭에서 만들 수 있어요. (레시피는 단련이나 구입으로 배웁니다)</div>'}`, [btnClose], true);
+}
 const petRefresh = el => { if (el && el.closest && el.closest('#sideView')) renderSide(); else { openPets(true); renderSide(); } };
 const petSig = () => state.pets.map(p => `${p.id}|${p.name || ''}|${p.exp ? (expReady(p) ? 'R' : 'E') + p.exp.zone : state.petActive === state.pets.indexOf(p) ? 'A' : 'W'}|${p.bond}|${p.pers}`).join(';') + '|' + state.side + '|' + (view.petSub || '상태') + '|' + view.petNaming + '|' + state.petActive;
 const petOrder = () => state.pets.map((_, i) => i).sort((a, b) => (state.petActive === b) - (state.petActive === a) || a - b); // 함께 다니는 펫이 맨 위
@@ -555,7 +565,7 @@ function petPanelHtml() {
     const st = away ? (ready ? `${p.exp.zone} 탐험에서 돌아왔어요!` : `${p.exp.zone} 탐험 중 · <span class="pet-left" data-i="${i}">${fmtLeft(expLeft(p))}</span> 남음`) : act ? '동행 중' : '대기 중';
     const pct = away && !ready ? Math.round((1 - expLeft(p) / (p.exp.ms || PET_EXP_MS)) * 100) : 0;
     return `<div class="nearby-row pet-side-row ${away ? 'away' : ''}"><div class="round-avatar">${icon(sp.icon || 'pets')}</div><div class="grow"><strong>${esc(petName(p))}${p.name ? ` <small>(${esc(sp.name)})</small>` : ''}</strong>` +
-      `<small>${st}</small><small>친밀도 ${p.bond}/100 · 성격 ${esc(petPersOf(p))}</small>` + (away && !ready ? `<div class="bar thin"><span class="pet-bar" data-i="${i}" style="width:${pct}%"></span></div>` : '') + `</div>` +
+      `<small>${st}</small><small>친밀도 ${p.bond}/100 · 성격 ${esc(petPersOf(p))}</small><small>${esc(petLvText(p))}</small>` + (away && !ready ? `<div class="bar thin"><span class="pet-bar" data-i="${i}" style="width:${pct}%"></span></div>` : '') + `</div>` +
       (ready ? `<button class="primary" data-act="pet-claim" data-i="${i}">수확물 받기</button>` : '') + `</div>`;
   }).join('');
   return tabs + rows;
@@ -930,7 +940,7 @@ function codexEntries(tab) {
   ];
   if (tab === '아이템') return Object.entries(ITEMS).filter(([n, it]) => !it.hidden || c.items[n]).map(([n, it]) => ({ sub: codexItemSub(n), icon: it.icon, name: n, desc: it.desc + (FISH_SIZE[n] ? ` (크기 ${FISH_SIZE[n][0]}~${FISH_SIZE[n][1]}cm)` : ''), src: sourceText(n), best: FISH_SIZE[n] ? (state.fishBest[n] ? `최고 기록 ${state.fishBest[n]}cm` : '아직 기록이 없어요') : '', known: c.items[n] }));
   if (tab === '펫') return Object.entries(PET_SPECIES).map(([id, sp]) => { const p = state.pets.find(x => x.id === id); // 지금 데리고 있는 펫만 '발견'으로 보인다
-    return { sub: '', icon: sp.icon || 'pets', name: p ? `${petName(p)}${p.name ? ` (${sp.name})` : ''}` : sp.name, desc: p ? `고향 ${sp.zone} · 친밀도 ${p.bond}/100 · 동행 시 이동 시간 -${Math.round(petBuff(p) * 100)}%` : '', where: p ? '' : sp.zone, known: !!p }; });
+    return { sub: '', icon: sp.icon || 'pets', name: p ? `${petName(p)}${p.name ? ` (${sp.name})` : ''}` : sp.name, desc: p ? `고향 ${sp.zone} · Lv.${p.lv || 1} · 친밀도 ${p.bond}/100 · 동행 시 이동 시간 -${Math.round(petBuff(p) * 100)}%` : '', where: p ? '' : sp.zone, known: !!p }; });
   if (tab === '저널') return DANGER_ZONES.filter(z => QMARKS[z.id]).map(z => ({ sub: '', icon: 'menu_book', name: `${QMARKS[z.id].name} 탐험록 · ${z.id}`, desc: QMARKS[z.id].journal, known: !!(state.journals || {})[z.id], journal: true }));
   if (tab === '몬스터') return DANGER_ZONES.flatMap(z => z.terrains.flatMap(t => t.monsters.map(m => ({ sub: m.kind, icon: m.kind === '짐승' ? 'pets' : 'bug_report', name: m.name,
     desc: `${m.desc} (HP ${m.hp} · 공격 ${m.atk})`, where: `${z.name} · ${t.name}`, known: c.monsters[m.name] }))));
@@ -1449,6 +1459,9 @@ const A = {
   'pet-name-cancel': el => { view.petNaming = -1; petRefresh(el); },
   'pet-name-save': el => { const err = renamePet(+el.dataset.i, petRoot(el).querySelector('#petNameIn').value); if (err) { toast(err); sfx('error'); return; } view.petNaming = -1; renderBuffs(true); sfx('ok'); toast('펫 이름을 저장했습니다.'); petRefresh(el); },
   'pet-sub': el => { view.petSub = el.dataset.sub; renderSide(); },
+  'pet-acc': el => { openPetAcc(+el.dataset.i); },
+  'pet-acc-set': el => { const i = +el.dataset.i, e = petEquip(i, el.dataset.name); if (e) { toast(e); sfx('error'); return; } sfx('ok'); renderBag(); renderBuffs(true); renderSide(); openPetAcc(i); },
+  'pet-acc-off': el => { const i = +el.dataset.i, e = petUnequip(i); if (e) { toast(e); sfx('error'); return; } sfx('ok'); renderBag(); renderBuffs(true); renderSide(); openPetAcc(i); },
   'pet-active': el => { const i = +el.dataset.i, err = setActivePet(state.petActive === i ? -1 : i); if (err) { toast(err); sfx('error'); return; } renderBuffs(true); petRefresh(el); },
   'notice-del': el => {
     if (!canNotice()) return;
@@ -2458,19 +2471,20 @@ function petCareHtml(compact) { // 펫 돌보기 화면. compact=오른쪽 '펫'
     ? `<div class="pet-dex got" title="${esc(sp.name)}">${icon('pets')}<small>${esc(sp.name)}</small></div>` : `<div class="pet-dex" title="아직 길들이지 못했습니다">${icon('help')}<small>${esc(sp.zone)}</small></div>`).join('');
   const editRow = i => { const p = state.pets[i], sp = PET_SPECIES[p.id]; // 이름 수정: 박스 맨 아래 가운데 (동행 여부와 상관없이)
     return view.petNaming === i ? `<div class="search-row pet-edit-row"><input id="petNameIn" maxlength="${PET_NAME_MAX}" placeholder="${esc(sp.name)}" value="${esc(p.name || '')}" aria-label="펫 이름"><button class="primary" data-act="pet-name-save" data-i="${i}">저장</button><button data-act="pet-name-cancel">취소</button></div>`
-      : `<div class="pet-edit-row"><button class="mini" data-act="pet-name" data-i="${i}" title="이름 수정" aria-label="이름 수정">${icon('edit')} 이름 수정</button></div>`; };
+      : ''; };
+  const penBtn = i => view.petNaming === i ? '' : ` <button class="mini pen" data-act="pet-name" data-i="${i}" title="이름 수정" aria-label="이름 수정">${icon('quill')}</button>`;
   const mini = i => { const p = state.pets[i], sp = PET_SPECIES[p.id], away = !!p.exp, ready = expReady(p);
     const st = away ? (ready ? `${p.exp.zone} 탐험에서 돌아왔어요!` : `${p.exp.zone} 탐험 중 · <span class="pet-left" data-i="${i}">${fmtLeft(expLeft(p))}</span> 남음`) : '대기 중';
-    return `<div class="nearby-row pet-side-row ${away ? 'away' : ''}"><div class="round-avatar">${icon(sp.icon || 'pets')}</div><div class="grow"><strong>${esc(petName(p))}${p.name ? ` <small>(${esc(sp.name)})</small>` : ''}</strong><small>${st}</small><small>친밀도 ${p.bond}/100 · 성격 ${esc(petPersOf(p))}</small>${away && !ready ? `<div class="bar thin"><span class="pet-bar" data-i="${i}" style="width:${Math.round((1 - expLeft(p) / (p.exp.ms || PET_EXP_MS)) * 100)}%"></span></div>` : ''}</div>${ready ? `<button class="primary" data-act="pet-claim" data-i="${i}">수확물 받기</button>` : away ? '' : `<button data-act="pet-active" data-i="${i}">함께 다니기</button>`}${editRow(i)}</div>`; };
+    return `<div class="nearby-row pet-side-row ${away ? 'away' : ''}"><div class="round-avatar">${icon(sp.icon || 'pets')}</div><div class="grow"><strong>${esc(petName(p))}${p.name ? ` <small>(${esc(sp.name)})</small>` : ''}${penBtn(i)}</strong><small>${st}</small><small>친밀도 ${p.bond}/100 · 성격 ${esc(petPersOf(p))}</small><small>${esc(petLvText(p))}</small>${away && !ready ? `<div class="bar thin"><span class="pet-bar" data-i="${i}" style="width:${Math.round((1 - expLeft(p) / (p.exp.ms || PET_EXP_MS)) * 100)}%"></span></div>` : ''}</div>${ready ? `<button class="primary" data-act="pet-claim" data-i="${i}">수확물 받기</button>` : away ? '' : `<button data-act="pet-active" data-i="${i}">함께 다니기</button>`}${editRow(i)}</div>`; };
   const rows = petOrder().map(i => {
     if (compact && state.petActive !== i) return mini(i);
     const p = state.pets[i], sp = PET_SPECIES[p.id], fed = petFed(p), act = state.petActive === i, away = !!p.exp, ready = expReady(p);
     const state1 = away ? (ready ? `${p.exp.zone} 탐험에서 돌아왔어요!` : `${p.exp.zone} 탐험 중 · ${fmtLeft(expLeft(p))} 남음`) : act ? '동행 중' : '대기 중';
-    return `<div class="pet-row ${act ? 'active' : ''}"><div class="round-avatar">${icon('pets')}</div><div class="grow"><strong>${esc(petName(p))} ${p.name ? `<small>(${esc(sp.name)})</small> ` : ''}<span class="tag">${esc(state1)}</span></strong>` +
-      `<small class="pet-line">${esc(petCareLine(p))}</small>${view.petMsg && view.petMsg.i === i ? `<small class="pet-talk">${esc(view.petMsg.text)}</small>` : ''}<small>성격 ${esc(petPersOf(p))} · 친밀도 ${p.bond}/100 · ${fed ? `든든함 ${fmtLeft(Math.max(0, p.fedAt + PET_FED_MS - nowMs()))} 남음` : '배고픔'} · 동행 시 이동 시간 -${Math.round(petBuff(p) * 100)}%${fed ? '' : ' (먹이를 줘야 적용)'}</small>` +
+    return `<div class="pet-row ${act ? 'active' : ''}"><div class="round-avatar">${icon('pets')}</div><div class="grow"><strong>${esc(petName(p))} ${p.name ? `<small>(${esc(sp.name)})</small> ` : ''}${penBtn(i)} <span class="tag">${esc(state1)}</span></strong>` +
+      `<small class="pet-line">${esc(petCareLine(p))}</small>${view.petMsg && view.petMsg.i === i ? `<small class="pet-talk">${esc(view.petMsg.text)}</small>` : ''}<small>${esc(petLvText(p))}</small><small>성격 ${esc(petPersOf(p))} · 친밀도 ${p.bond}/100 · ${fed ? `든든함 ${fmtLeft(Math.max(0, p.fedAt + PET_FED_MS - nowMs()))} 남음` : '배고픔'} · 동행 시 이동 시간 -${Math.round(petBuff(p) * 100)}%${fed ? '' : ' (먹이를 줘야 적용)'}</small>` +
       `<div class="bar thin"><span style="width:${p.bond}%"></span></div></div>` +
       `<div class="col-btns">${away ? (ready ? `<button class="primary" data-act="pet-claim" data-i="${i}">수확물 받기</button>` : '<button disabled>탐험 중</button>')
-        : (() => { const ok = !petCareErr(i), tip = ok ? '' : ' title="함께 다니지 않는 펫은 개인실에서 돌볼 수 있어요"'; return `<button data-act="pet-feed" data-i="${i}" ${feeds.length && ok ? '' : 'disabled'}${tip}>간식 주기</button><button data-act="pet-stroke" data-i="${i}" ${ok ? '' : 'disabled'}${tip}>쓰다듬기</button><button data-act="pet-mood" data-i="${i}" ${ok ? '' : 'disabled'}${tip}>기분 묻기</button><button data-act="pet-active" data-i="${i}">${act ? '동행 해제' : '함께 다니기'}</button>${act ? '' : `<button data-act="pet-send" data-i="${i}" ${feeds.length ? '' : 'disabled'}>탐험 보내기</button>`}`; })()}</div>${editRow(i)}</div>`;
+        : (() => { const ok = !petCareErr(i), tip = ok ? '' : ' title="함께 다니지 않는 펫은 개인실에서 돌볼 수 있어요"'; return `<button data-act="pet-feed" data-i="${i}" ${feeds.length && ok ? '' : 'disabled'}${tip}>간식 주기</button><button data-act="pet-stroke" data-i="${i}" ${ok ? '' : 'disabled'}${tip}>쓰다듬기</button><button data-act="pet-mood" data-i="${i}" ${ok ? '' : 'disabled'}${tip}>기분 묻기</button><button data-act="pet-active" data-i="${i}">${act ? '동행 해제' : '함께 다니기'}</button><button data-act="pet-acc" data-i="${i}">악세서리</button>${act ? '' : `<button data-act="pet-send" data-i="${i}" ${feeds.length ? '' : 'disabled'}>탐험 보내기</button>`}`; })()}</div>${editRow(i)}</div>`;
   }).join('');
   if (compact) {
     const feedBox = feeds.length ? `<div class="choice-label">줄 간식 <small class="tiny">— 눌러서 고르고, 펫의 '간식 주기'를 누르세요</small></div><div class="feed-picks" id="feedPicks">${feeds.map(x => `<button class="feed-opt ${x.n === view.feed ? 'selected' : ''}" data-act="pet-feed-pick" data-item="${esc(x.n)}" data-tip-title="${esc(x.n)}" data-tip-desc="${esc(itemTip(x.n) + `\n친밀도 +${feedGain(x.n)}`)}" aria-pressed="${x.n === view.feed}">${icon(ITEMS[x.n].icon)}<span>${esc(x.n)}</span><b>×${x.q}</b><small>+${ITEMS[x.n].feed}</small></button>`).join('')}</div>` : '';

@@ -12,6 +12,7 @@ const round1 = v => Math.round(v * 10) / 10;
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 /* 머티리얼 아이콘에 없는 모양은 직접 그린 SVG 를 쓴다 (이름이 CUSTOM_ICONS 에 있으면 그것을 그린다) */
 const CUSTOM_ICONS = {
+  quill: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.6 3.4C14.8 3.6 9.9 6.4 7.9 11.4c-.5 1.2-.7 2.5-.7 3.8L3 19.6 4.4 21l4.3-4.2c1.3 0 2.6-.2 3.8-.7 5-2 7.8-6.9 8.1-12.7z"/></svg>',
   pistol: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="1.5" y="5" width="20" height="6" rx="1.2"/><rect x="2.5" y="3.4" width="2" height="1.8"/><rect x="18" y="3.4" width="2" height="1.8"/><path d="M12.6 11h6.4l-1.9 9.2a1 1 0 0 1-1 .8h-2.6a1 1 0 0 1-1-1.2z"/><path d="M6.5 11v3c0 1.2.9 2 2 2h3.6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><rect x="9.6" y="11" width="1.5" height="3" rx=".6"/></svg>'
 };
 const icon = n => CUSTOM_ICONS[n] ? `<span class="material-symbols-rounded custom-icon" aria-hidden="true">${CUSTOM_ICONS[n]}</span>` : `<span class="material-symbols-rounded" aria-hidden="true">${n}</span>`;
@@ -133,7 +134,7 @@ function hardenState(s) {
   s.questAt = Object.fromEntries(Object.entries(s.questAt && typeof s.questAt === 'object' ? s.questAt : {}).filter(([k, v]) => known(k) && Number.isFinite(v)));
   const fp = Array.isArray(s.farm && s.farm.plots) ? s.farm.plots : [];
   s.farm = { plots: Array.from({ length: 6 }, (_, i) => { const p = fp[i]; return p && CROPS[p.crop] && Number.isFinite(p.at) ? { crop: p.crop, at: p.at } : null; }) };
-  s.pets = (Array.isArray(s.pets) ? s.pets : []).filter(p => p && PET_SPECIES[p.id]).map(p => ({ id: p.id, bond: intIn(p.bond, 0, 100, PET_BOND_START), fedAt: Number.isFinite(p.fedAt) ? p.fedAt : 0, petAt: Number.isFinite(p.petAt) ? p.petAt : 0, name: cleanText(p.name, PET_NAME_MAX), pers: PET_PERS[p.pers] ? p.pers : pick(PET_PERS_LIST), exp: p.exp && DANGER_ZONES.some(z => z.id === p.exp.zone) && Number.isFinite(p.exp.at) ? { zone: p.exp.zone, at: p.exp.at, ms: Number.isFinite(p.exp.ms) ? clamp(p.exp.ms, 3600000, PET_EXP_MS) : PET_EXP_MS } : null }))
+  s.pets = (Array.isArray(s.pets) ? s.pets : []).filter(p => p && PET_SPECIES[p.id]).map(p => ({ id: p.id, lv: intIn(p.lv, 1, PET_MAX_LV, 1), pxp: intIn(p.pxp, 0, 99999, 0), acc: PET_ACC[p.acc] ? p.acc : '', bond: intIn(p.bond, 0, 100, PET_BOND_START), fedAt: Number.isFinite(p.fedAt) ? p.fedAt : 0, petAt: Number.isFinite(p.petAt) ? p.petAt : 0, name: cleanText(p.name, PET_NAME_MAX), pers: PET_PERS[p.pers] ? p.pers : pick(PET_PERS_LIST), exp: p.exp && DANGER_ZONES.some(z => z.id === p.exp.zone) && Number.isFinite(p.exp.at) ? { zone: p.exp.zone, at: p.exp.at, ms: Number.isFinite(p.exp.ms) ? clamp(p.exp.ms, 3600000, PET_EXP_MS) : PET_EXP_MS } : null }))
     .filter((p, i, a) => a.findIndex(q => q.id === p.id) === i).slice(0, Object.keys(PET_SPECIES).length);
   if (s.pets[s.petActive] && s.pets[s.petActive].exp) s.petActive = -1;
   s.petActive = intIn(s.petActive, -1, s.pets.length - 1, -1);
@@ -1403,7 +1404,7 @@ function claimResult() {
   v.hp = clamp(v.hp + r.hp, 1, v.hpMax);
   v.sp = clamp(v.sp + r.sp + (r.refund || 0), 0, v.spMax);
   if (r.buff) addBuff(r.buff);
-  const ups = gainExp(r.exp), mUp = [];
+  const ups = gainExp(r.exp), mUp = []; petGain(r.exp);
   if (Array.isArray(r.mast) && GATHER_KINDS[r.mast[0]] && Number.isFinite(r.mast[1]) && r.mast[1] > 0) { const u = addMastery(r.mast[0], MASTERY_GAIN.gather * Math.min(r.mast[1], 1000)); if (u) mUp.push([r.mast[0], u]); }
   state.pending = null;
   save();
@@ -1620,11 +1621,11 @@ function applyMove(path, done) {
   refreshEvents(d);
   for (let i = 0; i < done; i++) {
     const [x, y] = path[i];
-    d.x = x; d.y = y; revealAround(d, i === path.length - 1); // 누른 칸(경로의 끝)만 밟은 칸으로 친다
+    petGainRaw(PET_XP_STEP); d.x = x; d.y = y; revealAround(d, i === path.length - 1); // 누른 칸(경로의 끝)만 밟은 칸으로 친다
     const tz = terrainIndex(tileOf(z, x, y));
     if (tz >= 0) {
       discover('zones', `${z.id}:${z.terrains[tz].name}`);
-      if (chance(TRAVEL_FIND + effects().rare * .05 + effects().travelFind)) { const n = pick(z.terrains[tz].gather); if (addItem(n, 1)) travelFinds.push(n); } // 길가에서 아주 드물게 재료를 줍는다
+      if (chance(TRAVEL_FIND + effects().rare * .05 + effects().travelFind + petFx('find'))) { const n = pick(z.terrains[tz].gather); if (addItem(n, 1)) travelFinds.push(n); } // 길가에서 아주 드물게 재료를 줍는다
     }
   }
   const ch = tileOf(z, d.x, d.y);
@@ -1982,7 +1983,35 @@ function harvestPlot(i) {
 /* ---------- 펫 ---------- */
 const petCap = () => Object.keys(PET_SPECIES).length; // 펫 보관함: 종마다 한 마리씩 모으는 도감식 (중복 불가), 소지품과 별도
 const petFed = p => nowMs() - p.fedAt < PET_FED_MS;
-const petBuff = p => PET_SPECIES[p.id].base * (.5 + p.bond / 200); // 이동속도 증가 비율 (타일 이동 시간 단축)
+const petAcc = p => (p && PET_ACC[p.acc]) || {};
+const petBuff = p => Math.min(.5, PET_SPECIES[p.id].base * (.5 + p.bond / 200) * (1 + ((p.lv || 1) - 1) * PET_LV_SPEED) + (petAcc(p).spd || 0)); // 이동속도 증가 비율 (타일 이동 시간 단축)
+const petLevelUps = []; // 펫이 레벨업한 기록 (UI가 비우며 알림)
+const petFx = k => { const p = activePet(); return p && !p.exp && petFed(p) ? petAcc(p)[k] || 0 : 0; }; // 함께 다니는 든든한 펫의 악세서리 효과
+function petGainRaw(x) { // 함께 다니는 든든한 펫만 EXP를 얻는다
+  const p = activePet(); if (!p || p.exp || !petFed(p) || !(x > 0) || (p.lv || 1) >= PET_MAX_LV) return;
+  p.pxp = (p.pxp || 0) + Math.max(1, Math.round(x * (1 + (petAcc(p).pxp || 0))));
+  while (p.lv < PET_MAX_LV && p.pxp >= petXpMax(p.lv)) { p.pxp -= petXpMax(p.lv); p.lv++; petLevelUps.push({ name: petName(p), lv: p.lv }); }
+  if (p.lv >= PET_MAX_LV) p.pxp = 0;
+}
+const petGain = exp => petGainRaw(exp * PET_XP_SHARE);
+/* 악세서리 달기 / 벗기기. 성공하면 null, 아니면 사유 */
+function petEquip(i, name) {
+  const p = state.pets[i];
+  if (!p) return '펫이 없습니다.';
+  if (p.exp) return '탐험 중인 펫에게는 달아 줄 수 없습니다.';
+  if (!PET_ACC[name] || countItem(name) < 1) return '가지고 있지 않은 악세서리입니다.';
+  const old = p.acc;
+  if (!removeItem(name, 1)) return '가지고 있지 않은 악세서리입니다.';
+  if (old && !addItem(old, 1)) { addItem(name, 1); return '가방이 가득 차서 기존 악세서리를 뺄 수 없습니다.'; }
+  p.acc = name; save(); return null;
+}
+function petUnequip(i) {
+  const p = state.pets[i];
+  if (!p || !p.acc) return '벗길 악세서리가 없습니다.';
+  if (p.exp) return '탐험 중인 펫의 악세서리는 벗길 수 없습니다.';
+  if (!addItem(p.acc, 1)) return '가방이 가득 찼습니다.';
+  p.acc = ''; save(); return null;
+}
 const activePet = () => state.pets[state.petActive] || null;
 const petSpeed = () => { const p = activePet(); return p && petFed(p) ? petBuff(p) : 0; };
 const stepSec = () => DUNGEON_STEP_SEC * (1 - petSpeed());
@@ -1991,7 +2020,7 @@ const tameChance = bait => clamp(TAME_BASE + totalStats().sen * .02 + (bait === 
 const feedGain = n => Math.round((ITEMS[n].feed || 0) * (n === PET_FOOD ? FOOD_BOND_MULT : 1));
 function addPet(id) {
   if (!PET_SPECIES[id] || state.pets.some(p => p.id === id) || state.pets.length >= petCap()) return false;
-  state.pets.push({ id, bond: PET_BOND_START, fedAt: 0, exp: null, pers: pick(PET_PERS_LIST) });
+  state.pets.push({ id, lv: 1, pxp: 0, acc: '', bond: PET_BOND_START, fedAt: 0, exp: null, pers: pick(PET_PERS_LIST) });
   if (state.petActive < 0) state.petActive = 0;
   save();
   return true;
@@ -2005,7 +2034,7 @@ function feedPet(i, item) {
   if (herb && p.pers === herb) return `${petName(p)}은(는) 이미 ${herb} 성격입니다.`;
   if (!removeItem(item)) return '먹이가 없습니다.';
   if (herb) p.pers = herb;
-  p.bond = Math.min(100, p.bond + feedGain(item)); p.fedAt = nowMs(); save();
+  p.bond = Math.min(100, p.bond + feedGain(item) + (petAcc(p).bond || 0)); p.fedAt = nowMs(); save();
   return null;
 }
 /* 돌보기(간식·쓰다듬기·기분 묻기): 개인실에서, 또는 함께 다니는 펫이면 어디서든 */
@@ -2028,7 +2057,7 @@ function petStroke(i) { // 쓰다듬기: 친밀도 +1, 펫마다 10분에 한 �
   const e = petCareErr(i); if (e) return { err: e };
   const p = state.pets[i], t = nowMs(), left = p.petAt + PET_STROKE_MS - t;
   if (left > 0) return { err: `${petName(p)}은(는) 방금 쓰다듬었어요. ${Math.ceil(left / 60000)}분 뒤에 다시 쓰다듬을 수 있어요.` };
-  p.petAt = t; const up = p.bond < 100; p.bond = Math.min(100, p.bond + PET_STROKE_BOND); save();
+  p.petAt = t; const up = p.bond < 100; p.bond = Math.min(100, p.bond + PET_STROKE_BOND + (petAcc(p).bond || 0)); save();
   return { text: `${petName(p)}: ${petCry(p)} ${petLineFill(pick(PET_PAT[petPersOf(p)]), p)}${up ? ` (친밀도 +${PET_STROKE_BOND})` : ''}` };
 }
 /* 성격에 따라 바뀌는 문구 */
