@@ -23,6 +23,7 @@ jobs:
         run: |
           mkdir _site
           cp -r index.html signup.html css js audio _site/
+          cp -r assets _site/assets  && rm -f _site/assets/room/README.md _site/assets/room/_guide_room.png _site/assets/room/.gitkeep
           touch _site/.nojekyll
           echo "{\"v\":\"${GITHUB_SHA}\"}" > _site/version.json
           # 캐시 무효화: 스크립트/스타일 주소 뒤에 배포 번호를 붙인다 (그냥 F5로도 새 버전이 적용된다)
