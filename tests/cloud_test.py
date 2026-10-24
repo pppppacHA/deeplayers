@@ -287,6 +287,10 @@ with sync_playwright() as p:
     server['annofail'] = True; pg.evaluate("state.flags.annoA='pending';announceRankA()"); pg.wait_for_timeout(700)
     check('rank_announce_failure_stays_pending', pg.evaluate("state.flags.annoA") == 'pending'); server['annofail'] = False
     pg.evaluate("state.flags.annoA='done'")
+    pg.evaluate("state.flags.annoMax='pending';announceMax()"); pg.wait_for_timeout(900)
+    check('max_announce_calls_server_once_done', server.get('anno', []).count('MAX') == 1 and pg.evaluate("state.flags.annoMax") == 'done', server.get('anno'))
+    pg.evaluate("announceMax()"); pg.wait_for_timeout(300)
+    check('max_announce_not_repeated', server.get('anno').count('MAX') == 1)
     pg.evaluate("view.chatAt=0")
     pg.evaluate("sendChat('반가워요')"); pg.wait_for_timeout(600)
     check('chat_send_goes_to_server', server['chatsent'] and server['chatsent'][-1] == {'p_channel': 'world', 'p_body': '반가워요'}, server['chatsent'])

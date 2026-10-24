@@ -198,11 +198,12 @@ function renderEquip() {
 
 function renderInventory() {
   const cap = bagCapacity(), tab = state.invTab;
-  const items = (tab ? [tab] : ['장비', '소모품', '재료']).flatMap(t => state.inventory[t]);
+  const iq = String(view.invQ || '').trim().toLowerCase(); // 소지품 검색: 소지품 안의 물건만 이름으로 찾는다
+  const items = (tab ? [tab] : ['장비', '소모품', '재료']).flatMap(t => state.inventory[t]).filter(s => !iq || `${s.n} ${shownName(s.n)}`.toLowerCase().includes(iq));
   $$('[data-inv]').forEach(b => b.classList.toggle('active', b.dataset.inv === tab));
-  const pages = Math.max(1, Math.ceil(cap / PAGE_SIZE));
+  const pages = Math.max(1, Math.ceil((iq ? items.length : cap) / PAGE_SIZE));
   state.page = clamp(state.page, 1, pages);
-  const start = (state.page - 1) * PAGE_SIZE, count = Math.min(PAGE_SIZE, cap - start);
+  const start = (state.page - 1) * PAGE_SIZE, count = iq ? PAGE_SIZE : Math.min(PAGE_SIZE, cap - start);
   $('#inventoryGrid').innerHTML = Array.from({ length: count }, (_, i) => {
     const s = items[start + i], it = s && ITEMS[s.n];
     return it
@@ -484,7 +485,7 @@ function updateRunning() {
 
 /* ---------- 행동 완료 알림 (탭을 보고 있지 않을 때) ---------- */
 const baseTitle = document.title;
-function awardTitles() { checkTitles().forEach(t => { addLog(`칭호 획득: ${t}`); toast(`새 칭호를 얻었습니다! 「${t}」 (프로필에서 착용)`); sfx('levelup'); }); }
+function awardTitles() { checkTitles().forEach(t => { if (t === '정점에 다다른' && state.flags.annoMax !== 'done') { state.flags.annoMax = 'pending'; save(); toast('최고 레벨 달성! 축하합니다!'); announceMax(); } addLog(`칭호 획득: ${t}`); toast(`새 칭호를 얻었습니다! 「${t}」 (프로필에서 착용)`); sfx('levelup'); }); }
 function notifyDone(text) {
   if (!state.settings.notify || !document.hidden) return;
   document.title = `✔ 행동 완료 · ${baseTitle}`;
@@ -949,8 +950,17 @@ function codexListHtml(list) {
       : `<div class="nearby-row unknown"><div class="round-avatar">${icon('help')}</div><div class="grow"><strong>???</strong><small>아직 발견하지 못했습니다.</small></div>${e.sub ? `<span class="tag">${esc(e.sub)}</span>` : ''}</div>`).join('');
 }
 const codexCountText = list => codexView.tab === '레시피' ? `${list.length}종` : `발견 ${list.filter(e => e.known).length} / ${list.length}`;
+/* 저널 탭: 공지·세계관처럼 왼쪽에 저널 1·2…, 눌러서 오른쪽에 본문 */
+function journalHtml() {
+  const l = codexEntries('저널'), k = clamp(codexView.jIdx || 0, 0, l.length - 1), e = l[k];
+  return `<div class="post-layout journal-layout"><div class="post-list">${l.map((x, i) => x.known
+    ? `<button class="post-item ${i === k ? 'active' : ''}" data-act="codex-journal" data-j="${i}">저널 ${i + 1}</button>`
+    : `<button class="post-item locked" disabled>저널 ${i + 1} · ???</button>`).join('')}</div>` +
+    (e.known ? `<article class="post-detail"><h3>${esc(e.name)}</h3><p>${esc(e.desc)}</p></article>` : `<article class="post-detail"><p>아직 발견하지 못한 저널입니다.</p></article>`) + `</div>`;
+}
 function codexHtml() {
   const { tab, sub } = codexView, list = codexFiltered();
+  if (tab === '저널') return `<div class="tabs flush">${codexTabs().map(t => `<button class="${t === tab ? 'active' : ''}" data-act="codex-tab" data-codex="${t}">${t}</button>`).join('')}</div>` + journalHtml();
   return `<div class="tabs flush">${codexTabs().map(t => `<button class="${t === tab ? 'active' : ''}" data-act="codex-tab" data-codex="${t}">${t}</button>`).join('')}</div>` +
     (CODEX_SUBS[tab].length ? `<div class="chips">${['', ...CODEX_SUBS[tab]].map(x => `<button class="chip ${x === (sub || '') ? 'active' : ''}" data-act="codex-sub" data-sub="${x}">${x || '전체'}</button>`).join('')}</div>` : '') +
     `<div class="search-row codex-search"><input id="codexQ" type="search" maxlength="20" placeholder="도감에서 검색 (발견한 항목)" aria-label="도감 검색" autocomplete="off" value="${esc(codexView.q || '')}"></div>` +
@@ -1052,10 +1062,20 @@ async function announceRankA() {
     if (r && r.ok) { state.flags.annoA = 'done'; save(); toast('A급 승급을 월드 채팅에 알렸어요!'); chatPoll(); }
   } catch (e) { /* 다음에 다시 */ } finally { view.annoBusy = false; }
 }
+/* 만렙 축하: A급 승급과 같은 방식 (서버가 내 저장의 레벨을 확인하고 월드 채팅에 한 번만 올린다) */
+async function announceMax() {
+  if (state.flags.annoMax !== 'pending' || !Cloud.enabled || !Cloud.user() || view.annoMaxBusy) return;
+  view.annoMaxBusy = true;
+  try {
+    flushSave(); const p = await cloudPushNow(); if (!(p && p.ok)) return;
+    const r = await Cloud.announceRank('MAX');
+    if (r && r.ok) { state.flags.annoMax = 'done'; save(); toast('최고 레벨 달성을 월드 채팅에 알렸어요!'); chatPoll(); }
+  } catch (e) { /* 다음에 다시 */ } finally { view.annoMaxBusy = false; }
+}
 async function friendPoll() {
   marketSync(); // 서버에서 친구 신청·메일·교환 소식을 가져온다
   if (!Cloud.enabled || !Cloud.user() || !state.created || _polling) return;
-  announceRankA();
+  announceRankA(); announceMax();
   _polling = true;
   try {
     let changed = false, newMail = 0;
@@ -1698,7 +1718,7 @@ const A = {
     if (r.ups) toast(`레벨 업! Lv.${state.character.level} · 스탯 포인트 +${r.ups}`);
     if (r.result.journal) { sfx('levelup'); modal('저널을 획득했습니다', `<p class="detail-desc">저널을 획득했습니다. 도감을 확인해주세요.</p>`, ['<button class="primary" data-act="open-codex-journal">도감 열기</button>', btnClose], true); }
   },
-  'open-codex-journal': () => { closeModal(); codexView.tab = '저널'; codexView.sub = null; codexView.q = ''; openSystem('도감'); },
+  'open-codex-journal': () => { closeModal(); codexView.tab = '저널'; codexView.sub = null; codexView.jIdx = Math.max(0, codexEntries('저널').findIndex(e => e.known)); codexView.q = ''; openSystem('도감'); },
 
   /* 스탯 / 제작 / 아이템 */
   'stat-up': el => { const k = el.dataset.stat, d = view.statDraft = view.statDraft || {}; if (!(k in state.stats)) return; if (state.statPoints - Object.values(d).reduce((a, b) => a + b, 0) < 1) return; d[k] = (d[k] || 0) + 1; renderStatus(); },
@@ -2040,6 +2060,7 @@ const A = {
   },
   'friend-remove': el => askConfirm('친구 삭제', `정말로 ${el.dataset.name} 대원을 친구에서 삭제할까요?`, '삭제하기', 'friend-remove-do', { name: el.dataset.name }, () => openFriends(true)),
   'friend-remove-do': el => { const uid = view.friendUid && view.friendUid[el.dataset.name]; removeFriend(el.dataset.name); if (uid && Cloud.enabled && Cloud.user()) Cloud.removeFriend(uid).catch(() => {}); if (view.friendUid) delete view.friendUid[el.dataset.name]; openFriends(true); },
+  'codex-journal': el => { codexView.jIdx = +el.dataset.j || 0; $('#codexRoot').innerHTML = codexHtml(); },
   'codex-tab': el => { codexView.tab = el.dataset.codex; codexView.sub = null; codexView.q = ''; $('#codexRoot').innerHTML = codexHtml(); },
   'codex-sort': el => { codexView.sort = el.dataset.sort || ''; $('#codexRoot').innerHTML = codexHtml(); },
   'codex-sub': el => { codexView.sub = el.dataset.sub || null; $('#codexRoot').innerHTML = codexHtml(); },
@@ -2730,11 +2751,18 @@ function openDismantle(keepScroll) {
   modal('분해', `<p class="tiny">소지품의 장비를 분해하면 재료와 약간의 CR을 얻습니다. 분해한 장비는 되돌릴 수 없어요. 보유 CR ${state.money}</p>` + rows, [btnClose], true);
   $('#modalBody').scrollTop = st0;
 }
-function openStorage(keepScroll) { // 개인실 창고: 소지품 격자와 창고 격자를 한 화면에서 보고, 칸을 눌러 고른 뒤 옮긴다 (세이브에 이름→수량만 저장)
+const storQ = () => String(view.storQ || '').trim().toLowerCase();
+document.addEventListener('input', e => { // 소지품·창고 검색: 입력창은 그대로 두고 목록만 다시 그린다
+  if (!e.target) return;
+  if (e.target.id === 'invQ') { view.invQ = cleanText(e.target.value, 20); state.page = 1; renderInventory(); }
+  else if (e.target.id === 'storQ') { view.storQ = cleanText(e.target.value, 20); openStorage(true); const q = $('#storQ'); if (q) { q.focus(); q.setSelectionRange(q.value.length, q.value.length); } }
+});
+function openStorage(keepScroll) {
+  if (keepScroll !== true) view.storQ = ''; // 개인실 창고: 소지품 격자와 창고 격자를 한 화면에서 보고, 칸을 눌러 고른 뒤 옮긴다 (세이브에 이름→수량만 저장)
   const st0 = keepScroll === true && $('#modalBody') ? $('#modalBody').scrollTop : 0;
   const bag = {}; Object.values(state.inventory).flat().forEach(s => { bag[s.n] = (bag[s.n] || 0) + s.q; });
   const bagNames = Object.keys(bag).filter(n => ITEMS[n]).sort((x, y) => ITEMS[x].tab.localeCompare(ITEMS[y].tab) || x.localeCompare(y));
-  const stor = storageList();
+  const sq = storQ(), stor = storageList().filter(([n]) => !sq || `${n} ${shownName(n)}`.toLowerCase().includes(sq));
   let sel = view.storSel; // { side: 'bag' | 'stor', name }
   if (!sel || !ITEMS[sel.name] || (sel.side === 'bag' ? !bag[sel.name] : !state.storage[sel.name])) sel = view.storSel = null;
   const cell = (side, n, q) => `<button class="slot clickable filled ${sel && sel.side === side && sel.name === n ? 'selected' : ''}" data-act="storage-pick" data-side="${side}" data-name="${esc(n)}" data-tip-title="${esc(shownName(n))} ×${q}" data-tip-desc="${esc(itemTip(n))}" aria-label="${esc(n)}">${icon(ITEMS[n].icon)}<span class="qty">${q}</span></button>`;
@@ -2747,7 +2775,7 @@ function openStorage(keepScroll) { // 개인실 창고: 소지품 격자와 창�
   }
   modal('개인실 창고', `<p class="tiny">창고 <b>${storageKinds()} / ${STORAGE_KINDS}</b>종 · 가방 ${usedSlots()} / ${bagCapacity()} · 한 종류에 ${STORAGE_STACK}개까지. 창고에 둔 물건은 소지품이 아니라서 소지 효과(반지 등)가 없어요.</p>` +
     `<div class="choice-label">소지품</div>${grid(bagNames.map(n => cell('bag', n, bag[n])), 18)}${bar}` +
-    `<div class="choice-label">창고 <small class="tiny">${storageKinds()} / ${STORAGE_KINDS}종</small></div>${grid(stor.map(([n, q]) => cell('stor', n, q)), 18)}`, [btnClose], true);
+    `<div class="choice-label">창고 <small class="tiny">${storageKinds()} / ${STORAGE_KINDS}종</small></div><div class="search-row stor-search"><input id="storQ" type="search" maxlength="20" placeholder="창고에서 검색" aria-label="창고 검색" autocomplete="off" value="${esc(view.storQ || '')}"></div>${grid(stor.map(([n, q]) => cell('stor', n, q)), 18)}`, [btnClose], true);
   $('#modalBody').scrollTop = st0;
 }
 function jobPanelHtml(side) { // 서브잡 납품 화면 (창과 오른쪽 '서브잡' 탭이 함께 쓴다. 탭에서는 그만두기가 없다)

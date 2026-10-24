@@ -220,6 +220,10 @@ textarea{min-height:75px;resize:vertical}
 .slot.big .slot-label{font-size:calc(11px*var(--fs))}
 
 .inventory-head{flex:none}
+.inventory-head .subtabs{align-items:flex-start}
+.inv-search{margin-left:auto;width:42%;min-width:90px;max-width:170px;padding:2px 8px;font-size:calc(11px*var(--fs));align-self:center;margin-bottom:4px}
+.stor-search{margin:6px 0}
+.stor-search input{width:100%}
 .inv-scroll{flex:0 1 auto;min-height:0;overflow:auto}
 .inv-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:5px}
 .inv-footer{display:flex;align-items:center;gap:7px;margin-top:8px;flex:none}
@@ -406,6 +410,7 @@ textarea{min-height:75px;resize:vertical}
 .post-item{display:block;width:100%;margin-bottom:5px;text-align:left;font-size:calc(13px*var(--fs));background:transparent;border-color:transparent}
 .post-item.active{background:var(--accent-soft);border-color:var(--accent-line);color:var(--accent-2)}
 .post-detail{padding:8px 12px}
+.post-item.locked{opacity:.45;cursor:default}
 .post-detail h3{margin:0 0 10px;font-size:calc(16px*var(--fs))}
 .post-detail p{font-size:calc(13px*var(--fs));line-height:1.8;color:var(--text-2)}
 .form-row{display:grid;grid-template-columns:115px 1fr;gap:10px;align-items:center;margin-bottom:11px}
