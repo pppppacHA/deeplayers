@@ -146,9 +146,10 @@ function renderStatus() {
     // 카드마다 효과가 2개(기본 효과 + 추가 효과): 숫자 아래 화살표로 슬라이드쇼처럼 넘겨 본다 (카드 크기는 그대로)
     const bf = STAT_BUFFS.find(x => x.stat === d.key), [k0, l0, s0, u0] = d.fx[0], idx = (view.statSlide && view.statSlide[d.key]) ? 1 : 0;
     const cur = idx ? { label: bf.label, val: `${bf.sign}${round1(fx[bf.key] * 100)}${bf.unit}`, tip: bf.tip } : { label: l0, val: `${s0}${round1(fx[k0] * 100)}${u0}`, tip: d.tip };
+    const star = state.character.mainStat === d.key ? `<span class="stat-star" title="주 스탯 (+${MAIN_STAT_BONUS})">★</span>` : state.character.subStat === d.key ? `<span class="stat-star" title="부 스탯 (+${SUB_STAT_BONUS})">☆</span>` : ''; // 주 스탯 ★ · 부 스탯 ☆
     return `<div class="stat" data-tip-title="${d.name} · ${cur.label}" data-tip-desc="${esc(cur.tip)}"><div class="stat-head"><b>${d.name}</b><small>${d.en}</small><span class="stat-val">${state.stats[d.key] + (dr[d.key] || 0)}${dr[d.key] ? `<em class="draft">+${dr[d.key]}</em>` : ''}${bonus ? `<em class="${bonus < 0 ? 'neg' : ''}">${bonus > 0 ? '+' : ''}${bonus}</em>` : ''}</span>` +
       `${dr[d.key] ? `<button class="stat-plus stat-minus" data-act="stat-down" data-stat="${d.key}" title="되돌리기">${icon('remove')}</button>` : ''}${pts ? `<button class="stat-plus" data-act="stat-up" data-stat="${d.key}" title="포인트 사용 (저장해야 확정)">${icon('add')}</button>` : ''}</div>` +
-      `<div class="stat-eff stat-slide"><div class="se-main"><span class="eff-l">${cur.label}</span><b class="eff-v">${cur.val}</b></div><button class="se-next" data-act="stat-slide" data-stat="${d.key}" title="${idx ? '이전 효과' : '다음 효과'} (${idx + 1}/2)" aria-label="${idx ? '이전 효과 보기' : '다음 효과 보기'}">${icon(idx ? 'chevron_left' : 'chevron_right')}<i>${idx + 1}/2</i></button></div></div>`;
+      `<div class="stat-eff stat-slide"><div class="se-main"><span class="eff-l">${cur.label}</span><b class="eff-v">${cur.val}</b>${star}</div><button class="se-next" data-act="stat-slide" data-stat="${d.key}" title="${idx ? '이전 효과' : '다음 효과'} (${idx + 1}/2)" aria-label="${idx ? '이전 효과 보기' : '다음 효과 보기'}">${icon(idx ? 'chevron_left' : 'chevron_right')}<i>${idx + 1}/2</i></button></div></div>`;
   }).join('') + '</div>';
   const g = $('#statusBody .stat-grid'); if (g) { if (view.statH) g.style.minHeight = view.statH + 'px'; const h0 = Math.round(g.getBoundingClientRect().height); if (h0 > (view.statH || 0)) view.statH = h0; }
 }
@@ -171,6 +172,7 @@ function renderLeftTab() {
   { const cr = $('#viewCraft'); const h = state.leftTab === 'CRAFT' ? invHeight() : 0; cr.style.height = h ? h + 'px' : ''; cr.style.flex = h ? '0 0 auto' : ''; } // 제작 탭도 소지품 탭과 같은 세로 길이
   $('#leftTitle').textContent = name; $('#leftTitleIcon').textContent = ic;
   $('#leftMeta').textContent = state.leftTab === 'INVENTORY' ? `${usedSlots()} / ${bagCapacity()}` : state.leftTab === 'CRAFT' ? '' : `${Object.values(state.equipment).filter(Boolean).length} / ${EQUIP_SLOTS.length}`;
+  $('#craftCount').classList.toggle('hidden', state.leftTab !== 'CRAFT'); $('#craftOnly').classList.toggle('hidden', state.leftTab !== 'CRAFT'); // 제작 탭일 때만 헤더에
 }
 function equipSlotHtml(slot, big) {
   const n = state.equipment[slot], it = n && ITEMS[n];
@@ -273,15 +275,16 @@ function renderCraft() {
   const tab = state.craftTab, only = !!view.craftOnly;
   $('#craftOnly').classList.toggle('active', only); $('#craftOnly').setAttribute('aria-pressed', only);
   $$('[data-craft]').forEach(b => b.classList.toggle('active', b.dataset.craft === tab));
-  const shown = RECIPES.map((rc, i) => ({ rc, i })).filter(({ rc }) => recipeKnown(rc) && (!tab || craftCat(rc.out) === tab) && (!only || canCraft(rc)));
+  const cq = String(view.craftQ || '').trim().toLowerCase(); // 레시피 검색: 만들 물건 이름이나 재료 이름
+  const shown = RECIPES.map((rc, i) => ({ rc, i })).filter(({ rc }) => recipeKnown(rc) && (!tab || craftCat(rc.out) === tab) && (!only || canCraft(rc)) && (!cq || `${rc.out} ${Object.keys(rc.mats).join(' ')}`.toLowerCase().includes(cq)));
   $('#craftCount').textContent = `레시피 ${shown.length}종`;
   $('#craftList').innerHTML = craftJobHtml() + shown.map(({ rc, i }) => {
     const it = ITEMS[rc.out], ok = canCraft(rc) && !state.crafting;
     const mats = Object.entries(rc.mats).map(([n, q]) => `<span class="${matCount(n) >= q ? '' : 'lack'}">${esc(n)} ${matCount(n)}/${q}</span>`).join(' · ');
     return `<div class="recipe"><div class="round-avatar">${icon(it.icon)}</div><div class="grow"><strong>${esc(rc.out)} <em class="tag">${esc(craftCat(rc.out))}</em></strong><small class="effect">${esc(itemEffect(rc.out))}</small><small>제작 시간 ${fmtTime(craftSec(rc) * 1000)} · ${mats}</small></div><button class="primary" data-act="craft" data-index="${i}" ${ok ? '' : 'disabled'}>제작</button></div>`;
-  }).join('') + (() => { const n = RECIPES.filter(rc => !recipeKnown(rc)).length; return n ? `<div class="empty">개인실의 '단련'(25분)으로 새 레시피를 배울 수 있어요. (남은 ${n}종 · 승급하면 후보가 늘어납니다)</div>` : ''; })() || '<div class="empty">레시피가 없습니다.</div>';
+  }).join('') + (() => { const n = RECIPES.filter(rc => !recipeKnown(rc)).length; return n ? `<div class="empty">개인실의 '속성학습'(25분)으로 새 레시피를 배울 수 있어요. (남은 ${n}종 · 승급하면 후보가 늘어납니다)</div>` : ''; })() || '<div class="empty">레시피가 없습니다.</div>';
 }
-const renderBag = () => { renderEquip(); renderInventory(); renderCraft(); renderStatus(); renderLeftTab(); };
+const renderBag = () => { renderEquip(); renderInventory(); renderCraft(); renderStatus(); renderLeftTab(); renderQuick(); };
 
 /* ---------- 지도 / 구역 ---------- */
 function applyMapTransform() { $('#mapWorld').style.transform = state.dungeon ? (view.dpan.x || view.dpan.y || view.dzoom !== 1 ? `translate(${view.dpan.x}px,${view.dpan.y}px) scale(${view.dzoom})` : 'none') : `translate(${state.pan.x}px,${state.pan.y}px) scale(${state.zoom})`; }
@@ -347,8 +350,10 @@ function renderMapHead() {
   if (d) {
     const z = zoneOf(d.zone), info = tileInfo(z, tileOf(z, d.x, d.y), d.x, d.y);
     desc = `${info.name} — ${info.desc}`;
-    meta = `${loc.meta[0]} / 미궁 · ${info.name}`;
-  }
+    const ch = tileOf(z, d.x, d.y), safe = ch === 'S' || ch === 'C' || ch === '?', dd = tileDifficulty(z, d.x, d.y);
+    meta = `미궁 · ${info.name} · 위험도 ${safe ? '안전' : `${(DANGER_LEVELS.find(([lim]) => dd < lim) || DANGER_LEVELS[DANGER_LEVELS.length - 1])[1]} (심도 ${Math.round(dd * 100)}%)`}`; // 지금 칸: 입구에서 멀수록 적이 강하다
+    $('#mapMeta').dataset.danger = safe ? 0 : 1 + DANGER_LEVELS.findIndex(([lim]) => dd < lim);
+  } else $('#mapMeta').dataset.danger = '';
   $('#mapLocation').textContent = loc.name;
   $('#mapDescription').textContent = desc;
   $('#mapMeta').textContent = meta;
@@ -509,12 +514,13 @@ function tick() {
   if (resetBoardQuests()) { renderSide(); toast('완수한 임무가 오전 4시를 지나 다시 받을 수 있게 되었습니다.'); }
   for (let n = 0; petLevelUps.length && n < 5; n++) { const u = petLevelUps.shift(); toast(`${u.name}이(가) Lv.${u.lv}이 되었어요! 이동 속도가 조금 빨라졌습니다.`); addLog(`펫 레벨업: ${u.name} Lv.${u.lv}`); sfx('levelup'); } petLevelUps.length = 0;
   if (petHungerTick()) renderSide();
+  { const ate = bowlAutoFeed(); if (ate.length) { renderSide(); if ($('#petBowl')) openPets(true); } } // 먹이통: 배고픈 펫이 알아서 먹는다
   farmRefresh(); petSideRefresh();
   followTick(); partyPlacePush();
   awardTitles();
   newUnlocks().forEach(t => { addLog(t); toast(t); sfx('levelup'); notifyDone(t); });
   state.pets.forEach(p => { const k = p.id + (p.exp ? p.exp.at : 0); if (expReady(p) && !view.petBack[k]) { view.petBack[k] = true; toast(`${petName(p)}이(가) ${p.exp.zone} 탐험에서 돌아왔어요. 개인실에서 수확물을 받으세요.`); sfx('done'); } });
-  state.farm.plots.forEach((p, i) => { const k = i + ':' + (p ? p.at : 0); if (p && plotReady(p) && !view.farmBack[k]) { view.farmBack[k] = true; const msg = `밭 ${i + 1}번의 ${p.crop}이(가) 다 자랐어요. 개인실에서 수확하세요.`; toast(msg); addLog(msg); sfx('done'); notifyDone(msg); } });
+  state.farm.plots.forEach((p, i) => { if (p && plotReady(p) && !p.told) { p.told = true; save(); const msg = `밭 ${i + 1}번의 ${p.crop}이(가) 다 자랐어요. 개인실에서 수확하세요.`; toast(msg); addLog(msg); sfx('done'); notifyDone(msg); } });
   if (pruneMail()) renderMailBadge();
   if (renderMailBadge.n !== unreadMail()) { renderMailBadge.n = unreadMail(); renderMailBadge(); }
   if (state.active) {
@@ -900,9 +906,9 @@ function applySettingsNow() {
   const ctabs = Object.fromEntries(CHAT_TABS.map(k => [k, $('#ctab_' + k) ? $('#ctab_' + k).checked : true]));
   if (!CHAT_TABS.some(k => ctabs[k])) { toast('채팅 탭은 최소 한 개는 켜 두어야 해요.'); sfx('error'); CHAT_TABS.forEach(k => { if ($('#ctab_' + k)) $('#ctab_' + k).checked = !!state.settings.chatTabs[k]; }); return false; }
   state.settings = { chatTabs: ctabs, bgmOn: $('#bgmOn').checked, bgmVolume: +$('#bgmVolume').value, clickOn: $('#clickOn').checked, alertOn: $('#alertOn').checked, sfxVolume: +$('#sfxVolume').value,
-    notify: $('#notifyOn').checked, guildAlert: $('#guildAlertOn').checked, cursor: $('#cursorOn').checked, theme: $('#themeSelect').value, customBase: $('#customBase').value, customAccent: $('#customAccent').value, fontSize: $('#fontSize').value };
+    notify: $('#notifyOn').checked, guildAlert: $('#guildAlertOn').checked, cursor: $('#cursorOn').checked, quickBar: $('#quickBarOn') ? $('#quickBarOn').checked : state.settings.quickBar !== false, theme: $('#themeSelect').value, customBase: $('#customBase').value, customAccent: $('#customAccent').value, fontSize: $('#fontSize').value };
   if (state.settings.notify && window.Notification && Notification.permission === 'default') { try { Notification.requestPermission(); } catch (e) { /* 알림 불가 */ } }
-  applyTheme(); applyBgm(); renderChat(); save();
+  applyTheme(); applyBgm(); renderChat(); renderQuick(); save();
   return true;
 }
 function openSettings() {
@@ -913,7 +919,7 @@ function openSettings() {
     `<div class="snd-card">${snd('bgmOn', 'music_note', '배경음악', st.bgmOn)}<div class="snd-slider">${icon('volume_down')}<input id="bgmVolume" type="range" min="0" max="100" value="${st.bgmVolume}" aria-label="배경음악 크기"><b id="bgmValue">${st.bgmVolume}%</b></div></div>` +
     `<div class="snd-card"><div class="snd-pair">${snd('clickOn', 'ads_click', '클릭음', st.clickOn)}${snd('alertOn', 'notifications_active', '알림음', st.alertOn)}</div>` +
     `<div class="snd-slider">${icon('volume_down')}<input id="sfxVolume" type="range" min="0" max="100" value="${st.sfxVolume}" aria-label="효과음 크기"><b id="sfxValue">${st.sfxVolume}%</b></div></div></div>` +
-    `<div class="setting-group"><h3>표시</h3>${sw('cursorOn', '사용자 지정 커서', st.cursor)}<div class="srow fontrow"><span>글자 크기</span><select id="fontSize">${opt('s', '작게', st.fontSize)}${opt('m', '보통', st.fontSize)}${opt('l', '크게', st.fontSize)}${opt('xl', '아주 크게', st.fontSize)}</select></div><div class="row-gap ui-reset-row"><button data-act="ui-reset">${icon('restart_alt')} UI 기본값으로 되돌리기</button><span class="tiny">패널 폭·높이, 접은 패널, 지도 확대, 글자 크기, 커서를 처음 상태로 돌려요.</span></div></div>` +
+    `<div class="setting-group"><h3>표시</h3>${sw('cursorOn', '사용자 지정 커서', st.cursor)}${sw('quickBarOn', '퀵슬롯 표시 (넓은 화면에서만)', st.quickBar !== false)}<div class="srow fontrow"><span>글자 크기</span><select id="fontSize">${opt('s', '작게', st.fontSize)}${opt('m', '보통', st.fontSize)}${opt('l', '크게', st.fontSize)}${opt('xl', '아주 크게', st.fontSize)}</select></div><div class="row-gap ui-reset-row"><button data-act="ui-reset">${icon('restart_alt')} UI 기본값으로 되돌리기</button><span class="tiny">패널 폭·높이, 접은 패널, 지도 확대, 글자 크기, 커서를 처음 상태로 돌려요.</span></div></div>` +
     `<div class="setting-group"><h3>튜토리얼</h3><div class="row-gap"><button data-act="tutorial-replay">튜토리얼 다시 보기</button></div></div>` +
     cloudGroupHtml() +
     `<div class="setting-group"><h3>채팅창 탭</h3>${CHAT_TABS.map(k => sw('ctab_' + k, `${k} 탭 표시`, st.chatTabs[k])).join('')}<p class="tiny">끈 탭은 채팅창에서 사라지고, 그 채널의 새 메시지 알림도 오지 않아요. 최소 한 개는 켜 두어야 해요.</p></div>` +
@@ -1513,6 +1519,10 @@ const A = {
     renderBag(); openFarm(true);
     if (txt) { sfx('ok'); toast(`수확: ${txt}${err ? ` (${err})` : ''}`); } else { toast(err || '수확할 작물이 없습니다.'); sfx('error'); }
   },
+  'bowl-open': () => openBowlPick(),
+  'bowl-back': () => openPets(),
+  'bowl-put': el => { const e = bowlPut(el.dataset.item, el.dataset.qty); if (e) { toast(e); sfx('error'); return; } renderBag(); sfx('ok'); openBowlPick(); },
+  'bowl-take': el => { const g = bowlTake(el.dataset.item); if (!g) { toast('가방에 자리가 없어요.'); sfx('error'); return; } renderBag(); sfx('click'); openPets(true); },
   'pet-feed-pick': el => { view.feed = el.dataset.item; petRefresh(el); },
   'pet-feed': el => { const i = +el.dataset.i, e = petCareErr(i); if (e) { toast(e); sfx('error'); return; } view.petFrom = el.closest('#sideView') ? 'side' : 'modal'; openPetFeed(i); }, // 간식 주기: 줄 간식을 고르는 창
   'pet-feed-do': el => {
@@ -1801,7 +1811,7 @@ const A = {
       modal('재탄생했습니다', `<p class="detail-desc">${r.result.deathWhy === 'battle' ? `HP가 바닥난 몸으로 다시 전투에 나섰다가 쓰러져 숨이 끊어졌습니다.` : 'HP가 1인 채로 또 피해를 입어 숨이 끊어졌습니다.'}</p><p class="detail-desc">클론은 데이터로 되살아납니다. 대원은 본부에서 재탄생했어요. HP ${REBIRTH_HP}로 깨어났고 부상 상태입니다.</p><p class="tiny">${r.died.lost ? `구조비로 ${r.died.lost} CR을 냈습니다. ` : ''}그 행동의 보상은 받지 못했지만 레벨과 소지품은 그대로예요.</p>`, [btnClose]);
       return;
     }
-    if (r.result.recipe) { addLog(`단련: 「${r.result.recipe}」 제작법을 익혔습니다.`); toast(`새 레시피 「${r.result.recipe}」를 익혔습니다!`); renderCraft(); renderLeftTab(); }
+    if (r.result.recipe) { addLog(`속성학습: 「${r.result.recipe}」 제작법을 익혔습니다.`); toast(`새 레시피 「${r.result.recipe}」를 익혔습니다!`); renderCraft(); renderLeftTab(); }
     if (act.kind === 'event' || r.ups || r.lost.length || rare || /대성공|사고|패배|후퇴|희귀|부상/.test(r.result.text)) // 특별한 사건만 기록
       addLog(`${act.title}: ${r.result.text} (${rewardChips(r.result).join(' · ') || '보상 없음'}${loss.length ? ` / 손실: ${loss.join(' · ')}` : ''})`);
     sfx(r.ups ? 'levelup' : 'ok');
@@ -1846,7 +1856,7 @@ const A = {
       (it.use && !it.use.warp ? `<p class="use-gain" id="useGain">${icon('healing')} 사용하면 <b>${esc(useGainText(name, 1))}</b>${useFull(name, 1) ? ' <small>(이미 가득 차서 오르지 않아요)</small>' : ''}</p>` : '') +
       (vs.length > 1 && it.tab !== '장비' ? `<div class="choice-label">만든 사람 고르기</div><div class="inv-grid vpick-grid">${variantCells(name, vs, 'item', mk)}</div>` : '') + // 제작자가 섞여 있으면 여기서 골라 쓴다
       ((it.mods || state.enchants[name]) ? `<div class="buffs">${[...(it.mods ? modText(it.mods) : []), ...(state.enchants[name] ? [`세공 · ${enchantText(state.enchants[name])}`] : [])].map(b => `<span class="buff">${esc(b)}</span>`).join('')}</div>` : ''),
-      [btnClose, `<button class="danger" data-act="drop-open" data-item="${esc(name)}" ${mka}>${icon('delete')} 버리기</button>`, ...(it.engrave ? [`<button class="primary" data-act="engrave-open" data-item="${esc(name)}">${icon('edit')} 이름 새기기</button>`] : []), ...(it.use ? [(it.use.warp || have < 2 ? '' : `<select id="useQty" data-item="${esc(name)}" aria-label="사용 개수" title="사용할 개수">${Array.from({ length: Math.min(have, MAX_BATCH) }, (_, k) => `<option value="${k + 1}">${k + 1}</option>`).join('')}</select>`) + `<button class="primary" data-act="use" data-item="${esc(name)}" ${mka}>사용</button>`] : []), ...(canEquip ? [`<button class="primary" data-act="equip" data-item="${esc(name)}" ${mka}>장착</button>`] : [])], true);
+      [btnClose, ...(it.use && it.tab === '소모품' ? [state.quick.includes(name) ? `<button data-act="quick-del-name" data-item="${esc(name)}">${icon('bookmark_remove')} 퀵슬롯 빼기</button>` : `<button data-act="quick-add" data-item="${esc(name)}">${icon('bookmark_add')} 퀵슬롯 등록</button>`] : []), `<button class="danger" data-act="drop-open" data-item="${esc(name)}" ${mka}>${icon('delete')} 버리기</button>`, ...(it.engrave ? [`<button class="primary" data-act="engrave-open" data-item="${esc(name)}">${icon('edit')} 이름 새기기</button>`] : []), ...(it.use ? [(it.use.warp || have < 2 ? '' : `<select id="useQty" data-item="${esc(name)}" aria-label="사용 개수" title="사용할 개수">${Array.from({ length: Math.min(have, MAX_BATCH) }, (_, k) => `<option value="${k + 1}">${k + 1}</option>`).join('')}</select>`) + `<button class="primary" data-act="use" data-item="${esc(name)}" ${mka}>사용</button>`] : []), ...(canEquip ? [`<button class="primary" data-act="equip" data-item="${esc(name)}" ${mka}>장착</button>`] : [])], true);
   },
   'drop-open': el => { // 버리기: 개수를 고르고 한 번 더 묻는다
     const name = el.dataset.item, mk = el.dataset.mk, have = ITEMS[name] ? countItem(name, mk) : 0; if (!have) { closeModal(); return; }
@@ -2023,6 +2033,17 @@ const A = {
   },
   'rescue-skip': () => { if (view.rescueFinish) view.rescueFinish(); },
   'rescue-done': () => { closeModal(); if (state.pending) A.claim(); },
+  'quick-add': el => { const e = quickSet(el.dataset.item); if (e) { toast(e); sfx('error'); return; } renderQuick(); toast(`「${el.dataset.item}」을(를) 퀵슬롯에 등록했습니다.`); closeModal(); },
+  'quick-del-name': el => { const i = state.quick.indexOf(el.dataset.item); if (i >= 0) quickClear(i); renderQuick(); closeModal(); toast('퀵슬롯에서 뺐습니다.'); },
+  'quick-use': el => {
+    const n = state.quick[+el.dataset.qi]; if (!n || !ITEMS[n]) return;
+    if (!countItem(n)) { toast(`${n}이(가) 없습니다.`); sfx('error'); return; }
+    const err = useErr(n); if (err) { toast(err); sfx('error'); return; }
+    const gain = ITEMS[n].use.warp ? '' : useGainText(n, 1);
+    if (useItem(n, 1)) { resetPhase(); renderBars(); renderBag(); renderMapHead(); renderMap(); renderAction(); renderSide(); renderQuick(); save(); toast(ITEMS[n].use.warp ? '귀환 신호기로 본부에 돌아왔습니다.' : `${n} 사용 (${gain})`); }
+  },
+  'quick-snd': el => { const k = el.dataset.k; if (!['bgmOn', 'clickOn', 'alertOn'].includes(k)) return; state.settings[k] = !state.settings[k]; applyBgm(); save(); renderQuick(); toast(`${{ bgmOn: '배경음악', clickOn: '클릭음', alertOn: '알림음' }[k]} ${state.settings[k] ? '켬' : '끔'}`); },
+  'quick-toggle': () => { state.quickOpen = !state.quickOpen; save(); renderQuick(); },
   'ui-reset': () => askConfirm('UI 기본값으로 되돌리기', '패널 폭과 높이, 접어 둔 패널, 지도 확대·위치, 글자 크기, 커서 설정을 처음 상태로 되돌릴까요? 게임 진행·소리·테마·채팅 탭 설정은 그대로예요.', '되돌리기', 'ui-reset-do', {}, openSettings),
   'ui-reset-do': () => { resetUiDefaults(); openSettings(); toast('UI를 기본 상태로 되돌렸습니다.'); sfx('ok'); },
   'title-scroll': el => { const box = $('#titleChips'); if (box) box.scrollBy({ left: (+el.dataset.d || 1) * Math.max(120, box.clientWidth * .8), behavior: 'smooth' }); },
@@ -2215,6 +2236,19 @@ function variantCells(name, vs, act, sel) {
   const it = ITEMS[name];
   return vs.map(v => `<button class="slot clickable filled vpick ${v.mk ? 'has-mk' : ''} ${v.mk === sel ? 'selected' : ''}" data-act="${act}" data-item="${esc(name)}" data-mk="${esc(v.mk)}" aria-pressed="${v.mk === sel}" data-tip-title="${esc(shownName(name))}" data-tip-desc="${esc(itemTip(name, v.mk))}" aria-label="${esc(`${name} · ${v.mk || '이름 없음'}`)}">${icon(it.icon)}<span class="mk-label">${esc(mkShort(v.mk))}</span>${v.q > 1 ? `<span class="qty">${v.q}</span>` : ''}</button>`).join('');
 }
+/* ---------- 퀵슬롯 (오른쪽 끝 세로 막대): 위에는 소리 켜고 끄기, 아래는 등록한 소모품 (누르면 1개 사용, 오른쪽 클릭으로 빼기) ---------- */
+function renderQuick() {
+  let bar = $('#quickBar');
+  if (!bar) { bar = document.createElement('aside'); bar.id = 'quickBar'; bar.className = 'quick-bar'; bar.setAttribute('aria-label', '퀵슬롯'); document.body.appendChild(bar); bar.addEventListener('contextmenu', e => { const b = e.target.closest('[data-qi]'); if (!b) return; e.preventDefault(); if (quickClear(+b.dataset.qi)) { renderQuick(); toast('퀵슬롯에서 뺐습니다.'); } }); }
+  const on = state.created && state.settings.quickBar !== false, st = state.settings, open = !!state.quickOpen;
+  document.body.classList.toggle('has-quick', on); bar.classList.toggle('hidden', !on); bar.classList.toggle('open', open);
+  if (!on) return;
+  const name = n => esc(n.length > QUICK_NAME_MAX ? n.slice(0, QUICK_NAME_MAX) + '…' : n);
+  const snd = (k, ic, off, label) => `<button class="qs snd ${st[k] ? '' : 'off'}" data-act="quick-snd" data-k="${k}" title="${label} ${st[k] ? '끄기' : '켜기'}" aria-pressed="${!!st[k]}">${icon(st[k] ? ic : off)}<span class="qs-name">${label}</span></button>`;
+  bar.innerHTML = snd('bgmOn', 'music_note', 'music_off', '배경음악') + snd('clickOn', 'touch_app', 'do_not_touch', '클릭음') + snd('alertOn', 'notifications_active', 'notifications_off', '알림음') + '<i class="qs-sep"></i>' +
+    state.quick.map((n, i) => { const it = n && ITEMS[n], q = n ? countItem(n) : 0; return it ? `<button class="qs item ${q ? '' : 'empty'}" data-act="quick-use" data-qi="${i}" data-tip-title="${esc(n)} ×${q}" data-tip-desc="누르면 1개 사용 · 오른쪽 클릭: 퀵슬롯에서 빼기">${icon(it.icon)}${q > 1 ? `<span class="qty">${q > 99 ? '99+' : q}</span>` : ''}<span class="qs-name">${name(n)}</span></button>` : `<div class="qs blank" title="소지품의 소모품을 눌러 '퀵슬롯 등록'"></div>`; }).join('') +
+    `<button class="qs toggle" data-act="quick-toggle" title="${open ? '접기' : '펼치기 (이름 보기)'}" aria-expanded="${open}">${icon(open ? 'chevron_right' : 'chevron_left')}</button>`;
+}
 function equipChange(slot, name, doneText, mk) {
   const prev = state.equipment[slot], res = changeEquipment(slot, name, mk);
   if (res === 'space') { toast('인벤토리 공간이 부족해 변경할 수 없습니다.'); return; }
@@ -2297,7 +2331,7 @@ document.addEventListener('input', e => {
   if (e.target.id === 'bgmVolume') { $('#bgmValue').textContent = e.target.value + '%'; setBgmVolume(+e.target.value); }
   if (e.target.id === 'sfxVolume') $('#sfxValue').textContent = e.target.value + '%';
 });
-const SETTING_IDS = ['bgmOn', 'bgmVolume', 'clickOn', 'alertOn', 'sfxVolume', 'notifyOn', 'guildAlertOn', 'cursorOn', 'themeSelect', 'customBase', 'customAccent', 'fontSize', ...CHAT_TABS.map(k => 'ctab_' + k)];
+const SETTING_IDS = ['bgmOn', 'bgmVolume', 'clickOn', 'alertOn', 'sfxVolume', 'notifyOn', 'guildAlertOn', 'cursorOn', 'quickBarOn', 'themeSelect', 'customBase', 'customAccent', 'fontSize', ...CHAT_TABS.map(k => 'ctab_' + k)];
 document.addEventListener('change', e => { if (e.target.id === 'mkItem') { A['mk-pick'](); return; } if (SETTING_IDS.includes(e.target.id) && e.target.closest('#modalBody')) applySettingsNow(); }); // 설정은 바꾸는 즉시 저장
 document.addEventListener('change', e => {
   if (e.target.id === 'themeSelect') $('#customOpts').classList.toggle('hidden', e.target.value !== 'custom');
@@ -2605,10 +2639,23 @@ function petCareHtml(compact) { // 펫 돌보기 화면. compact=오른쪽 '펫'
     return (rows || '<div class="empty">아직 길들인 펫이 없습니다.</div>') + '<p class="tiny">성격 허브를 간식으로 주면 펫의 성격이 바뀌어요. 탐험 보내기·도감 등 전체 돌보기는 개인실의 \'펫 돌보기\'에서 할 수 있어요.</p>';
   }
   return `<p class="tiny">펫은 지상의 짐승 지형에서 <b>길들이기</b>로 얻어요. 펫 보관함은 소지품과 별도이고, 같은 종은 한 마리만 모을 수 있어요. 한 마리는 <b>동행</b>(배부름이 남아 있는 동안 타일 이동 시간 단축), 나머지는 <b>24시간 자동 탐험</b>을 보낼 수 있어요.</p>` +
+    bowlHtml() +
     `<button class="choice-label dex-toggle" data-act="pet-dex-toggle" aria-expanded="${!!view.petDexOpen}">${icon(view.petDexOpen ? 'expand_less' : 'expand_more')} 펫 도감 ${state.pets.length}/${petCap()}</button>${view.petDexOpen ? `<div class="pet-dex-grid">${dex}</div>` : ''}` +
     `<p class="tiny">성격 허브(활발·얌전·장난꾸러기·느긋·호기심·의젓)를 간식으로 주면 펫의 성격이 바뀌고, 성격에 따라 돌보는 문구가 달라져요. 허브는 농장에서 키울 수 있고 씨앗은 채집하다 아주 가끔 나옵니다.</p>` +
     `<p class="tiny">탐험을 보내면 먹이 1개가 들고, 돌아오면 그 구역의 재료·희귀 재료·특산 씨앗을 확률로 가져와요. (친밀도가 높고 고향 구역이면 더 많이)</p>` +
     (rows || '<div class="empty">아직 길들인 펫이 없습니다. 지상에서 작물이나 펫 사료를 들고 짐승을 길들여 보세요.</div>');
+}
+function bowlHtml() { // 개인실 펫 돌보기: 먹이통 (함께 다니지 않는 펫이 배고프면 알아서 먹는다)
+  const list = Object.entries(state.petBowl || {}).filter(([n, q]) => ITEMS[n] && q > 0);
+  const cells = list.map(([n, q]) => `<button class="slot clickable filled" data-act="bowl-take" data-item="${esc(n)}" data-tip-title="${esc(n)} ×${q}" data-tip-desc="누르면 소지품으로 꺼냅니다." aria-label="${esc(n)} 꺼내기">${icon(ITEMS[n].icon)}<span class="qty">${q}</span></button>`);
+  while (cells.length < 6) cells.push('<div class="slot" aria-label="빈 칸"></div>');
+  return `<div class="pet-bowl" id="petBowl"><div class="choice-label bowl-head"><span>${icon('rice_bowl')} 먹이통 <small class="tiny">${bowlTotal()} / ${PET_BOWL_MAX}</small></span><button data-act="bowl-open" ${state.location === '개인실' ? '' : 'disabled'}>먹이 채우기</button></div>` +
+    `<div class="inv-grid">${cells.slice(0, Math.max(6, cells.length)).join('')}</div><p class="tiny">함께 다니지 않는 펫은 배부름이 ${PET_BOWL_AT}% 아래로 내려가면 먹이통에서 알아서 먹어요. (싼 간식부터, 성격 허브는 넣을 수 없어요)</p></div>`;
+}
+function openBowlPick() {
+  const have = [...new Set(Object.values(state.inventory).flat().map(s => s.n))].filter(n => ITEMS[n].feed && !isHerb(n)).sort((a, b) => ITEMS[a].feed - ITEMS[b].feed);
+  const rows = have.map(n => { const q = countItem(n); return `<div class="nearby-row"><div class="round-avatar">${icon(ITEMS[n].icon)}</div><div class="grow"><strong>${esc(n)} ×${q}</strong><small>배부름 +${feedFull(n)} · 친밀도 +${feedGain(n)}</small></div><button data-act="bowl-put" data-item="${esc(n)}" data-qty="1">1개</button>${q > 1 ? `<button class="primary" data-act="bowl-put" data-item="${esc(n)}" data-qty="${q}">전부</button>` : ''}</div>`; }).join('');
+  modal('먹이통 채우기', `<p class="tiny">먹이통 ${bowlTotal()} / ${PET_BOWL_MAX}개</p>` + (rows || '<div class="empty">넣을 간식(작물·펫 사료)이 없어요.</div>'), ['<button data-act="bowl-back">돌아가기</button>'], true);
 }
 function openPets(keepScroll) {
   const st = keepScroll ? $('#modalBody').scrollTop : 0;
@@ -2852,7 +2899,7 @@ function questFinish(q, drop) {
     const news = RECIPES.filter(rc => rc.rank === r.promo && !recipeKnown(rc)).map(rc => rc.out);
     renderCraft(); renderLeftTab();
     if (r.promo === 'A') { state.flags.annoA = 'pending'; save(); announceRankA(); } // A급이 되면 월드 채팅에 축하 공지가 올라간다
-    if (news.length) { addLog(`${r.promo}등급 승급! 단련으로 배울 수 있는 레시피 ${news.length}종 추가`); toast(`${r.promo}등급 승급! 단련으로 새 레시피 ${news.length}종을 배울 수 있게 되었습니다.`); }
+    if (news.length) { addLog(`${r.promo}등급 승급! 속성학습으로 배울 수 있는 레시피 ${news.length}종 추가`); toast(`${r.promo}등급 승급! 단련으로 새 레시피 ${news.length}종을 배울 수 있게 되었습니다.`); }
   }
   const lost = Object.entries(drop).filter(([, c]) => c > 0).map(([n, c]) => `${shownName(n)} ×${c}`);
   if (lost.length) toast(`보상 ${lost.join(', ')}은(는) 받지 않고 버렸습니다.`);
@@ -2912,6 +2959,7 @@ function openDismantle(keepScroll) {
 const storQ = () => String(view.storQ || '').trim().toLowerCase();
 document.addEventListener('input', e => { // 소지품·창고 검색: 입력창은 그대로 두고 목록만 다시 그린다
   if (!e.target) return;
+  if (e.target.id === 'craftQ') { view.craftQ = cleanText(e.target.value, 20); renderCraft(); }
   if (e.target.id === 'invQ') { view.invQ = cleanText(e.target.value, 20); state.page = 1; renderInventory(); }
   else if (e.target.id === 'storQ') { view.storQ = cleanText(e.target.value, 20); const b = $('#storBox'); if (b && view.storList) b.innerHTML = view.storList(); } // 입력창은 그대로 두고 창고 목록만 바꾼다 (한글 조합이 끊기지 않게)
 });
@@ -3044,10 +3092,11 @@ $('#clearLog').onclick = () => { state.logs = []; renderLogs(); save(); };
 let drag = null;
 const stage = $('#mapStage');
 stage.addEventListener('pointerdown', e => {
-  if (e.pointerType === 'mouse' && e.button !== 1) return; // 마우스는 가운데(휠) 버튼으로만 지도를 움직인다 (터치는 그대로 끌기)
-  const mid = e.pointerType === 'mouse'; // 가운데 버튼은 노드·타일 위에서도 끌 수 있다
+  if (e.pointerType === 'mouse' && e.button !== 1 && e.button !== 0) return; // 마우스: 왼쪽은 빈 곳(타일·노드 밖)을 끌면 이동, 가운데(휠) 버튼은 어디서든
+  if (e.target.closest('.map-tools, .map-search, input')) return;
+  const mid = e.pointerType === 'mouse' && e.button === 1; // 가운데 버튼은 노드·타일 위에서도 끌 수 있다
   if (!mid && e.target.closest('button')) {
-    if (!state.dungeon) return;
+    if (!state.dungeon || e.pointerType === 'mouse') return; // 마우스 왼쪽 클릭은 타일·노드 누르기 그대로
     drag = { x: e.clientX, y: e.clientY, px: view.dpan.x, py: view.dpan.y, d: 1, pend: true, id: e.pointerId }; return; // 위험지대 타일: 톡 누르면 이동, 끌면 지도 이동
   }
   e.preventDefault();
@@ -3056,6 +3105,7 @@ stage.addEventListener('pointerdown', e => {
   stage.setPointerCapture(e.pointerId);
 });
 stage.addEventListener('mousedown', e => { if (e.button === 1) e.preventDefault(); }); // 휠 클릭 자동 스크롤 방지
+stage.addEventListener('wheel', e => { if (e.target.closest('.map-search, input')) return; e.preventDefault(); zoomBy(e.deltaY < 0 ? .1 : -.1); }, { passive: false }); // 마우스 휠: 확대·축소
 stage.addEventListener('pointermove', e => {
   if (!drag) return;
   if (drag.pend) { if (Math.hypot(e.clientX - drag.x, e.clientY - drag.y) < 8) return; drag.pend = false; drag.moved = true; try { stage.setPointerCapture(drag.id); } catch (er) { /* 무시 */ } stage.classList.add('dragging'); }
@@ -3079,10 +3129,11 @@ const rootStyle = document.documentElement.style;
 function applyLayout() {
   const L = state.layout = state.layout || {};
   L.left = clamp(+L.left || 292, 230, 430); L.right = clamp(+L.right || 315, 250, 430);
-  L.statusH = intIn(L.statusH, 0, 2000, 0); L.mapH = intIn(L.mapH, 0, 3000, 0); // 0 = 자동 높이
+  L.statusH = intIn(L.statusH, 0, 2000, 0); L.mapH = intIn(L.mapH, 0, 3000, 0); L.questH = intIn(L.questH, 0, 3000, 0); // 0 = 자동 높이
   rootStyle.setProperty('--left', L.left + 'px'); rootStyle.setProperty('--right', L.right + 'px');
   rootStyle.setProperty('--status-h', L.statusH + 'px'); rootStyle.setProperty('--map-h', L.mapH + 'px');
   $('.status-panel').classList.toggle('sized', L.statusH > 0); $('.map-panel').classList.toggle('sized', L.mapH > 0);
+  rootStyle.setProperty('--quest-h', L.questH + 'px'); $('.quest-panel').classList.toggle('sized', L.questH > 0);
 }
 /* 패널 사이 틈을 끌어 세로 높이 조절 (더블클릭: 자동 높이로) */
 function addVGrip(sel, key, minH, maxFn) {
@@ -3107,6 +3158,7 @@ function addVGrip(sel, key, minH, maxFn) {
 }
 const colGap = col => parseFloat(getComputedStyle(col).rowGap) || 6;
 addVGrip('.status-panel', 'statusH', 90, () => { const c = $('.left-column'); return c.clientHeight - $('.profile-panel').offsetHeight - 200 - colGap(c) * 2; });
+addVGrip('.quest-panel', 'questH', 140, () => { const c = $('.right-column'); return c.clientHeight - 200 - colGap(c); }); // 임무 ↔ 채팅 높이
 addVGrip('.map-panel', 'mapH', 300, () => { const c = $('.center-column'); return c.clientHeight - $('#actionPanel').offsetHeight - colGap(c); });
 function addGutter(which) {
   const el = document.createElement('div');
@@ -3249,7 +3301,9 @@ $('#tutCreate').addEventListener('click', e => {
 });
 
 function renderTour() {
-  const st = TUTORIAL_STEPS[tut.step], el = $(st.sel), panel = el.closest('.panel');
+  const st = TUTORIAL_STEPS[tut.step]; let el = $(st.sel);
+  if (!el || !el.getClientRects().length) el = $('.top-actions'); // 좁은 화면 등에서 안 보이는 대상(퀵슬롯)은 설명만 보여 준다
+  const panel = el.closest('.panel');
   if (panel) panel.classList.remove('collapsed'); // 접힌 패널도 펼쳐서 보여준다 (저장된 접힘 상태는 그대로)
   el.scrollIntoView({ block: 'center', inline: 'nearest' });
   const r = el.getBoundingClientRect(), pad = 5, spot = $('#tutSpot').style;

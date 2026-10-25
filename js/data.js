@@ -265,11 +265,12 @@ Object.entries(SELL_PRICES).forEach(([n, v]) => { ITEMS[n].sell = v; });
 const JOB_TAGS = [ // 서브잡 태그: 아이콘과 설명 (버프는 core.js jobFx)
   ['요리', 'restaurant', '음식 소모품의 회복량이 늘어난다.'], ['목공', 'carpenter', '제작 시간이 줄어듭니다.'], ['재봉', 'checkroom', '제작 시간이 줄어듭니다.'],
   ['대장', 'hardware', '제작 시간이 줄어든다.'], ['가죽공예', 'content_cut', '제작 시간이 줄어듭니다.'], ['보석공예', 'auto_awesome', '제작 시간이 줄어듭니다.'], ['채집', 'eco', '채집으로 얻는 재료가 늘어날 수 있습니다.'], ['채굴', 'diamond', '채굴로 얻는 재료가 늘어날 수 있습니다.'],
-  ['낚시', 'phishing', '낚시로 얻는 재료가 늘어날 수 있다.'], ['약학', 'medication', '약·응급 키트의 회복량이 늘어납니다.'], ['농사', 'agriculture', '작물이 빨리 자라고 수확이 늘어날 수 있습니다.']
+  ['낚시', 'phishing', '낚시로 얻는 재료가 늘어날 수 있다.'], ['약학', 'medication', '약·응급 키트의 회복량이 늘어납니다.'], ['농사', 'agriculture', '작물이 빨리 자라고 수확이 늘어날 수 있습니다.'],
+  ['운동', 'fitness_center', '사냥할 때 공격력이 오른다. 납품은 사냥에서 얻은 전리품만 받는다.']
 ];
 const TAG_NAMES = JOB_TAGS.map(t => t[0]);
 /* 숙련: 서브잡 태그마다 따로 쌓인다 (서브잡 가입과 상관없음). 채집·채굴·낚시는 그 행동을 하면, 나머지는 그 태그의 물건을 만들면(농사는 수확하면) 오른다. 만렙 30 */
-const MASTERY_MAX = 30, MASTERY_GAIN = { gather: 2, craft: 2, farm: 2, job: 2 }; // 채집 1회차·제작 1개·수확 1칸·납품 1개당 숙련도 (10/24: 수확·납품 1→2)
+const MASTERY_MAX = 30, MASTERY_GAIN = { gather: 2, craft: 2, farm: 2, job: 2, hunt: 2 }; // hunt: 사냥 승리 1회당 '운동' // 채집 1회차·제작 1개·수확 1칸·납품 1개당 숙련도 (10/24: 수확·납품 1→2)
 const MASTERY_NEED = lv => Math.round(8 + 2.4 * Math.pow(lv, 1.35)); // lv → lv+1 에 필요한 숙련도 (10/24 완화: 만렙까지 4504 → 3138, 약 30% 줄임. 쌓인 숙련도는 그대로라 레벨이 바로 오른다)
 const MASTERY_TOTAL = (() => { let t = 0; for (let l = 1; l < MASTERY_MAX; l++) t += MASTERY_NEED(l); return t; })();
 const MASTERY_CRAFT_TAGS = ['목공', '재봉', '대장', '가죽공예', '보석공예'], MASTERY_HEAL_TAGS = ['요리', '약학'];
@@ -364,6 +365,8 @@ const BUFFS = {
   '감전': { type: 'debuff', icon: 'bolt', desc: '전류에 감각이 저릿하다. 감각 -2', mods: { sen: -2 } },
   '혼란': { type: 'debuff', icon: 'cyclone', desc: '기묘한 힘에 머릿속이 어지럽다. 지능 -2', mods: { int: -2 } }
 };
+const DANGER_LEVELS = [[.15, '낮음'], [.35, '보통'], [.6, '높음'], [.85, '매우 높음'], [1.01, '극한']]; // 칸 심도(0~1, 입구에서 멀수록) → 위험도
+const WIN_DEBUFF = .1; // 이긴 전투 회차마다 이 확률로도 그 적의 디버프가 붙는다
 const FOE_DEBUFF = { // 몬스터 이름 → 패배했을 때 붙는 디버프 (없으면 이름의 단어로 추측하고, 그래도 없으면 '부상')
   '용암 두꺼비': '화상', '화염 정령': '화상', '재 늑대': '화상',
   '서리 정령': '동상', '얼음 박쥐': '동상', '빙하 곰': '동상', '설원 늑대': '동상', '설원 여우': '동상',
@@ -392,7 +395,7 @@ ACTIONS['승급'] = { kind: 'promo', icon: 'military_tech', label: '승급', tit
 ACTIONS['농장'] = { kind: 'farm', icon: 'yard', label: '농장', title: '농장', action: '씨앗을 심고 작물을 수확합니다. 시간이 지나면 자랍니다.' };
 ACTIONS['펫 돌보기'] = { kind: 'pet', icon: 'pets', label: '펫 돌보기', title: '펫 돌보기', action: '지상에서 길들인 펫에게 먹이를 주고 함께 갈 펫을 고릅니다.' };
 ACTIONS['서브잡 가입'] = { kind: 'subjob', icon: 'work', label: '서브잡', title: '서브잡', action: '나만의 서브잡을 만들고 하루 한 번 납품해 레벨을 올립니다.' };
-ACTIONS['단련'] = { kind: 'train', icon: 'fitness_center', label: '단련', title: '단련', action: '개인실에서 25분 동안 단련하며 새 제작 레시피를 익힙니다. 배울 수 있는 레시피는 등급이 오를수록 늘어납니다.', sec: TRAIN_SEC, cost: { sp: 10 } };
+ACTIONS['단련'] = { kind: 'train', icon: 'school', label: '속성학습', title: '속성학습', action: '개인실에서 25분 동안 속성학습을 하며 새 제작 레시피를 익힙니다. 배울 수 있는 레시피는 등급이 오를수록 늘어납니다.', sec: TRAIN_SEC, cost: { sp: 10 } };
 ACTIONS['대원 간 상점'] = { kind: 'market', icon: 'storefront', label: '대원 간 상점', title: '대원 간 상점', action: '다른 대원이 올린 물건을 사거나 내 물건을 팔 수 있습니다. 상단의 거래 아이콘으로 어디서든 열 수 있습니다.' };
 ACTIONS['ROOM'] = { kind: 'room', icon: 'chair', label: 'ROOM', title: 'ROOM', action: '내 방을 도트 가구로 꾸밉니다. 가구를 끌어서 놓고, 좌우로 뒤집고, 색을 바꿀 수 있습니다.' };
 ACTIONS['창고'] = { kind: 'storage', icon: 'inventory_2', label: '창고', title: '창고', action: `개인실 창고에 물건을 맡기고 찾습니다. 서로 다른 아이템 ${STORAGE_KINDS}종까지, 한 종류에 ${STORAGE_STACK}개까지 보관할 수 있습니다. 창고에 둔 물건은 소지품이 아니라서 소지 효과가 없습니다.` };
@@ -452,7 +455,7 @@ Object.entries(LEISURE).forEach(([id, l]) => {
 
 const SAFE_ZONES = [
   { id: '본부', icon: 'domain', meta: '행정 · 작전 거점', x: 50, y: 42, desc: '임무 수주와 승급 시험을 받을 수 있는 도시 본부입니다. CR을 내고 장비를 강화하거나, 쓰지 않는 장비를 분해할 수도 있습니다.', items: ['임무 수주', '승급', '장비 강화', '분해', '작전 예측 내기'] },
-  { id: '개인실', icon: 'bed', meta: 'ROOM · 농장 · 창고 · 단련 · 휴식', x: 22, y: 20, desc: '나만의 공간입니다. 휴식하고, 단련으로 새 레시피를 익히고, 농장을 가꾸고, 펫을 돌볼 수 있습니다.', items: ['ROOM', '농장', '펫 돌보기', '창고', '단련', '휴식'] },
+  { id: '개인실', icon: 'bed', meta: 'ROOM · 농장 · 창고 · 속성학습 · 휴식', x: 22, y: 20, desc: '나만의 공간입니다. 휴식하고, 단련으로 새 레시피를 익히고, 농장을 가꾸고, 펫을 돌볼 수 있습니다.', items: ['ROOM', '농장', '펫 돌보기', '창고', '단련', '휴식'] },
   { id: '이동장치', icon: 'transfer_within_a_station', meta: '지상 이동 · 구역 선택', x: 50, y: 74, desc: '지상으로 내려가는 이동 장치입니다. 가고 싶은 구역을 고르면 바로 이동합니다.', items: ['이동 제1구역', '이동 제2구역', '이동 제3구역', '이동 제4구역', '이동 제5구역', '이동 제6구역', '이동 제7구역'] },
   { id: '상점가', icon: 'storefront', meta: '상점 · 서브잡 · 뽑기', x: 78, y: 20, desc: '보급품 상점과 종합 상가, 서브잡 가입, 뽑기 기계, 뒷골목 도박판이 모여 있는 상업 구역입니다.', items: ['보급품 상점', '종합 상가', '대원 간 상점', '서브잡 가입', '뽑기', '뒷골목 카드 한 판'] },
   { id: '여가구역', icon: 'celebration', meta: '배팅장 · 게임센터 · 도서관 · 사우나 · 영화관 · 사진관', x: 80, y: 62, desc: '일에 지친 대원들이 숨을 돌리는 여가 시설 구역입니다. 하루에 한 곳에서 기분 전환 버프를 받을 수 있고, 다른 곳도 구경하며 시간을 보낼 수 있습니다.', items: LEISURE_IDS },
@@ -793,6 +796,8 @@ const PET_SPEED = { 1: .08, 2: .12, 3: .16, 4: .2, 5: .24 };      // 펫 이동�
 const PET_FED_MS = 24 * 3600 * 1000;               // (옛 세이브 변환용) 예전에는 먹이를 주면 24시간 든든함
 /* 펫 허기: 배부름 0~100. 시간이 지나면 줄고(PET_FULL_DRAIN_MS 동안 100 → 0), 간식을 주면 찬다(작물 60 · 펫 사료 90, 하루 두 번이면 충분).
    배부름이 남아 있는 동안만 동행 효과가 있고, 배가 완전히 비면 PET_HUNGRY_MS 마다 친밀도가 PET_HUNGRY_BOND 씩 준다 (친밀도 100이어도 계속 먹여야 한다) */
+const QUICK_SLOTS = 8, QUICK_NAME_MAX = 7; // 퀵슬롯 칸 수 · 펼쳤을 때 이름 글자 수
+const PET_BOWL_MAX = 99, PET_BOWL_AT = 40; // 먹이통: 최대 99개. 함께 다니지 않는 펫은 배부름이 40% 아래로 내려가면 여기서 알아서 먹는다
 const PET_FULL_MAX = 100, PET_FULL_DRAIN_MS = 24 * 3600 * 1000, PET_FULL_GAIN = 60, PET_HUNGRY_MS = 6 * 3600 * 1000, PET_HUNGRY_BOND = 2;
 const PET_BOND_START = 20;                          // 친밀도 0~100. 버프 = 기본값 × (0.5 + 친밀도/200)
 const MAX_BATCH = 99;                              // 한 번에 제작/사용할 수 있는 최대 수량 (저장 검증이 불러올 때 바로 쓰므로 data.js에 둔다)
@@ -1248,7 +1253,7 @@ const MAIL_DELIVERY_NEED = 20; // 아이템을 담은 메일을 이만큼 보내
 const LOST_REWARD_TICKETS = 1;
 /* 위험에 처한 대원 구하기: 지형 칸에 가끔(입장할 때마다 칸 시드로) 나타난다. 즉시 전투(모의 전투처럼 한 줄씩 보여 줌).
    이기면 그 칸의 희귀 재료나 CR + 감사 인사, 지면 깊이(난이도)에 비례해 HP -1~14 (죽지는 않는다). 한 구역에서 구하면 RESCUE_COOLDOWN_MS 동안 그 구역엔 다시 안 나온다 */
-const RESCUE_APPEAR = .07, RESCUE_SP = 3, RESCUE_COOLDOWN_MS = 2 * 3600 * 1000, RESCUE_HP = [1, 14], RESCUE_RARE = .55;
+const RESCUE_APPEAR = .03, RESCUE_SP = 3, RESCUE_COOLDOWN_MS = 2 * 3600 * 1000, RESCUE_HP = [1, 14], RESCUE_RARE = .55;
 const RESCUE_NAMES = ['하진', '도윤', '세라', '무겸', '유나', '태오', '이솔', '로한', '미르', '가온', '다현', '노을', '시아', '한결'];
 const RESCUE_SCENES = [
   m => `${m}에게 몰린 대원 하나가 바위 틈에 몸을 숨긴 채 구조 신호를 보내고 있다.`,
@@ -1325,6 +1330,17 @@ const NEARBY_PLAYERS = []; // 같은 장소의 다른 대원 [이름, 상태, �
 const POSTS = {
   '공지': [
     ['업데이트 · 10월 25일', `[신규]
+· 화면 디자인이 HUD 스타일로 바뀌었습니다. (모서리를 자른 패널, 칸으로 나뉜 HP·기력·EXP 바. 색은 그대로)
+· 퀵슬롯: 넓은 화면 오른쪽 끝 막대. 소모품을 '퀵슬롯 등록'하면 누를 때마다 1개씩 바로 쓰고, 오른쪽 클릭하면 빠집니다. 배경음악·클릭음·알림음도 여기서 켜고 끌 수 있고, 아래 화살표로 펼치면 이름이 보여요. (설정 → 표시에서 숨기기)
+· 펫 먹이통: 개인실 펫 돌보기에서 먹이를 채워 두면, 함께 다니지 않는 펫이 배고플 때 알아서 먹습니다.
+· 세부 숙련에 '운동' 추가: 사냥에서 이길 때마다 오르고 사냥 공격력이 늘어요. 운동 서브잡은 사냥 전리품만 납품받습니다.
+· 지상에서 지도 오른쪽 위에 지금 칸의 위험도(심도)가 나옵니다.
+· 제작 탭 레시피 검색, 레시피 수·'제작 가능만'은 제작 헤더로 옮겼어요. 스테이터스에 주 스탯 ★ · 부 스탯 ☆ 표시.
+· 임무 ↔ 채팅 사이를 끌어 높이를 조절할 수 있어요. 채팅 줄 간격을 조금 좁혔어요.
+· 전투에서 이겨도 가끔 적에 따른 디버프가 붙습니다. 위험에 처한 대원은 조금 더 드물게 나타나요.
+· 개인실 '단련'의 이름이 '속성학습'으로 바뀌었습니다.
+[수정]
+· 다 자란 작물 알림이 새로고침할 때마다 뜨던 문제 (이제 한 번만).
 · 위험에 처한 대원 구하기: 지상 칸에 가끔 도움이 필요한 대원이 나타납니다. 그 칸의 몬스터와 바로 싸우고, 이기면 희귀 재료나 CR을 보수로 받아요. 지면 깊은 곳일수록 HP를 더 잃습니다(1~14, 죽지는 않음).
 · 디버프 종류 추가: 싸운 적에 따라 지면 화상·동상·중독·출혈·감전·혼란이 붙습니다. (기존 부상 포함)
 · 전투 중단 기준이 HP 20 → 10으로 낮아졌습니다. HP 10 이하에서도 전투를 시작할 수는 있지만 한 번만 싸우고, 지면 사망해 클론으로 재탄생합니다.
@@ -1527,13 +1543,13 @@ function createDefaultState() {
     buffs: [],          // [{id, endAt}]
     active: null,       // 진행 중인 행동 {id, startAt, endAt}
     pending: null,      // 완료됐지만 결과 확인 전인 행동 {id, result}
-    settings: { bgmOn: true, bgmVolume: BGM_DEFAULT_VOLUME, sfxVolume: 65, clickOn: true, alertOn: true, notify: true, guildAlert: true, chatTabs: { 월드: true, 길드: true, 파티: true, 알림: true }, cursor: true, fontSize: 'm', theme: 'light', customBase: 'light', customAccent: '#197da1' },
+    settings: { bgmOn: true, bgmVolume: BGM_DEFAULT_VOLUME, sfxVolume: 65, clickOn: true, alertOn: true, notify: true, guildAlert: true, chatTabs: { 월드: true, 길드: true, 파티: true, 알림: true }, cursor: true, quickBar: true, fontSize: 'm', theme: 'light', customBase: 'light', customAccent: '#197da1' },
     unlockSeen: {}, // 이미 알려 준 개방 알림 { 키: true }
     room: defaultRoom(), // 마이홈: { wall, floor, bg, zc, items:[{u,f,x,y,flip,c,z}] }
     storage: {}, // 개인실 창고: { 아이템 이름: 수량 }
     leisure: { day: -1, id: '' }, // 여가구역: 오늘 받은 버프 (day = todayIndex, id = 장소)
     profileEditAt: 0, // 마지막 프로필 수정 시각 (0=아직 수정 안 함). 첫 수정 뒤에는 24시간 간격
-    layout: { left: 292, right: 315, statusH: 0, mapH: 0 },
+    layout: { left: 292, right: 315, statusH: 0, mapH: 0, questH: 0 },
     collapsed: {},      // 좁은 화면에서 접은 패널 { 키: true }
     questDone: {},      // { 임무 id: true }
     flags: { chatted: false, entered: false, lostFound: false },
@@ -1562,6 +1578,9 @@ function createDefaultState() {
     pets: [],           // 길들인 펫 [{ id(종), bond, fedAt }]
     deaths: 0, // 죽은 횟수
     lostCount: 0, // 돌려준 분실물 개수 (칭호 '착한 사마리아인')
+    quick: Array(QUICK_SLOTS).fill(null),    // 퀵슬롯에 등록한 소모품 이름 (QUICK_SLOTS칸, 빈 칸은 null)
+    quickOpen: false, // 퀵슬롯을 펼쳐 이름까지 보기
+    petBowl: {},  // 개인실 먹이통 { 간식 이름: 수량 }
     statPeak: {}, // 스탯마다 지금까지 가장 높았던 값 (버프 포함) — 칭호용
     mailItemSent: 0, // 아이템을 담아 보낸 메일 수 (칭호 '배달의 민족')
     tickets: 0,         // 뽑기권 (임무 5번마다 1장)
@@ -1614,6 +1633,7 @@ const TUTORIAL_STEPS = [
   { sel: '.map-panel', title: '지상 미궁', text: '지상(제1~3구역)에서 「입장」하면 타일 지도가 열려요. 타일은 지형마다 채집 재료와 몬스터가 달라요. 가고 싶은 타일을 누르면 이동 확인창이 뜨고, 한 칸마다 1분과 기력 1이 들어요. 멀리 있는 타일도 누르면 시간을 들여 이동해요. 안전 캠프에서는 쉴 수 있고, 입구에서 「퇴장」해요.' },
   { sel: '.quest-panel', title: '임무', text: '임무를 누르면 바로 아래로 상세가 펼쳐져요. 조건을 채우면 「임무 완수」로 보상을 받아요. 「상황」 탭에서는 같은 장소에 있는 탐색자를 보고, 나만의 할 일 목록도 적어 둘 수 있어요.' },
   { sel: '.chat-panel', title: '단말기 채팅', text: '월드·길드 채널로 대화하고 알림 채널에서 공지를 받아요.  대화해요. 😊 버튼을 누르면 입력창 위에 이모티콘이 나타나고, 누르면 바로 전송돼요.' },
+  { sel: '#quickBar', title: '퀵슬롯', text: '화면 오른쪽 끝의 막대예요. 위쪽 버튼으로 배경음악·클릭음·알림음을 바로 켜고 끌 수 있어요. 소지품에서 소모품을 누르고 「퀵슬롯 등록」을 하면 여기에 들어가고, 누를 때마다 1개씩 바로 써요. 오른쪽 클릭하면 등록이 풀리고, 맨 아래 화살표로 펼치면 이름도 보여요. 설정 → 표시에서 숨길 수 있고, 좁은 화면에서는 나오지 않아요.' },
   { sel: '.top-actions', title: '메뉴', text: '공지·가이드·세계관과 설정(소리·테마·알림·커서·튜토리얼 다시 보기)이 있어요. 왼쪽 프로필의 작은 버튼으로 메일·친구·길드·도감을 열 수 있고요. 자, 마지막으로 무기를 하나 골라 볼까요?' }
 ];
 const START_KIT = [['건조 식량', 3], ['응급 키트', 1]]; // 무기를 고른 뒤 받는 기본 보급품
@@ -1715,3 +1735,10 @@ ROOM_SKIN_PNG.forEach(([id, cat, name, desc]) => { if (ROOM_SKIN_FALLBACK[cat]) 
 const furnDef = id => FURN.find(f => f.id === id);
 const ROOM_DEFAULT_SKIN = { wall: 'wall_00', floor: 'floor_00', bg: 'b_white' };
 const defaultRoom = () => ({ ...ROOM_DEFAULT_SKIN, zc: 0, items: [] });
+
+/* '운동' 태그: 사냥(몬스터 처치)에서 떨어지는 물건. 운동 서브잡은 이 태그 물건만 납품받는다 (2026-10-25) */
+{
+  const drops = new Set(['짐승 고기', '짐승 가죽', '두꺼운 가죽']);
+  DANGER_ZONES.forEach(z => z.terrains.forEach(t => [t.monster, ...(t.monsters || [])].forEach(m => (m && m.drops || []).forEach(([n]) => drops.add(n)))));
+  drops.forEach(n => { const it = ITEMS[n]; if (it && !it.hidden && !(it.tags || []).includes('운동')) it.tags = [...(it.tags || []), '운동']; });
+}

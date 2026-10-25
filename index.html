@@ -72,7 +72,7 @@
       </section>
 
       <section class="panel tabs-panel" data-panel="소지품">
-        <div class="panel-title"><span class="material-symbols-rounded" aria-hidden="true" id="leftTitleIcon">backpack</span> <span id="leftTitle">장비</span> <span class="spacer"></span><span class="title-meta" id="leftMeta"></span></div>
+        <div class="panel-title"><span class="material-symbols-rounded" aria-hidden="true" id="leftTitleIcon">backpack</span> <span id="leftTitle">장비</span><span class="title-meta craft-count hidden" id="craftCount">레시피</span> <span class="spacer"></span><span class="title-meta" id="leftMeta"></span><button type="button" class="chip craft-only hidden" id="craftOnly" aria-pressed="false">제작 가능만</button></div>
         <div class="tabs" id="leftTabs">
           <button class="active" data-ltab="EQUIP">장비</button>
           <button data-ltab="INVENTORY">소지품</button>
@@ -105,8 +105,7 @@
           </div>
         </div>
         <div class="tab-view hidden" id="viewCraft">
-          <div class="subtabs" id="craftTabs"><button data-craft="장비">장비</button><button data-craft="음식">음식</button><button data-craft="약">약</button><button data-craft="재료">재료</button></div>
-          <div class="craft-head"><span id="craftCount">레시피</span><button type="button" class="chip" id="craftOnly" aria-pressed="false">제작 가능만</button></div>
+          <div class="subtabs" id="craftTabs"><button data-craft="장비">장비</button><button data-craft="음식">음식</button><button data-craft="약">약</button><button data-craft="재료">재료</button><input id="craftQ" class="inv-search" type="search" maxlength="20" placeholder="레시피 검색" aria-label="레시피 검색" autocomplete="off"></div>
           <div id="craftList"></div>
         </div>
       </section>

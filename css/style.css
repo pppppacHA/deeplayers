@@ -97,6 +97,7 @@ textarea{min-height:75px;resize:vertical}
   .left-column .status-panel.sized{flex:0 1 auto;height:var(--status-h);min-height:90px}
   .status-panel.sized #statusBody{flex:1;min-height:0;overflow:auto}
   .center-column .map-panel.sized{flex:0 1 auto;height:var(--map-h);min-height:300px}
+  .right-column .quest-panel.sized{flex:0 0 auto;height:var(--quest-h);min-height:140px}
   /* 넓은 화면: 로그는 지도 오른쪽 */
   .map-panel .map-body{flex-direction:row}
   .map-body .map-stage{flex:1;min-width:0}
@@ -1245,3 +1246,114 @@ textarea#mailBody{width:100%;min-height:80px;resize:vertical}
 .mk-line .material-symbols-rounded{font-size:calc(13px*var(--fs))}
 .vpick-grid{grid-template-columns:repeat(5,minmax(0,1fr));margin:6px 0}
 .vpick-list{display:grid;gap:2px;margin-top:4px}
+
+/* =====================================================================
+   2026-10-25 HUD 스타일 (시안 B): 색은 그대로, 모양만 — 잘린 모서리 패널, 각진 버튼·입력칸, 기울어진 칸 바
+   ===================================================================== */
+:root{--cut:10px;--cut-s:5px;--mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;--radius:0px}
+/* 패널: 왼쪽 위·오른쪽 아래 모서리를 잘라 내고, 잘린 자리에 테두리 선을 그린다 */
+.panel,.modal{border-radius:0;clip-path:polygon(var(--cut) 0,100% 0,100% calc(100% - var(--cut)),calc(100% - var(--cut)) 100%,0 100%,0 var(--cut));
+  background-image:linear-gradient(to bottom right,transparent calc(50% - 1px),var(--line) calc(50% - 1px),var(--line) 50%,transparent 50%),linear-gradient(to bottom right,transparent 50%,var(--line) 50%,var(--line) calc(50% + 1px),transparent calc(50% + 1px));
+  background-size:var(--cut) var(--cut),var(--cut) var(--cut);background-position:top left,bottom right;background-repeat:no-repeat;background-origin:border-box}
+.chat-panel{border-radius:0}
+/* 패널 제목: 조금 더 슬림하게, 왼쪽 아래 짧은 강조선 */
+.panel-title{padding:0 12px 0 calc(var(--cut) + 4px);min-height:34px;box-sizing:border-box} /* 원래 글씨, 높이는 모든 탭이 같게 */
+.panel-title .title-meta{font-family:inherit}
+.device-head{padding:7px 12px 7px calc(var(--cut) + 4px)}
+/* 버튼·입력칸·칸: 둥근 모서리 대신 작은 모서리 자르기 */
+button,input,textarea,select{border-radius:2px}
+button.primary,.tabs button,.chips .chip,.chip{border-radius:0;clip-path:polygon(var(--cut-s) 0,100% 0,100% calc(100% - var(--cut-s)),calc(100% - var(--cut-s)) 100%,0 100%,0 var(--cut-s));
+  background-image:linear-gradient(to bottom right,transparent 50%,var(--bd,var(--btn-line)) 50%,var(--bd,var(--btn-line)) calc(50% + 1.2px),transparent calc(50% + 1.2px)),linear-gradient(to bottom right,transparent calc(50% - 1.2px),var(--bd,var(--btn-line)) calc(50% - 1.2px),var(--bd,var(--btn-line)) 50%,transparent 50%)!important;
+  background-size:var(--cut-s) var(--cut-s),var(--cut-s) var(--cut-s)!important;background-position:top left,bottom right!important;background-repeat:no-repeat!important;background-origin:border-box!important}
+button.primary{--bd:var(--primary-line)}
+.tabs button.active,.chip.active,.chips .chip.active,button:hover:not(:disabled){--bd:var(--accent)}
+.chip,.tag,.tchip,.point-badge,.title-chip,.wallet,.reward-chip,.buff,.slot-tag{border-radius:2px}
+.slot,.tile,.recipe,.nearby-row,.quest-row,.result,.stat,.cstat,.battle-log,.fx-row,.round-avatar,.stat-plus,.quick>button,.buff-icon,.map-search input,.map-tools button,.subtabs button,.pet-row,.craft-job,.last-result,.action-confirm-inline,.member-row,.mast-row,.snd-card{border-radius:2px}
+.quest-detail{border-radius:0 0 2px 2px}.quest-item.open .quest-row{border-radius:2px 2px 0 0}
+/* 안전지대 지도 노드는 원래 모양(동그라미·크기) 그대로 둔다 */
+.tooltip,.toast,.tut-card{border-radius:2px}
+/* 프로필(왼쪽 위): HUD 패널 — 사진·빠른 버튼·지갑도 모서리를 자른다 */
+.profile-panel .profile{padding-top:22px}
+.profile-panel .profile::before{content:"CREW STATUS · ONLINE";position:absolute;top:7px;left:calc(var(--cut) + 4px);font:600 calc(9.5px*var(--fs))/1 var(--mono);letter-spacing:1.5px;color:var(--muted);padding-left:12px;background:linear-gradient(var(--good),var(--good)) 0 50%/6px 6px no-repeat}
+.avatar,.avatar.big{border-radius:0;border:0;clip-path:polygon(10px 0,100% 0,100% calc(100% - 10px),calc(100% - 10px) 100%,0 100%,0 10px);background-color:var(--panel-hi)}
+.quick>button,.wallet{clip-path:polygon(6px 0,100% 0,100% calc(100% - 6px),calc(100% - 6px) 100%,0 100%,0 6px);border-color:transparent;background:var(--panel-hi)}
+/* HP·기력·EXP: 기울어진 20칸 블록 */
+.bars .bar-row>span:first-child{font-family:var(--mono);letter-spacing:1px}
+.bars .bar{position:relative;height:9px;border-radius:0;background:var(--bar-track);overflow:hidden;transform:skewX(-20deg) translateZ(0);backface-visibility:hidden;will-change:transform;outline:1px solid transparent}
+.bars .bar::after{content:"";position:absolute;inset:0;background:repeating-linear-gradient(90deg,transparent 0 8px,var(--panel) 8px 10px);pointer-events:none}
+.bars .bar span{border-radius:0}
+.bar,.bar span,.progress,.progress span{border-radius:0}
+.bars .val{font-family:var(--mono)}
+
+/* 상단 줄: 시간·날씨·날짜는 왼쪽, 공중도시 DEEP LAYER 는 가운데 */
+@media(min-width:761px){
+  .topbar{display:grid;grid-template-columns:1fr auto 1fr;align-items:center}
+  .brand-block{display:contents}
+  .world-meta{grid-column:1;grid-row:1;justify-self:start;align-self:end;margin-top:0;padding-bottom:2px}
+  .brand{grid-column:2;grid-row:1;align-items:center;text-align:center}
+  .top-actions{grid-column:3;grid-row:1;justify-self:end}
+}
+@media(max-width:760px){.brand{align-items:center;width:100%}.brand-block{justify-content:center}.world-meta{justify-content:flex-start;width:100%}}
+
+/* 채팅 줄 사이를 조금 좁게 */
+#chatFeed .msg,#chatFeed .msg.mine{padding:3px 4px}
+#chatFeed .bubble,#chatFeed .msg.mine .bubble,#chatFeed .msg:not(.mine) .bubble{line-height:1.45}
+
+/* 제작 탭: 헤더에 레시피 수(제작 옆)와 '제작 가능만'(오른쪽) */
+.panel-title .craft-count{margin-left:6px;font-weight:600;letter-spacing:0}
+.panel-title .craft-only{margin-left:10px;padding:1px 9px;line-height:1.4;font-size:calc(10px*var(--fs));letter-spacing:0;text-transform:none;font-family:Inter,"Noto Sans KR",system-ui,sans-serif}
+.panel-title .craft-only.active{background:var(--accent-soft);border-color:var(--accent);color:var(--accent-2)}
+#craftTabs{align-items:flex-start}
+#craftTabs .inv-search{margin-left:auto}
+
+/* 스테이터스 카드 아래: 주 스탯 ★ · 부 스탯 ☆ (포인트 색) */
+.stat{position:relative}
+.stat-star{margin-left:5px;font-size:calc(11px*var(--fs));line-height:1;color:var(--accent);vertical-align:1px}
+
+/* 지도 헤더 오른쪽 위: 지금 칸의 위험도 (심도가 깊을수록 진하게) */
+#mapMeta[data-danger="3"],#mapMeta[data-danger="4"]{color:var(--warn)}
+#mapMeta[data-danger="5"]{color:var(--bad);font-weight:700}
+
+/* 펫 먹이통 */
+.pet-bowl{margin:6px 0 10px;padding:8px;border:1px solid var(--line);border-radius:2px;background:var(--panel-2)}
+.bowl-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.bowl-head span{display:inline-flex;align-items:center;gap:4px}
+.bowl-head button{padding:3px 10px;font-size:calc(11px*var(--fs))}
+.pet-bowl .inv-grid{margin:6px 0 4px}
+
+/* 퀵슬롯: 화면 오른쪽 끝 세로 막대 (넓은 화면에서만). 펼치면 아이콘 오른쪽에 이름 */
+.quick-bar{position:fixed;z-index:40;right:max(6px,env(safe-area-inset-right,0px));top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:4px;padding:6px 5px;background:var(--panel);border:1px solid var(--line);box-shadow:var(--shadow);
+  clip-path:polygon(8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%,0 8px);width:48px;transition:width .15s}
+.quick-bar.open{width:128px}
+.quick-bar .qs{position:relative;display:flex;align-items:center;gap:6px;width:100%;height:36px;padding:0 0 0 6px;border:1px solid var(--line);background:var(--panel-2);color:var(--text-2);border-radius:2px;overflow:hidden;flex:none}
+.quick-bar .qs .material-symbols-rounded{flex:none;font-size:calc(20px*var(--fs));color:var(--accent-2)}
+.quick-bar .qs.snd{height:30px}
+.quick-bar .qs.snd.off .material-symbols-rounded{color:var(--muted)}
+.quick-bar .qs.item.empty{opacity:.45}
+.quick-bar .qs.blank{border-style:dashed;background:transparent}
+.quick-bar .qs .qty{position:absolute;left:24px;bottom:1px;font-size:calc(9px*var(--fs));font-weight:700;color:var(--text-2)}
+.quick-bar .qs-name{display:none;min-width:0;font-size:calc(11px*var(--fs));white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.quick-bar.open .qs-name{display:block}
+.quick-bar .qs.toggle{justify-content:center;padding:0;height:22px;border-color:transparent;background:transparent}
+.quick-bar .qs-sep{display:block;height:1px;margin:2px 0;background:var(--line)}
+@media(min-width:1201px){body.has-quick .app{padding-right:58px}} /* 오른쪽 탭과 퀵슬롯 사이를 살짝 좁게 */
+@media(max-width:1200px){.quick-bar{display:none!important}}
+/* HUD: 채팅 단말기도 둥근 모서리 대신 잘린 모서리 (패널과 같은 모양) */
+.panel.chat-panel.terminal{border-radius:0}
+.chat-panel.terminal .term-screen{border-radius:0;clip-path:polygon(var(--cut-s) 0,100% 0,100% calc(100% - var(--cut-s)),calc(100% - var(--cut-s)) 100%,0 100%,0 var(--cut-s))}
+.chat-panel.terminal .term-screen::after{display:block;content:"";position:absolute;inset:0;pointer-events:none;z-index:3;background:linear-gradient(to bottom right,transparent 50%,var(--term-line) 50%,var(--term-line) calc(50% + 1.2px),transparent calc(50% + 1.2px)) top left/var(--cut-s) var(--cut-s) no-repeat,linear-gradient(to bottom right,transparent calc(50% - 1.2px),var(--term-line) calc(50% - 1.2px),var(--term-line) 50%,transparent 50%) bottom right/var(--cut-s) var(--cut-s) no-repeat}
+.chat-panel.terminal .tabs button,.chat-panel.terminal .chat-compose input,.chat-panel.terminal .chat-compose button{border-radius:2px}
+.quick-bar{border-radius:0;top:78px;transform:none;clip-path:polygon(var(--cut-s) 0,100% 0,100% calc(100% - var(--cut-s)),calc(100% - var(--cut-s)) 100%,0 100%,0 var(--cut-s));
+  background-image:linear-gradient(to bottom right,transparent 50%,var(--line) 50%,var(--line) calc(50% + 1.2px),transparent calc(50% + 1.2px)),linear-gradient(to bottom right,transparent calc(50% - 1.2px),var(--line) calc(50% - 1.2px),var(--line) 50%,transparent 50%);background-size:var(--cut-s) var(--cut-s),var(--cut-s) var(--cut-s);background-position:top left,bottom right;background-repeat:no-repeat;background-origin:border-box} /* 위쪽(상단 줄 아래)에 붙인다 */
+.quick-bar .qs{border-radius:2px}
+/* 소지품 칸 영역: 스크롤 막대(윈도우의 위아래 화살표)를 숨긴다 (휠로는 그대로 스크롤된다) */
+.inv-scroll,#viewInv,.tab-view{scrollbar-width:none}
+.inv-scroll::-webkit-scrollbar,#viewInv::-webkit-scrollbar,.tab-view::-webkit-scrollbar{display:none}
+/* HUD 테두리 정밀 (10/25): 패널·창은 '테두리 색 바깥 도형 + 1px 안쪽 도형' 두 겹으로 그려
+   잘린 대각선도 곧은 테두리와 똑같은 1px 굵기로 딱 맞는다 (그라데이션 선을 쓰지 않는다) */
+.panel,.modal{position:relative;isolation:isolate;border-color:transparent!important;background-color:var(--pline,var(--line))!important;background-image:none!important}
+.panel::before,.modal::before{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;background:var(--pbg,var(--panel));
+  clip-path:polygon(var(--icut,calc(var(--cut) - .59px)) 0,100% 0,100% calc(100% - var(--icut,calc(var(--cut) - .59px))),calc(100% - var(--icut,calc(var(--cut) - .59px))) 100%,0 100%,0 var(--icut,calc(var(--cut) - .59px)))}
+.panel.chat-panel.terminal{--pline:var(--bezel-line);--pbg:var(--bezel);--icut:calc(var(--cut) - 1.17px)} /* 단말기 테두리는 2px */
+/* 작은 버튼·탭·칩의 잘린 자리 선도 테두리와 같은 1px */
+button.primary,.tabs button,.chips .chip,.chip{background-image:linear-gradient(to bottom right,transparent 50%,var(--bd,var(--btn-line)) 50%,var(--bd,var(--btn-line)) calc(50% + 1px),transparent calc(50% + 1px)),linear-gradient(to bottom right,transparent calc(50% - 1px),var(--bd,var(--btn-line)) calc(50% - 1px),var(--bd,var(--btn-line)) 50%,transparent 50%)!important}

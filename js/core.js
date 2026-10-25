@@ -94,7 +94,10 @@ function hardenState(s) {
   { const lz = s.leisure && typeof s.leisure === 'object' ? s.leisure : {}; s.leisure = { day: intIn(lz.day, -1, 1e7, -1), id: LEISURE_IDS.includes(lz.id) ? lz.id : '' }; }
   s.rescueAt = Object.fromEntries(Object.entries(s.rescueAt && typeof s.rescueAt === 'object' ? s.rescueAt : {}).filter(([k, v]) => DANGER_ZONES.some(z => z.id === k) && Number.isFinite(v)));
   if (s.dungeon) s.dungeon.rs = Object.fromEntries(Object.entries(s.dungeon.rs && typeof s.dungeon.rs === 'object' ? s.dungeon.rs : {}).filter(([k]) => /^-?\d{1,3},-?\d{1,3}$/.test(k)).map(([k]) => [k, 1]));
-  s.deaths = intIn(s.deaths, 0, 99999, 0); s.lostCount = intIn(s.lostCount, 0, 999999, 0); s.mailItemSent = intIn(s.mailItemSent, 0, 999999, 0);
+  s.deaths = intIn(s.deaths, 0, 99999, 0); s.lostCount = intIn(s.lostCount, 0, 999999, 0);
+  s.quick = Array.from({ length: QUICK_SLOTS }, (_, i) => { const n = Array.isArray(s.quick) ? s.quick[i] : null; return typeof n === 'string' && ITEMS[n] && ITEMS[n].use ? n : null; }); s.quickOpen = s.quickOpen === true;
+  if (s.settings && typeof s.settings.quickBar !== 'boolean') s.settings.quickBar = true;
+  { const b = s.petBowl && typeof s.petBowl === 'object' ? s.petBowl : {}; let left = PET_BOWL_MAX; s.petBowl = {}; Object.entries(b).forEach(([n, q]) => { const k = intIn(q, 0, left, 0); if (ITEMS[n] && ITEMS[n].feed && k > 0) { s.petBowl[n] = k; left -= k; } }); } s.mailItemSent = intIn(s.mailItemSent, 0, 999999, 0);
   s.statPeak = Object.fromEntries(STAT_DEFS.map(d => [d.key, intIn((s.statPeak || {})[d.key], 0, 9999, 0)]));
   s.tickets = intIn(s.tickets, 0, 9999, 0); s.questCount = intIn(s.questCount, 0, 999999, 0); s.actMs = Number.isFinite(s.actMs) ? clamp(s.actMs, 0, 1e12) : 0;
   { const g = s.gacha && typeof s.gacha === 'object' ? s.gacha : {}; s.gacha = { pat: intIn(g.pat, 0, GACHA_SETS.length - 1, 0), pulls: intIn(g.pulls, 0, 999999, 0), wins: intIn(g.wins, 0, 999999, 0) }; }
@@ -156,7 +159,7 @@ function hardenState(s) {
   s.qprog = Object.fromEntries(Object.keys(s.qprog || {}).filter(known).map(k => [k, intIn(s.qprog[k], 0, 999, 0)]));
   s.questAt = Object.fromEntries(Object.entries(s.questAt && typeof s.questAt === 'object' ? s.questAt : {}).filter(([k, v]) => known(k) && Number.isFinite(v)));
   const fp = Array.isArray(s.farm && s.farm.plots) ? s.farm.plots : [];
-  s.farm = { plots: Array.from({ length: 6 }, (_, i) => { const p = fp[i]; return p && CROPS[p.crop] && Number.isFinite(p.at) ? { crop: p.crop, at: p.at } : null; }) };
+  s.farm = { plots: Array.from({ length: 6 }, (_, i) => { const p = fp[i]; return p && CROPS[p.crop] && Number.isFinite(p.at) ? { crop: p.crop, at: p.at, ...(p.told ? { told: true } : {}) } : null; }) }; // told: 다 자랐다고 이미 알림
   s.pets = (Array.isArray(s.pets) ? s.pets : []).filter(p => p && PET_SPECIES[p.id]).map(p => ({ id: p.id, lv: intIn(p.lv, 1, PET_MAX_LV, 1), pxp: intIn(p.pxp, 0, 99999, 0), acc: PET_ACC[p.acc] ? p.acc : '', bond: intIn(p.bond, 0, 100, PET_BOND_START), fedAt: Number.isFinite(p.fedAt) ? p.fedAt : 0, ...petHungerOf(p), petAt: Number.isFinite(p.petAt) ? p.petAt : 0, name: cleanText(p.name, PET_NAME_MAX), pers: PET_PERS[p.pers] ? p.pers : pick(PET_PERS_LIST), exp: p.exp && DANGER_ZONES.some(z => z.id === p.exp.zone) && Number.isFinite(p.exp.at) ? { zone: p.exp.zone, at: p.exp.at, ms: Number.isFinite(p.exp.ms) ? clamp(p.exp.ms, 3600000, PET_EXP_MS) : PET_EXP_MS } : null }))
     .filter((p, i, a) => a.findIndex(q => q.id === p.id) === i).slice(0, Object.keys(PET_SPECIES).length);
   if (s.pets[s.petActive] && s.pets[s.petActive].exp) s.petActive = -1;
@@ -403,11 +406,12 @@ function addMastery(tag, n) { // 오른 레벨(안 올랐으면 0)
   const now = masteryLv(tag); return now > before ? now : 0;
 }
 function masteryBonus(tag) { // 숙련이 주는 보너스 { gather, craftTime, farmTime, farmYield, heal } (해당 없는 건 0)
-  const lv = masteryLv(tag) - 1, b = { gather: 0, craftTime: 0, farmTime: 0, farmYield: 0, heal: 0 };
+  const lv = masteryLv(tag) - 1, b = { gather: 0, craftTime: 0, farmTime: 0, farmYield: 0, heal: 0, atk: 0 };
   if (GATHER_KINDS[tag]) b.gather = lv * .006;                       // 수확 +1개 확률 (최대 17.4%)
   else if (MASTERY_CRAFT_TAGS.includes(tag)) b.craftTime = lv * .005; // 제작 시간 단축 (최대 14.5%)
   else if (tag === '농사') { b.farmTime = lv * .005; b.farmYield = lv * .01; }
   else if (MASTERY_HEAL_TAGS.includes(tag)) b.heal = lv * .01;      // 음식·약 회복량 (최대 29%)
+  else if (tag === '운동') b.atk = lv * .005;                         // 사냥 공격력 (최대 14.5%)
   return b;
 }
 function masteryText(tag) { // 마우스를 올렸을 때 보이는 보너스 설명
@@ -415,6 +419,7 @@ function masteryText(tag) { // 마우스를 올렸을 때 보이는 보너스 �
   if (GATHER_KINDS[tag]) return `${tag}할 때 수확 +1개 확률 ${p(b.gather)} (레벨당 +0.6%)`;
   if (MASTERY_CRAFT_TAGS.includes(tag)) return `${tag} 물건의 제작 시간 -${p(b.craftTime)} (레벨당 -0.5%)`;
   if (tag === '농사') return `작물 성장 시간 -${p(b.farmTime)} · 수확 +1개 확률 ${p(b.farmYield)} (레벨당 -0.5% / +1%)`;
+  if (tag === '운동') return `사냥 공격력 +${p(b.atk)} (레벨당 +0.5%) · 사냥에서 이길 때마다 오른다`;
   return `${tag} 음식·약의 회복량 +${p(b.heal)} (레벨당 +1%)`;
 }
 /* 투두리스트 (상황 탭): 직접 쓰고 체크하고 지운다 ---------- */
@@ -734,7 +739,7 @@ function totalStats() {
 }
 /* 스탯 -> 효과 수치(0.1 = 10%). 스탯당 1개, 모두 상한 50% */
 function effects(t = totalStats()) {
-  return { atk: Math.min(.5, t.str * .006), evade: Math.min(.5, t.agi * .005), ggreat: Math.min(.5, t.int * .006), rare: Math.min(.5, t.wil * .005), craftTime: Math.min(.5, t.sen * .006 + jobFx().craftTime), craftGreat: Math.min(.5, t.luk * .006),
+  return { atk: Math.min(.5, t.str * .006) + masteryBonus('운동').atk + (jobFx().atk || 0), evade: Math.min(.5, t.agi * .005), ggreat: Math.min(.5, t.int * .006), rare: Math.min(.5, t.wil * .005), craftTime: Math.min(.5, t.sen * .006 + jobFx().craftTime), craftGreat: Math.min(.5, t.luk * .006),
     petTime: Math.min(.5, t.str * .01), travelHurt: Math.min(.6, t.agi * .02), farmTime: Math.min(.5, t.int * .01), repeatKeep: Math.min(.5, t.wil * .02), travelFind: Math.min(.1, t.sen * .002), reinforce: Math.min(.3, t.luk * .01) };
 }
 /* ---- 오늘의 날씨 (한국 시간 하루마다 바뀐다): 비·눈이 오는 날은 채집·채굴·낚시 재료 획득 확률 +, 그렇지 않은 날은 사냥 공격력 + ---- */
@@ -1431,8 +1436,8 @@ function resolveAction(id, cycles = 1, spPaid = 0, act = null) {
   if (a.kind === 'train') {
     const pool = learnableRecipes(), rc = pool.length ? pick(pool) : null;
     r.exp = TRAIN_EXP; r.sp = 0;
-    if (rc) { state.learned.push(rc.out); r.recipe = rc.out; r.text = `25분의 단련 끝에 「${rc.out}」 제작법을 익혔습니다. (재료: ${Object.entries(rc.mats).map(([n, q]) => `${n} ×${q}`).join(', ')})`; }
-    else r.text = '단련을 마쳤습니다. 더 익힐 제작법은 없었습니다.';
+    if (rc) { state.learned.push(rc.out); r.recipe = rc.out; r.text = `25분의 속성학습 끝에 「${rc.out}」 제작법을 익혔습니다. (재료: ${Object.entries(rc.mats).map(([n, q]) => `${n} ×${q}`).join(', ')})`; }
+    else r.text = '속성학습을 마쳤습니다. 더 익힐 제작법은 없었습니다.';
     return r;
   }
   if (a.kind === 'tame') {
@@ -1460,7 +1465,7 @@ function resolveAction(id, cycles = 1, spPaid = 0, act = null) {
       const m = monsterOf(a, act && act.d || 0), b = (br && br.runs[i]) || simulateBattle(m, Math.max(1, state.vitals.hp + r.hp));
       discover('monsters', m.name);
       r.hp -= b.lost;
-      if (b.win) { wins++; countKill(m.name); r.exp += m.exp; r.money += m.cr; if (keep) { if (chance(Math.min(.95, BATTLE_MAT * (1 + DEPTH_DROP * dd)))) add(pick(t.gather), rand(1, 2) * mult); m.drops.forEach(([n, p]) => { if (chance(Math.min(.95, p * (1 + DEPTH_DROP * dd)))) add(n, mult); }); } if (seed && chance(SEED_DROP.battle)) add(seed, 1); }
+      if (b.win) { wins++; countKill(m.name); if (!r.buff && chance(WIN_DEBUFF)) r.buff = foeDebuff(m.name); /* 이겨도 가끔 상처가 남는다 */ r.exp += m.exp; r.money += m.cr; if (keep) { if (chance(Math.min(.95, BATTLE_MAT * (1 + DEPTH_DROP * dd)))) add(pick(t.gather), rand(1, 2) * mult); m.drops.forEach(([n, p]) => { if (chance(Math.min(.95, p * (1 + DEPTH_DROP * dd)))) add(n, mult); }); } if (seed && chance(SEED_DROP.battle)) add(seed, 1); }
       else { losses++; r.buff = foeDebuff(m.name); if (act && act.risk) { r.death = true; r.deathWhy = 'battle'; } } // 진 회차는 보상 없이 HP만 잃고(적에 따라 다른 디버프), 남은 회차는 이어간다. HP가 바닥인데 싸워서 지면 사망
     }
     done++;
@@ -1479,6 +1484,7 @@ function resolveAction(id, cycles = 1, spPaid = 0, act = null) {
   }
   r.items = Object.entries(bag);
   if (a.kind === 'gather' && GATHER_KINDS[a.method]) r.mast = [a.method, done]; // 숙련은 결과를 받을 때(claimResult) 오른다
+  else if (a.kind === 'battle' && wins) r.mast = ['운동', wins];
   floorLoss(r);
   r.refund = (cycles - done) * per; r.sp = 0; r.spCost = spPaid - r.refund; // 쓰지 않은 회차의 기력은 '회복'이 아니라 소모에서 빼서 보여 준다
   noteRepeat(id, done);
@@ -1517,7 +1523,7 @@ function claimResult() {
   v.sp = clamp(v.sp + r.sp + (r.refund || 0), 0, v.spMax);
   if (r.buff) addBuff(r.buff);
   const ups = gainExp(r.exp), mUp = []; petGain(r.exp);
-  if (Array.isArray(r.mast) && GATHER_KINDS[r.mast[0]] && Number.isFinite(r.mast[1]) && r.mast[1] > 0) { const u = addMastery(r.mast[0], MASTERY_GAIN.gather * Math.min(r.mast[1], 1000)); if (u) mUp.push([r.mast[0], u]); }
+  if (Array.isArray(r.mast) && (GATHER_KINDS[r.mast[0]] || r.mast[0] === '운동') && Number.isFinite(r.mast[1]) && r.mast[1] > 0) { const u = addMastery(r.mast[0], (r.mast[0] === '운동' ? MASTERY_GAIN.hunt : MASTERY_GAIN.gather) * Math.min(r.mast[1], 1000)); if (u) mUp.push([r.mast[0], u]); }
   state.pending = null;
   save();
   return { id, lost, ups, result: r, mUp };
@@ -2006,13 +2012,14 @@ const jobBuffed = () => jobActive();
 const kstDayOf = t => Math.floor((t + 9 * 3600000) / 86400000), nextKstMidnight = t => (kstDayOf(t) + 1) * 86400000 - 9 * 3600000;
 const jobActive = () => !!state.subjob && state.subjob.lastAt > 0 && nowMs() < nextKstMidnight(state.subjob.lastAt);
 function jobFx(always) {
-  const fx = { craftTime: 0, farmTime: 0, farmYield: 0, gather: {}, heal: {} }, j = state.subjob;
+  const fx = { craftTime: 0, farmTime: 0, farmYield: 0, gather: {}, heal: {}, atk: 0 }, j = state.subjob;
   if (!j || (!always && !jobActive())) return fx;
   const lv = j.level;
   j.tags.forEach(t => {
     if (GATHER_KINDS[t]) fx.gather[t] = Math.min(.3, lv * .03);
     else if (['목공', '재봉', '대장', '가죽공예', '보석공예'].includes(t)) fx.craftTime = Math.min(.3, fx.craftTime + lv * .03);
     else if (t === '농사') { fx.farmTime = Math.min(.3, lv * .03); fx.farmYield = Math.min(.4, lv * .04); }
+    else if (t === '운동') fx.atk = Math.min(.2, lv * .02);
     else fx.heal[t] = Math.min(.4, lv * .04);
   });
   return fx;
@@ -2023,6 +2030,7 @@ const jobFxText = (always) => {
   Object.entries(f.gather).forEach(([t, v]) => p.push(`${t} 수확 +1개 확률 ${Math.round(v * 100)}%`));
   if (f.craftTime) p.push(`제작 시간 -${Math.round(f.craftTime * 100)}%`);
   if (f.farmTime) p.push(`작물 성장 시간 -${Math.round(f.farmTime * 100)}% · 수확 +1개 확률 ${Math.round(f.farmYield * 100)}%`);
+  if (f.atk) p.push(`사냥 공격력 +${Math.round(f.atk * 100)}%`);
   Object.entries(f.heal).forEach(([t, v]) => p.push(`${t} 음식·약 회복량 +${Math.round(v * 100)}%`));
   return p.join(' · ') || '버프 없음';
 };
@@ -2164,6 +2172,39 @@ function addPet(id) {
   return true;
 }
 /* 먹이: 작물 / 펫 사료. 든든함이 24시간 유지되고 친밀도가 오른다 */
+const bowlTotal = () => Object.values(state.petBowl || {}).reduce((a, b) => a + b, 0);
+const isHerb = n => PET_PERS_LIST.some(k => PET_PERS[k].herb === n);
+function bowlPut(name, qty) { // 소지품 → 먹이통 (개인실, 작물·펫 사료만. 성격 허브는 직접 줘야 한다). 성공 null / 사유
+  if (state.location !== '개인실') return '먹이통은 개인실에 있어요.';
+  if (!ITEMS[name] || !ITEMS[name].feed || isHerb(name)) return '먹이통에는 작물이나 펫 사료만 넣을 수 있어요.';
+  const room = PET_BOWL_MAX - bowlTotal(); if (room <= 0) return `먹이통이 가득 찼어요. (최대 ${PET_BOWL_MAX}개)`;
+  const n = removeItem(name, Math.min(intIn(qty, 1, PET_BOWL_MAX, 1), room)); if (!n) return '그 간식이 소지품에 없어요.';
+  state.petBowl = state.petBowl || {}; state.petBowl[name] = (state.petBowl[name] || 0) + n; save(); return null;
+}
+function bowlTake(name) { // 먹이통 → 소지품 (전부). 담은 개수
+  const q = (state.petBowl || {})[name] | 0; if (!q) return 0;
+  const g = addItem(name, q); if (g >= q) delete state.petBowl[name]; else state.petBowl[name] = q - g; save(); return g;
+}
+function bowlAutoFeed() { // 함께 다니지 않고 탐험 중도 아닌 펫이 배고프면 먹이통에서 먹는다 (싼 것부터). 먹은 펫 이름 목록
+  const ate = [];
+  state.pets.forEach((p, i) => {
+    if (i === state.petActive || p.exp || petFull(p) >= PET_BOWL_AT) return;
+    const n = Object.keys(state.petBowl || {}).filter(k => state.petBowl[k] > 0).sort((a, b) => (ITEMS[a].feed || 0) - (ITEMS[b].feed || 0))[0]; if (!n) return;
+    if (!--state.petBowl[n]) delete state.petBowl[n];
+    const t = nowMs(); p.full = Math.min(PET_FULL_MAX, petFull(p) + feedFull(n)); p.fullAt = t; p.decayAt = t; p.fedAt = t;
+    p.bond = Math.min(100, p.bond + feedGain(n) + (petAcc(p).bond || 0)); ate.push(petName(p));
+  });
+  if (ate.length) save();
+  return ate;
+}
+function quickSet(name) { // 소모품을 퀵슬롯 빈 칸에 등록. 성공 null / 사유
+  if (!ITEMS[name] || !ITEMS[name].use) return '사용할 수 있는 소모품만 퀵슬롯에 넣을 수 있어요.';
+  if (!Array.isArray(state.quick) || state.quick.length !== QUICK_SLOTS) state.quick = Array.from({ length: QUICK_SLOTS }, (_, i) => (state.quick || [])[i] || null);
+  if (state.quick.includes(name)) return '이미 퀵슬롯에 있어요.';
+  const i = state.quick.indexOf(null); if (i < 0) return `퀵슬롯이 가득 찼어요. (오른쪽 클릭으로 빼기)`;
+  state.quick[i] = name; save(); return null;
+}
+function quickClear(i) { if (state.quick[i]) { state.quick[i] = null; save(); return true; } return false; }
 function feedPet(i, item) {
   const p = state.pets[i], it = ITEMS[item];
   const ce = petCareErr(i); if (ce) return ce;
