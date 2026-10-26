@@ -77,7 +77,7 @@ const AVATAR_KEY = 'deeplayer-avatar';
 const getAvatar = () => { try { const v = localStorage.getItem(AVATAR_KEY); return v && /^data:image\/(webp|jpeg|png);base64,[A-Za-z0-9+/=]+$/.test(v) ? v : null; } catch (e) { return null; } };
 function gainBarsHtml(name, n) { // 소모품 회복량을 HP·기력 막대로 (지금 칸 + 찰 칸을 밝게)
   const u = ITEMS[name] && ITEMS[name].use, v = state.vitals; if (!u || u.warp || u.camp) return '';
-  const g = useGain(name, n), row = (lb, cls, cur, max, d) => { const w = clamp(cur / max * 100, 0, 100); return `<div class="bar-row ${d ? 'gaining' : ''}"><b>${lb}</b><div class="bar ${cls}"><span style="width:${w}%"></span>${d ? `<i class="gain" style="left:${w}%;width:${clamp(d / max * 100, 0, 100 - w)}%"></i>` : ''}</div><span class="val">${cur} → ${cur + d}</span></div>`; };
+  const g = useGain(name, n), row = (lb, cls, cur, max, d) => { const w = clamp(cur / max * 100, 0, 100); return `<div class="bar-row ${d ? 'gaining' : ''}"><b>${lb}</b><div class="bar ${cls}"><span style="width:${w}%"></span>${d ? `<i class="gain" style="left:${w}%;width:${clamp(d / max * 100, 0, 100 - w)}%"></i>` : ''}</div></div>`; }; // 숫자는 위 문장에 있으니 막대만
   return `<div class="bars gain-bars">${u.hp ? row('HP', 'hp', v.hp, v.hpMax, g.hp) : ''}${u.sp ? row('기력', 'sp', v.sp, v.spMax, g.sp) : ''}</div>`;
 }
 const useGainHtml = (name, n) => `<p>${icon('healing')} ${n > 1 ? n + '개 ' : ''}사용하면 <b>${esc(useGainText(name, n))}</b>${useFull(name, n) ? ' <small>(이미 가득 차서 오르지 않아요)</small>' : ''}</p>${gainBarsHtml(name, n)}`;

@@ -1381,7 +1381,9 @@ button>.material-symbols-rounded{vertical-align:middle;position:relative;top:-.0
 .bar-row.gaining .val{color:var(--text);font-weight:700}
 .use-gain p{margin:0 0 6px}
 .gain-bars{margin:4px 0 2px;max-width:320px}
-.gain-bars .bar-row{grid-template-columns:34px minmax(0,1fr) 74px}
+.use-gain{display:block}
+.use-gain p{display:flex;align-items:center;gap:5px}
+.gain-bars .bar-row{grid-template-columns:34px minmax(0,1fr)}
 /* 프로필 사진 크게 보기 */
 .round-avatar.zoomable{cursor:zoom-in}
 .av-zoom{position:fixed;inset:0;z-index:300;display:grid;place-content:center;justify-items:center;gap:8px;background:rgba(0,0,0,.72);cursor:zoom-out;animation:avz .15s ease-out}
