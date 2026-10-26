@@ -21,6 +21,7 @@ const Cloud = (() => {
     if (Date.now() < s.exp) return s.access;
     try { return keep(await call('/auth/v1/token?grant_type=refresh_token', { refresh_token: s.refresh }), s.id).access; } catch (e) { wr(null); throw new Error('로그인이 만료되었어요. 다시 로그인해 주세요.'); }
   }
+  const _pre = new Map(); // prefetchInbox 로 받아 둔 값 (한 번 쓰면 지운다)
   return {
     get enabled() { return on(); },
     user: () => (rd() || {}).id || null,
@@ -43,17 +44,17 @@ const Cloud = (() => {
     async getProfile(name) { return await call('/rest/v1/rpc/get_profile', { p_name: String(name || '').slice(0, 12) }, await token()); },
     async searchPlayers(q) { return (await call('/rest/v1/rpc/search_players', { p_q: String(q || '').slice(0, 12) }, await token())) || []; },
     async sendFriendReq(uid) { return await call('/rest/v1/rpc/send_friend_req', { p_to: uid }, await token()); },
-    async friendInbox() { return (await call('/rest/v1/rpc/friend_inbox', {}, await token())) || { incoming: [], results: [] }; },
+    async friendInbox() { if (_pre.has('friend_inbox')) { const v = _pre.get('friend_inbox'); _pre.delete('friend_inbox'); return v; } return (await call('/rest/v1/rpc/friend_inbox', {}, await token())) || { incoming: [], results: [] }; },
     async cancelFriendReq(id) { await call('/rest/v1/rpc/cancel_friend_req', { p_id: id }, await token()); },
     async answerFriendReq(id, accept) { return await call('/rest/v1/rpc/answer_friend_req', { p_id: id, p_accept: !!accept }, await token()); },
     async ackFriendReq(id) { await call('/rest/v1/rpc/ack_friend_req', { p_id: id }, await token()); },
-    async listFriends() { return (await call('/rest/v1/rpc/list_friends', {}, await token())) || []; },
+    async listFriends() { if (_pre.has('list_friends')) { const v = _pre.get('list_friends'); _pre.delete('list_friends'); return v; } return (await call('/rest/v1/rpc/list_friends', {}, await token())) || []; },
     async removeFriend(uid) { await call('/rest/v1/rpc/remove_friend', { p_uid: uid }, await token()); },
     async sendMail(uid, subject, body, items) { return await call('/rest/v1/rpc/send_mail', { p_to: uid, p_subject: subject, p_body: body, p_items: items }, await token()); },
-    async fetchMail() { return (await call('/rest/v1/rpc/fetch_mail', {}, await token())) || []; },
+    async fetchMail() { if (_pre.has('fetch_mail')) { const v = _pre.get('fetch_mail'); _pre.delete('fetch_mail'); return v; } return (await call('/rest/v1/rpc/fetch_mail', {}, await token())) || []; },
     async ackMail(ids) { await call('/rest/v1/rpc/ack_mail', { p_ids: ids }, await token()); },
     async proposeTrade(uid, give, want) { return await call('/rest/v1/rpc/propose_trade', { p_to: uid, p_give: give, p_want: want }, await token()); },
-    async tradeInbox() { return (await call('/rest/v1/rpc/trade_inbox', {}, await token())) || { incoming: [], sent: [], results: [] }; },
+    async tradeInbox() { if (_pre.has('trade_inbox')) { const v = _pre.get('trade_inbox'); _pre.delete('trade_inbox'); return v; } return (await call('/rest/v1/rpc/trade_inbox', {}, await token())) || { incoming: [], sent: [], results: [] }; },
     async answerTrade(id, accept) { return await call('/rest/v1/rpc/answer_trade', { p_id: id, p_accept: !!accept }, await token()); },
     async cancelTrade(id) { return await call('/rest/v1/rpc/cancel_trade', { p_id: id }, await token()); },
     async ackTrade(id) { await call('/rest/v1/rpc/ack_trade', { p_id: id }, await token()); },
@@ -81,7 +82,7 @@ const Cloud = (() => {
     async liveTradeConfirm(id, ver) { return await call('/rest/v1/rpc/live_trade_confirm', { p_id: id, p_ver: ver }, await token()); },
     async liveTradeCancel(id) { return await call('/rest/v1/rpc/live_trade_cancel', { p_id: id }, await token()); },
     async liveTradeAck(id) { await call('/rest/v1/rpc/live_trade_ack', { p_id: id }, await token()); },
-    async guildInfo() { return await call('/rest/v1/rpc/guild_info', {}, await token()); },
+    async guildInfo() { if (_pre.has('guild_info')) { const v = _pre.get('guild_info'); _pre.delete('guild_info'); return v; } return await call('/rest/v1/rpc/guild_info', {}, await token()); },
     async guildCreate(name) { return await call('/rest/v1/rpc/guild_create', { p_name: name }, await token()); },
     async guildSearch(q) { return (await call('/rest/v1/rpc/guild_search', { p_q: String(q || '').slice(0, 12) }, await token())) || []; },
     async searchGuildTargets(q) { return (await call('/rest/v1/rpc/search_players_guild', { p_q: String(q || '').slice(0, 12) }, await token())) || []; },
@@ -91,15 +92,35 @@ const Cloud = (() => {
     async guildCancel(id) { await call('/rest/v1/rpc/guild_cancel', { p_id: id }, await token()); },
     async guildRename(name) { return await call('/rest/v1/rpc/guild_rename', { p_name: name }, await token()); },
     async guildLeave() { await call('/rest/v1/rpc/guild_leave', {}, await token()); },
-    async setPlace(p, spd, fol) { return await call('/rest/v1/rpc/set_place', { p_place: String(p || '').slice(0, 40), p_spd: Math.max(0, Math.min(600, Math.round(+spd) || 0)), p_fol: !!fol }, await token()); },
+    async setPlace(p, spd, fol, eta) { // eta: 이동이 끝날 때까지 남은 ms (옛 서버면 빼고 다시 보낸다)
+      const b = { p_place: String(p || '').slice(0, 40), p_spd: Math.max(0, Math.min(600, Math.round(+spd) || 0)), p_fol: !!fol };
+      if (!this._noEta) { try { return await call('/rest/v1/rpc/set_place', { ...b, p_eta: Math.max(0, Math.min(3600000, Math.round(+eta) || 0)) }, await token()); } catch (e) { if (!/404|PGRST202|Could not find|function/i.test(String(e && e.message))) throw e; this._noEta = true; } }
+      return await call('/rest/v1/rpc/set_place', b, await token());
+    },
     async partyInfo() { return await call('/rest/v1/rpc/party_info', {}, await token()); },
     async partyInvite(uid) { return await call('/rest/v1/rpc/party_invite', { p_to: uid }, await token()); },
     async partyAnswer(id, accept) { return await call('/rest/v1/rpc/party_answer', { p_id: id, p_accept: !!accept }, await token()); },
     async partyLeave() { await call('/rest/v1/rpc/party_leave', {}, await token()); },
     async partyKick(uid) { return await call('/rest/v1/rpc/party_kick', { p_uid: uid }, await token()); },
     async setAvatar(img) { await call('/rest/v1/rpc/set_avatar', { p_img: img || '' }, await token()); },
+    async setAvatarBig(img) { await call('/rest/v1/rpc/set_avatar_big', { p_img: img || '' }, await token()); },
+    async avatarBig(name) { return await call('/rest/v1/rpc/get_avatar_big', { p_name: name }, await token()); },
     async getAvatars(names) { return (await call('/rest/v1/rpc/get_avatars', { p_names: names.slice(0, 40) }, await token())) || {}; },
     async chatSend(channel, body) { return await call('/rest/v1/rpc/chat_send', { p_channel: channel, p_body: body }, await token()); },
+    async prefetchInbox() { // 친구·메일·교환·길드 소식을 요청 한 번으로 받아 두고, 뒤따르는 각 함수 호출이 한 번씩 꺼내 쓴다 (서버에 poll_inbox 가 없으면 아무것도 안 함)
+      _pre.clear(); if (this._noInbox) return false;
+      try { const r = await call('/rest/v1/rpc/poll_inbox', {}, await token()); if (r && typeof r === 'object') { Object.entries(r).forEach(([k, v]) => _pre.set(k, k === 'guild_info' ? v : (v || (k === 'list_friends' || k === 'fetch_mail' ? [] : v)))); return true; } }
+      catch (e) { if (/404|PGRST202|Could not find/i.test(String(e && e.message))) this._noInbox = true; }
+      return false;
+    },
+    clearPrefetch() { _pre.clear(); },
+    async duelList() { return (await call('/rest/v1/rpc/duel_list', {}, await token())) || []; },
+    async duelCreate(title, snap) { return await call('/rest/v1/rpc/duel_create', { p_title: String(title || '').slice(0, 20), p_snap: snap }, await token()); },
+    async duelJoin(id, team, snap) { return await call('/rest/v1/rpc/duel_join', { p_room: id, p_team: team, p_snap: snap }, await token()); },
+    async duelLeave(id) { await call('/rest/v1/rpc/duel_leave', { p_room: id }, await token()); },
+    async duelStart(id) { return await call('/rest/v1/rpc/duel_start', { p_room: id }, await token()); },
+    async duelView(id) { return await call('/rest/v1/rpc/duel_view', { p_room: id }, await token()); },
+    async chatFetchAll(after) { return (await call('/rest/v1/rpc/chat_fetch_all', { p_after: after }, await token())) || {}; },
     async chatFetch(channel, after) { return (await call('/rest/v1/rpc/chat_fetch', { p_channel: channel, p_after: after || 0 }, await token())) || []; },
     async isAdmin() { return (await call('/rest/v1/rpc/is_admin', {}, await token())) === true; },
     /* → { rev, data, at } | null(서버에 세이브 없음) */

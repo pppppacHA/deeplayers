@@ -185,8 +185,8 @@ with sync_playwright() as p:
     check('title', pg.title() == '공중도시 DEEP LAYER')
     check('default_theme_light', ev(pg, "document.body.dataset.theme") == 'light')
     check('start_location_hq', text(pg, '#mapLocation') == '본부')
-    check('map_4_nodes_gate_merged', pg.locator('.map-node').count() == 5 and pg.locator('.map-node.danger').count() == 0)
-    check('map_3_links', pg.locator('.node-line').count() == 4)
+    check('map_4_nodes_gate_merged', pg.locator('.map-node').count() == 6 and pg.locator('.map-node.danger').count() == 0)
+    check('map_3_links', pg.locator('.node-line').count() == 5)  # 10/27 훈련장
     check('map_desc_below_name', rect(pg, '#mapDescription')['y'] >= rect(pg, '#mapLocation')['b'] - 1)
     check('map_header_meta_right', rect(pg, '#mapMeta')['r'] > rect(pg, '#mapHead')['r'] - 40 and '공중' in text(pg, '#mapMeta'), text(pg, '#mapMeta'))
     check('no_tactical_map_title', 'TACTICAL' not in text(pg, '.map-panel'))
@@ -212,7 +212,7 @@ with sync_playwright() as p:
     check('map_foot_removed', pg.locator('.map-foot').count() == 0)
     pg.click('#zoomIn'); check('zoom_in_works', 'scale(1.12)' in ev(pg, "document.querySelector('#mapWorld').style.transform"))
     pg.click('#resetMap'); check('reset_works', 'scale(1)' in ev(pg, "document.querySelector('#mapWorld').style.transform"))
-    check('hq_choices', pg.locator('#choices button').count() == 5)
+    check('hq_choices', pg.locator('#choices button').count() == 6)  # 10/27 분실물 보관함
 
     # ---------- 레이아웃: 고정 높이 + 내부 스크롤, 리사이즈 없음 ----------
     cols = [rect(pg, s) for s in ['.left-column', '.center-column', '.right-column']]
@@ -287,7 +287,7 @@ with sync_playwright() as p:
     pg.wait_for_timeout(1200)
     sz = ev(pg, "(getAvatar()||'').length*0.75")
     dims = ev(pg, "new Promise(r=>{const i=new Image();i.onload=()=>r([i.width,i.height]);i.onerror=()=>r([0,0]);i.src=getAvatar()||''})")
-    check('avatar_auto_compressed', big > 2_000_000 and 0 < sz <= 200 * 1024 and max(dims) <= 256 and max(dims) > 0 and dims[0] == dims[1], [big, sz, dims])
+    check('avatar_auto_compressed', big > 2_000_000 and 0 < sz <= 200 * 1024 and max(dims) <= 300 and max(dims) > 0 and dims[0] == dims[1], [big, sz, dims])
     check('avatar_shown_after_upload', pg.locator('#avatarButton img').count() == 1)
     ev(pg, "(()=>{const f=new File(['<svg xmlns=\"http://www.w3.org/2000/svg\"><script>1</script></svg>'],'x.svg',{type:'image/svg+xml'});const dt=new DataTransfer();dt.items.add(f);const inp=document.querySelector('#avatarFile');inp.files=dt.files;inp.dispatchEvent(new Event('change'))})()")
     pg.wait_for_timeout(200)
@@ -317,7 +317,7 @@ with sync_playwright() as p:
     check('stat_up_applies', ev(pg, "state.stats.str")== 19 and ev(pg, "state.statPoints")== 0 and '+11.4%' in text(pg, '.stat-eff') and pg.locator('.stat-plus').count() == 0 and pg.locator('#statSave.hidden').count() == 1 and ev(pg, "document.querySelector('#statPoints').classList.contains('hidden')"))
     check('stat_commit_rejects_overspend', ev(pg, "commitStatDraft({str:5})")== False and ev(pg, "commitStatDraft({zzz:1})")== False and ev(pg, "state.stats.str")== 19)
     ev(pg, "gainExp(600);renderProfile();renderBars();renderStatus()")
-    check('max_level_30', ev(pg, "MAX_LEVEL")== 30 and ev(pg, "(()=>{const l=state.character.level,e=state.vitals.exp;state.character.level=30;const u=gainExp(999);const r=[u,state.character.level];state.character.level=l;state.vitals.exp=e;return r.join()})()")== '0,30')
+    check('max_level_30', ev(pg, "LEVEL_CAP_BASE")== 30 and ev(pg, "MAX_LEVEL")== 35 and ev(pg, "levelCap()")== 30 and ev(pg, "(()=>{const l=state.character.level,e=state.vitals.exp;state.character.level=30;const u=gainExp(999);const r=[u,state.character.level];state.character.level=l;state.vitals.exp=e;return r.join()})()")== '0,30')
     check('level_up_gives_point', ev(pg, "state.statPoints")== 1 and ev(pg, "state.character.level")== 13 and pg.locator('.stat-plus').count() == 6)
     check('no_buff_section_when_none', pg.locator('.fx-list').count() == 0 and pg.locator('.buff-icon:not(.weather)').count() == 0 and pg.locator('.buff-icon.weather').count() == 1)
 
@@ -564,7 +564,7 @@ with sync_playwright() as p:
     check('hq_has_board', '임무 수주' in text(pg, '#choices'))
     q0 = ev(pg, "takenQuests().length")
     pg.click('#choices button:has-text("임무 수주")'); pg.wait_for_timeout(80)
-    check('board_lists_hq_quests', pg.locator('#overlay.open').count() == 1 and pg.locator('.board-quest').count() == 10 and pg.locator('[data-act="action-run"]').count() == 0)
+    check('board_lists_hq_quests', pg.locator('#overlay.open').count() == 1 and pg.locator('.board-quest').count() == 10 + ev(pg, 'WORKSHOP_DAILY') + ev(pg, 'HQ_HUNT_DAILY') and pg.locator('[data-act="action-run"]').count() == 0)
     check('board_not_taken_not_listed', ev(pg, "takenQuests().length")== q0 and pg.locator('.quest-row[data-id="hq_scrap"]').count() == 0)
     pg.click('[data-act="quest-take"][data-id="hq_scrap"]'); pg.wait_for_timeout(80)
     check('board_take_adds_to_side', ev(pg, "state.questTaken.hq_scrap")== True and pg.locator('.quest-row[data-id="hq_scrap"]').count() == 1 and pg.locator('[data-act="quest-take"][data-id="hq_scrap"]').is_disabled() and ev(pg, "takeQuest('hq_scrap')")!= None)
@@ -637,7 +637,7 @@ with sync_playwright() as p:
     ev(pg, "view.dpan={x:0,y:0};view.noClickUntil=0;applyMapTransform()")
     check('gate_labels_no_suffix', '으)로' not in ev(pg, "['제1구역','제2구역','제3구역'].map(z=>ACTIONS['이동 '+z].label).join('')"))
     ev(pg, "(()=>{state.dungeon=null;state.location='제1구역';resetPhase();renderMapHead();renderMap();renderAction();renderSide()})()") # 예전 저장처럼 구역 화면에 서 있는 상태
-    check('zone_node_shown_only_there', pg.locator('.map-node.danger.current').count() == 1 and pg.locator('.map-node').count() == 6)
+    check('zone_node_shown_only_there', pg.locator('.map-node.danger.current').count() == 1 and pg.locator('.map-node').count() == 7)
     check('no_timed_travel_in_code', ev(pg, "typeof TRAVEL_SEC")== 'undefined' and ev(pg, "typeof isTimedTravel")== 'undefined')
     check('map_tone_forest', ev(pg, "document.querySelector('.map-panel').dataset.tone")== 'forest')
     ev(pg, "state.vitals.sp=3;renderBars()"); pg.click('#choices button:has-text("이동장치로 귀환")'); pg.wait_for_timeout(100)
@@ -836,7 +836,7 @@ with sync_playwright() as p:
     pg.click('[data-act="action-cancel"]')
     check('event_reward_applied', ev(pg, "countItem('응급 키트')")== kits + 1)
     tp(3, 0); hop(4, 0)
-    check('event_only_once', ev(pg, "state.results.filter(r=>r.text.includes('버려진 보급 상자')).length")== 1 and ev(pg, "state.dungeon.done.length")== 1)
+    check('event_only_once', ev(pg, "state.results.filter(r=>r.text.includes('버려진 보급 상자')).length")== 0 and ev(pg, "state.dungeon.done.length")== 1 and ev(pg, "countItem('응급 키트')")== kits + 1)  # 10/27: 새 행동(이동)을 하면 지난 결과 카드는 닫힌다
     ev(pg, "window._ots=totalStats;totalStats=()=>({str:0,int:0,agi:0,wil:0,sen:0,luk:0})") # 민첩 보정 없이 함정 피해 확인
     tp(2, 3); hp_e = ev(pg, "state.vitals.hp"); hop(2, 4)
     check('trap_event_shows_losses', 'HP -8' in text(pg, '#actionPanel') and '기력 -4' in text(pg, '#actionPanel'), text(pg, '#actionPanel'))
@@ -852,15 +852,15 @@ with sync_playwright() as p:
     zid = ev(pg, "state.dungeon.zone")
     check('camp_has_board_and_shop', '임무 수주' in text(pg, '#choices') and '상점' in text(pg, '#choices'))
     pg.click('#choices button:has-text("임무 수주")'); pg.wait_for_timeout(80)
-    check('camp_board_zone_special', f'{zid} 캠프' in text(pg, '#modalTitle') and pg.locator('.board-quest').count() == 2 and ev(pg, f"QUESTS.filter(q=>q.board==='{zid}').length")== 2)
-    qid = ev(pg, f"QUESTS.find(q=>q.board==='{zid}').id")
+    check('camp_board_zone_special', f'{zid} 캠프' in text(pg, '#modalTitle') and pg.locator('.board-quest').count() == ev(pg, 'CAMP_KILL_DAILY') + min(ev(pg, 'CAMP_DAILY'), ev(pg, f"(CAMP_QUESTS['{zid}']||[]).length")) and ev(pg, f"QUESTS.filter(q=>q.board==='{zid}'&&!q.daily).length")== 0)  # 10/27: 캠프 임무는 모두 매일 순환
+    qid = ev(pg, f"QUESTS.find(q=>q.board==='{zid}'&&boardDailyOk(q)).id")
     pg.click(f'[data-act="quest-take"][data-id="{qid}"]'); pg.wait_for_timeout(60)
     check('camp_take_ok', ev(pg, f"state.questTaken['{qid}']")== True and ev(pg, "takeQuest('hq_scrap')")!= None)
     pg.click('#closeModal')
     mc = ev(pg, "state.money"); ev(pg, "state.money=500;renderProfile()")
     pg.click('#choices button:has-text("상점")'); pg.wait_for_timeout(80)
     special = ev(pg, f"SHOPS['{zid}'].special.map(r=>r[0])")
-    check('camp_shop_has_base_and_special', f'{zid} 캠프' in text(pg, '#modalTitle') and pg.locator('.shop-row').count() == 5 and ev(pg, f"SHOPS['{zid}'].base[0][1]")> 10 and len(special) == 5)
+    check('camp_shop_has_base_and_special', f'{zid} 캠프' in text(pg, '#modalTitle') and pg.locator('.shop-row').count() == 5 and ev(pg, f"SHOPS['{zid}'].base[0][1]")> 10 and len(special) == 6)  # 10/27 캠프 신호기
     check('camp_shop_differs_by_zone', ev(pg, "SHOPS['제1구역'].special[0][0]")!= ev(pg, "SHOPS['제2구역'].special[0][0]") != ev(pg, "SHOPS['제3구역'].special[0][0]"))
     gear = special[0]
     pg.click('.shop-tabs button:has-text("장비")'); pg.wait_for_timeout(40)
@@ -934,7 +934,7 @@ with sync_playwright() as p:
     # 아래 친구/길드/메일 규칙 테스트용 임시 대원 (실제 데이터가 아니라 테스트에서만 넣는다)
     ev(pg, "NEARBY_PLAYERS.push(['정비병 유나','온라인'],['탐색자 렌','온라인'],['기술관 세아','자리 비움'])")
     # ---------- 채팅 탭 (월드 · 길드 · 알림) / 길드 ----------
-    check('chat_tabs_world_guild_notice', ev(pg, "[...document.querySelectorAll('[data-chat]')].map(b=>b.textContent)")== ['월드', '길드', '파티', '알림'] and ev(pg, "state.chatTab")== '월드' and ev(pg, "Object.keys(state.chats).join()")== '월드,길드,파티,알림' and ev(pg, "typeof state.party")== 'undefined')
+    check('chat_tabs_world_guild_notice', ev(pg, "[...document.querySelectorAll('[data-chat]')].map(b=>b.dataset.chat)")== ['월드', '길드', '파티', 'RP', '알림'] and ev(pg, "state.chatTab")== '월드' and ev(pg, "Object.keys(state.chats).join()")== '월드,길드,파티,RP,알림' and ev(pg, "document.querySelector('.bell-tab .material-symbols-rounded').textContent")== 'notifications' and ev(pg, "typeof state.party")== 'undefined')
     check('guild_bar_hidden_on_world', pg.locator('#guildBar').is_hidden() and pg.locator('#chatForm').is_visible())
     pg.click('[data-chat="알림"]'); pg.wait_for_timeout(60)
     check('notice_tab_read_only', pg.locator('#chatForm').is_hidden() and pg.locator('#noticeNote').is_visible() and pg.locator('#chatFeed .msg').count() == ev(pg, "NOTICE_FEED().length") and '점검 일정' in text(pg, '#chatFeed') and '업데이트 · ' not in text(pg, '#chatFeed'))
@@ -985,7 +985,7 @@ with sync_playwright() as p:
 
     # ---------- 도감 ----------
     pg.click('[data-system="도감"]'); pg.wait_for_timeout(80)
-    check('codex_tabs', ev(pg, "[...document.querySelectorAll('[data-act=\"codex-tab\"]')].map(b=>b.textContent)")== ['구역', '아이템', '몬스터', '펫', '레시피'])
+    check('codex_tabs', ev(pg, "[...document.querySelectorAll('[data-act=\"codex-tab\"]')].map(b=>b.textContent)")== ['구역', '아이템', '몬스터', '펫', '레시피', '칭호'])
     check('codex_zone_unknown_marked', pg.locator('.nearby-row.unknown').count() > 0 and '발견' in text(pg, '.codex-count'))
     pg.click('[data-codex="아이템"]'); pg.wait_for_timeout(40)
     check('codex_item_subcategories', ev(pg, "[...document.querySelectorAll('#codexRoot .chip')].map(b=>b.textContent)")== ['전체', '장비', '요리', '낚시', '소모품', '재료'])
@@ -1324,14 +1324,17 @@ with sync_playwright() as p:
     pg.click('#choices button:has-text("펫 돌보기")'); pg.wait_for_timeout(80)
     check('pet_dex_collapsed_until_clicked', pg.locator('.pet-dex').count() == 0 and pg.locator('[data-act="pet-dex-toggle"]').count() == 1)
     pg.click('[data-act="pet-dex-toggle"]'); pg.wait_for_timeout(60)
-    check('pet_modal_dex_and_rows', pg.locator('.pet-dex').count() == ev(pg, "Object.keys(PET_SPECIES).length") and pg.locator('.pet-dex.got').count() == 4 and pg.locator('.pet-row').count() == 4)
-    check('pet_pen_button_in_every_box_next_to_name', ev(pg, """(()=>{const rows=[...document.querySelectorAll('.pet-row')];return rows.length>=2&&rows.every(r=>{const b=r.querySelector('strong button[data-act="pet-name"]'),n=r.querySelector('strong');return !!b&&n.contains(b)&&r.querySelectorAll('.pet-edit-row button.mini').length===0})})()"""))
+    check('pet_modal_dex_and_rows', pg.locator('.pet-dex').count() == ev(pg, "Object.keys(PET_SPECIES).length") and pg.locator('.pet-dex.got').count() == 4 and pg.locator('.pet-card').count() == 4 and pg.locator('.pet-row').count() == 1)  # 10/27 그리드: 고른 펫만 자세히
+    def psel(i): pg.click(f'.pet-card[data-i="{i}"]'); pg.wait_for_timeout(50)
+    check('pet_pen_button_in_every_box_next_to_name', ev(pg, """(()=>{const rows=[...document.querySelectorAll('.pet-row')];return rows.length>=1&&rows.every(r=>{const b=r.querySelector('strong button[data-act="pet-name"]'),n=r.querySelector('strong');return !!b&&n.contains(b)&&r.querySelectorAll('.pet-edit-row button.mini').length===0})})()"""))
+    psel(1)
     check('pet_rename_pen_beside_name', pg.locator('[data-act="pet-name"][data-i="1"]').evaluate("b=>!!b.closest('strong')&&b.textContent.trim()===''") and pg.locator('.pet-edit-row button.mini').count() == 0)
     pg.click('[data-act="pet-name"][data-i="1"]'); pg.wait_for_timeout(50)
     pg.fill('#petNameIn', '비동행이름'); pg.click('[data-act="pet-name-save"][data-i="1"]'); pg.wait_for_timeout(50)
     check('non_companion_pet_can_be_renamed', ev(pg, "state.pets[1].name") == '비동행이름' and ev(pg, "state.petActive") != 1, ev(pg, "[state.pets[1].name,state.petActive]"))
     ev(pg, "state.pets[1].name=''")
-    check('active_pet_cannot_be_sent', pg.locator('[data-act="pet-send"][data-i="0"]').count() == 0 and ev(pg, "sendExpedition(0,'제1구역')")!= None)
+    psel(0)
+    check('active_pet_cannot_be_sent', pg.locator('.pet-row').count() == 1 and pg.locator('[data-act="pet-send"][data-i="0"]').count() == 0 and ev(pg, "sendExpedition(0,'제1구역')")!= None)
     check('pet_stroke_and_mood_commands', ev(pg, """(()=>{const p=state.pets[1],b=p.bond;p.petAt=0;const m=petAskMood(1),s1=petStroke(1),s2=petStroke(1);
       return /\\(.+\\)/.test(m.text)&&state.pets[1].bond===b+1&&/\\(.+\\)/.test(s1.text)&&!!s2.err&&state.pets[1].bond===b+1&&petCry(state.pets[0]).length>0})()"""))
     pg.click('[data-act="pet-stroke"][data-i="0"]'); pg.wait_for_timeout(60)
@@ -1339,17 +1342,17 @@ with sync_playwright() as p:
     check('companion_cared_anywhere_others_only_in_room', ev(pg, """(()=>{const loc=state.location;state.location='본부';const a=petCareErr(0),b=petCareErr(1);state.location=loc;return a===null&&!!b})()"""))
     check('active_pet_listed_first', ev(pg, "(()=>{const bak=state.petActive;state.petActive=2;const o=petOrder();state.petActive=bak;return o[0]===2&&o.length===state.pets.length})()"))
     check('pet_window_has_no_snack_strip', pg.locator('.feed-opt').count() == 0 and pg.locator('#expZone').count() == 0)
-    bag0 = ev(pg, "usedSlots()"); pg.click('[data-act="pet-send"][data-i="1"]'); pg.wait_for_timeout(80)
+    psel(1); bag0 = ev(pg, "usedSlots()"); pg.click('[data-act="pet-send"][data-i="1"]'); pg.wait_for_timeout(80)
     check('pet_send_opens_zone_and_food_picker', pg.locator('#expZone').count() == 1 and pg.locator('#expZone option').count() == ev(pg, "DANGER_ZONES.length") and pg.locator('[data-act="pet-send-do"][data-item="감자"]').count() == 1)
     pg.select_option('#expZone', '제2구역'); pg.click('[data-act="pet-send-do"][data-item="감자"]'); pg.wait_for_timeout(80)
-    check('expedition_sent_consumes_feed', ev(pg, "state.pets[1].exp.zone")== '제2구역' and ev(pg, "countItem('감자')")== 4 and ev(pg, "setActivePet(1)")!= None and '탐험 중' in text(pg, '.pet-row >> nth=1'))
+    check('expedition_sent_consumes_feed', ev(pg, "state.pets[1].exp.zone")== '제2구역' and ev(pg, "countItem('감자')")== 4 and ev(pg, "setActivePet(1)")!= None and '탐험 중' in text(pg, '.pet-row >> nth=0') and '탐험' in text(pg, '.pet-card[data-i="1"]'))
     ff(23 * 3600); check('expedition_not_back_before_24h', ev(pg, "expReady(state.pets[1])")== False and ev(pg, "claimExpedition(1)")!= None)
     ff(3600 + 30); pg.wait_for_timeout(60)
     check('expedition_back_after_24h_toast', ev(pg, "expReady(state.pets[1])")== True)
     pg.click('#choices button:has-text("펫 돌보기")') if pg.locator('#overlay.open').count() == 0 else None
     pg.wait_for_timeout(40)
     n0 = ev(pg, "Object.values(state.inventory).flat().reduce((a,s)=>a+s.q,0)"); b0 = ev(pg, "state.pets[1].bond")
-    ev(pg, "(()=>{closeModal();openPets()})()")
+    ev(pg, "(()=>{closeModal();view.petSel=1;openPets()})()")
     pg.click('[data-act="pet-claim"][data-i="1"]'); pg.wait_for_timeout(80)
     check('expedition_claim_gives_zone_items', ev(pg, "Object.values(state.inventory).flat().reduce((a,s)=>a+s.q,0)")> n0 and ev(pg, "!state.pets[1].exp") and ev(pg, "state.pets[1].bond")== b0 + 2)
     check('expedition_loot_only_from_zone', ev(pg, """(()=>{const z=DANGER_ZONES[1],ok=new Set([...z.terrains.flatMap(t=>t.gather),...z.terrains.map(t=>t.rare),ZONE_SEEDS[z.id]]);for(let i=0;i<60;i++){state.pets[1].exp={zone:z.id,at:0};if(!expeditionLoot(state.pets[1]).every(([n])=>ok.has(n)))return false}state.pets[1].exp=null;return true})()"""))
@@ -1539,8 +1542,8 @@ with sync_playwright() as p:
     check('dev_mode_on_restores', 'dev-finish' in ev(pg, "devBtn()") and ev(pg, "canNotice()")is True)
     ev(pg, "state.money=0"); pg.click('[data-act="dev-money"]'); pg.wait_for_timeout(40)
     check('dev_panel_actions_work', ev(pg, "state.money")== 1000)
-    pg.fill('#devQty', '3'); pg.select_option('#devItem', '숲 늑대 고기'); n_meat = ev(pg, "countItem('숲 늑대 고기')"); pg.click('[data-act="dev-give"]'); pg.wait_for_timeout(40)
-    check('dev_panel_give_item', ev(pg, "countItem('숲 늑대 고기')")== n_meat + 3)
+    pg.fill('#devQty', '3'); pg.select_option('#devItem', '포유류 고기'); n_meat = ev(pg, "countItem('포유류 고기')"); pg.click('[data-act="dev-give"]'); pg.wait_for_timeout(40)
+    check('dev_panel_give_item', ev(pg, "countItem('포유류 고기')")== n_meat + 3)
     pg.click('#closeModal')
     # 개발자 모드 켜짐: 알림 채널에 말머리를 달아 공지를 쓸 수 있다
     pg.click('[data-chat="알림"]'); pg.wait_for_timeout(60)
@@ -1588,7 +1591,7 @@ with sync_playwright() as p:
     # ---------- 몬스터 드롭 / 요리 / 귀환 신호기 ----------
     ev(pg, "closeModal()")
     check('monsters_have_drops', ev(pg, "DANGER_ZONES.every(z=>z.terrains.every(t=>t.monster.drops.length>0&&t.monster.drops.every(([n,p])=>ITEMS[n]&&p>0&&p<1)))"))
-    check('beast_drop_meat_hide_magic_tissue', ev(pg, "DANGER_ZONES.every(z=>z.terrains.every(t=>t.monster.kind==='짐승'?t.monster.drops[0][0]===t.monster.name+' 고기'&&t.monster.drops[1][0]===t.monster.name+' 가죽':t.monster.drops[0][0]==='이능 조직'))"))
+    check('beast_drop_meat_hide_magic_tissue', ev(pg, "DANGER_ZONES.every(z=>z.terrains.every(t=>t.monster.kind==='짐승'?t.monster.drops[0][0]===(BEAST_CLASS[t.monster.name]||'포유류')+' 고기'&&t.monster.drops[1][0].endsWith((BEAST_CLASS[t.monster.name]||'포유류')+' 가죽'):t.monster.drops[0][0]==='이능 조직'))"))  # 10/27 분류별
     check('recipes_valid', ev(pg, "RECIPES.every(r=>ITEMS[r.out]&&Object.keys(r.mats).every(n=>ITEMS[n]||MAT_GROUPS[n])&&r.sec>0)"))
     check('meat_recipes_restore_sp', ev(pg, "['육포','구운 고기','고기 수프','매운 고기 볶음','해물 찜','생선 구이','에너지 젤'].every(n=>ITEMS[n].use.sp>=25&&RECIPES.some(r=>r.out===n))"))
     check('new_items_sellable_below_input', ev(pg, "RECIPES.every(r=>!ITEMS[r.out].sell||ITEMS[r.out].sell<=Object.entries(r.mats).reduce((s,[n,q])=>s+((ITEMS[n]?ITEMS[n].sell:Math.min(...MAT_GROUPS[n].map(m=>ITEMS[m].sell||0)))||0)*q,0)+60)"))
@@ -1830,8 +1833,8 @@ with sync_playwright() as p:
     check('pet_stroke_vs_mood_texts_differ', ev(pg, """(()=>{const i=state.petActive,p=state.pets[i];p.petAt=0;const s=petStroke(i).text,m=petAskMood(i).text;return /기분을 느끼는 것 같다\\)/.test(m)&&!/기분을 느끼는 것 같다/.test(s)&&s!==m})()"""))
     ev(pg, "[state.pets,state.petActive]=JSON.parse(window.__pb)")
     check('beast_meat_and_hide_varied', ev(pg, """(()=>{const a=DANGER_ZONES[0].terrains[0].monsters[0].drops.map(d=>d[0]),b=DANGER_ZONES[2].terrains[0].monsters[0].drops.map(d=>d[0]);
-      return a[0]==='숲 늑대 고기'&&a[1]==='숲 늑대 가죽'&&b[1].endsWith('가죽')&&b[0]!==a[0]&&MAT_GROUPS['고기'].length>=20&&!ITEMS['짐승 가죽']&&!MAT_GROUPS['가죽'].includes('짐승 가죽')&&RECIPES.find(r=>r.out==='구운 고기').mats['고기']===1})()"""))
-    check('beast_meat_usable_for_cooking', ev(pg, """(()=>{const bak=JSON.stringify(state.inventory);state.inventory['재료']=[];addItem('숲 늑대 고기',2);addItem('붉은 여우 고기',1);const rc=RECIPES.find(r=>r.out==='구운 고기'),ok=matCount('고기')===3&&canCraft(rc);state.inventory=JSON.parse(bak);return ok})()"""))
+      return a[0]==='포유류 고기'&&a[1]==='포유류 가죽'&&b[1]==='두꺼운 포유류 가죽'&&MAT_GROUPS['고기'].length===6&&!ITEMS['짐승 가죽']&&!MAT_GROUPS['가죽'].includes('짐승 가죽')&&RECIPES.find(r=>r.out==='구운 고기').mats['고기']===1})()"""))
+    check('beast_meat_usable_for_cooking', ev(pg, """(()=>{const bak=JSON.stringify(state.inventory);state.inventory['재료']=[];addItem('포유류 고기',2);addItem('조류 고기',1);const rc=RECIPES.find(r=>r.out==='구운 고기'),ok=matCount('고기')===3&&canCraft(rc);state.inventory=JSON.parse(bak);return ok})()"""))
     check('train_picks_are_random_not_in_order', ev(pg, """(()=>{const bak=JSON.stringify(state.learned);let sorted=0,runs=0;for(let k=0;k<30;k++){state.learned=[];const seq=[];for(let i=0;i<6;i++){const pool=learnableRecipes();if(!pool.length)break;const rc=pick(pool);state.learned.push(rc.out);seq.push(RECIPES.indexOf(rc))}runs++;if(seq.every((v,i)=>!i||v>seq[i-1]))sorted++}state.learned=JSON.parse(bak);return runs>0&&sorted<runs/2})()"""))
     check('situation_tab_todo_flow', ev(pg, """(()=>{const bak=JSON.stringify([state.todos,state.todoSeq,state.sitOpen,state.side]);state.todos=[];state.todoSeq=0;
       const e0=addTodo('   '),e1=addTodo('물 마시기');toggleTodo(1);addTodo('가죽 모으기');const a=state.todos.length===2&&state.todos[0].done&&!e1&&!!e0;
@@ -2012,7 +2015,7 @@ with sync_playwright() as p:
     # --- 8. 신규 아이템 / 레시피 (기존 것은 건너뛴다) ---
     check('new_items_defined', ev(pg, "['돌','달걀','나뭇가지','슬라임','마석','라벤더'].every(n=>ITEMS[n]&&ITEMS[n].sell>0)&&ITEMS['돌'].how==='채굴'&&['달걀','나뭇가지','라벤더'].every(n=>ITEMS[n].how==='채집')&&!ITEMS['슬라임'].how&&!ITEMS['마석'].how"))
     check('new_items_skip_existing', ev(pg, "(()=>{const d=ITEMS['돌'].desc,s=ITEMS['돌'].sell;defItems('재료',[['돌','x','덮어쓰기?',{sell:999}]]);const n=RECIPES.length;NEW_RECIPES.forEach(rc=>{if(!RECIPES.some(r=>r.out===rc.out))RECIPES.push(rc)});addCrop('활발 허브',{seed:'x',grow:1,yield:[1,1],feed:1,icon:'x',desc:'x'});return ITEMS['돌'].desc===d&&ITEMS['돌'].sell===s&&RECIPES.length===n&&CROPS['활발 허브'].grow===150})()"))
-    check('new_recipes_appended_at_tail', ev(pg, "RECIPES.length")== 80 and ev(pg, "RECIPES[0].out")== '응급 키트' and ev(pg, "RECIPES[44].out")== '서리 수정 지팡이' and ev(pg, "RECIPES.slice(45,59).map(r=>r.out).join()")== '달걀 프라이,라벤더 차,돌 팔찌,라벤더 향낭,나뭇가지 지팡이,슬라임 연고,마석 반지,설탕,과일 주스,계란말이,오징어구이,피라냐튀김,초코바나나,이스터에그' and ev(pg, "RECIPES.every(rc=>ITEMS[rc.out]&&Object.keys(rc.mats).every(n=>ITEMS[n]||MAT_GROUPS[n]))") and ev(pg, "new Set(RECIPES.map(r=>r.out)).size")== 80)
+    check('new_recipes_appended_at_tail', ev(pg, "RECIPES.length")== 86 and ev(pg, "RECIPES[0].out")== '응급 키트' and ev(pg, "RECIPES[44].out")== '서리 수정 지팡이' and ev(pg, "RECIPES.slice(45,59).map(r=>r.out).join()")== '달걀 프라이,라벤더 차,돌 팔찌,라벤더 향낭,나뭇가지 지팡이,슬라임 연고,마석 반지,설탕,과일 주스,계란말이,오징어구이,피라냐튀김,초코바나나,이스터에그' and ev(pg, "RECIPES.every(rc=>ITEMS[rc.out]&&Object.keys(rc.mats).every(n=>ITEMS[n]||MAT_GROUPS[n]))") and ev(pg, "new Set(RECIPES.map(r=>r.out)).size")== 86)
     check('new_recipe_ranks', ev(pg, "RECIPES.find(r=>r.out==='슬라임 연고').rank")== 'E' and ev(pg, "RECIPES.find(r=>r.out==='달걀 프라이').rank")== 'F' and ev(pg, "MEDICINES.has('슬라임 연고')"))
     check('new_materials_gatherable', ev(pg, "ACTIONS['제1구역 채석지 돌']&&ACTIONS['제1구역 채석지 돌'].kind==='gather'&&ACTIONS['제1구역 채석지 돌'].method==='채굴'&&ACTIONS['제1구역 숲 나뭇가지'].method==='채집'&&ACTIONS['제1구역 숲 달걀']&&ACTIONS['제1구역 깊은 숲 라벤더']&&!!GATHER_VERBS['돌']"))
     check('new_materials_dropped', ev(pg, "DANGER_ZONES.some(z=>z.terrains.some(t=>t.monsters.some(m=>m.kind==='이능 몬스터'&&m.drops.some(d=>d[0]==='슬라임'))))&&DANGER_ZONES.filter(z=>z.n>=2).some(z=>z.terrains.some(t=>t.monsters.some(m=>m.drops.some(d=>d[0]==='마석'))))&&DANGER_ZONES.every(z=>z.terrains.every(t=>t.monsters.every(m=>m.kind!=='짐승'||!m.drops.some(d=>d[0]==='슬라임'))))"))
@@ -2023,7 +2026,7 @@ with sync_playwright() as p:
     # --- 9. 세이브 호환: 옛 저장(새 필드 없음)을 불러와도 기본값이 채워진다 ---
     old = ev(pg, """(()=>{const o=JSON.parse(JSON.stringify(state));['tickets','questCount','gacha','actMs'].forEach(k=>delete o[k]);o.pets=[{id:Object.keys(PET_SPECIES)[0],bond:30,fedAt:0,exp:null}];const r=sanitize(merge(createDefaultState(),o));hardenState(r);
       return [r.tickets,r.questCount,r.gacha.pat,r.gacha.pulls,r.actMs,PET_PERS_LIST.includes(r.pets[0].pers),r.pets[0].bond,RECIPES.length,r.learned.length>=0]})()""")
-    check('old_save_gets_new_defaults', old == [0, 0, 0, 0, 0, True, 30, 80, True], old)
+    check('old_save_gets_new_defaults', old == [0, 0, 0, 0, 0, True, 30, 86, True], old)
     check('bad_new_fields_sanitized', ev(pg, """(()=>{const o=JSON.parse(JSON.stringify(state));o.tickets=-5;o.questCount='x';o.gacha={pat:99,pulls:-1,wins:'a'};o.actMs=NaN;o.pets=[{id:Object.keys(PET_SPECIES)[0],bond:30,fedAt:0,exp:null,pers:'없는성격'}];const r=sanitize(merge(createDefaultState(),o));hardenState(r);return r.tickets===0&&r.questCount===0&&r.gacha.pat<GACHA_SETS.length&&r.gacha.pulls===0&&r.gacha.wins===0&&r.actMs===0&&PET_PERS_LIST.includes(r.pets[0].pers)})()"""))
     # --- 10. 행동 시간 누적 → 칭호 ---
     check('title_time_flies_defined', ev(pg, "TITLES.includes('시간 가는 줄 모르는')"))
@@ -2159,7 +2162,7 @@ with sync_playwright() as p:
     pg.click('#codexRoot .post-item:has-text("저널 3")'); pg.wait_for_timeout(60)
     check('journal_click_shows_text_on_right', '온천 탐험록' in text(pg, '#codexRoot .post-detail h3') and len(text(pg, '#codexRoot .post-detail p')) >= 600 and pg.locator('#codexRoot .post-item.active:has-text("저널 3")').count() == 1)
     check('journal_locked_entries_disabled', pg.locator('#codexRoot .post-item[disabled]').count() == 7 - ev(pg, "Object.keys(state.journals).length"))
-    check('peak_title_defined_and_granted', ev(pg, "(()=>{const t=TITLE_DEFS.find(x=>x[0]==='정점에 다다른');if(!t)return false;const l=state.character.level;state.character.level=MAX_LEVEL-1;const a=t[2]();state.character.level=MAX_LEVEL;const b=t[2]();state.character.level=l;return !a&&b&&TITLES.includes('정점에 다다른')})()"))
+    check('peak_title_defined_and_granted', ev(pg, "(()=>{const t=TITLE_DEFS.find(x=>x[0]==='정점에 다다른');if(!t)return false;const l=state.character.level;state.character.level=LEVEL_CAP_BASE-1;const a=t[2]();state.character.level=LEVEL_CAP_BASE;const b=t[2]();state.character.level=l;return !a&&b&&TITLES.includes('정점에 다다른')})()"))
     check('peak_award_sets_announce_pending', ev(pg, "(()=>{const l=state.character.level;state.character.level=MAX_LEVEL;state.titles=state.titles.filter(x=>x!=='정점에 다다른');state.flags.annoMax='';awardTitles();state.character.level=l;return state.flags.annoMax==='pending'&&state.titles.includes('정점에 다다른')})()"))
     check('all_journals_give_footsteps_title', ev(pg, "(()=>{const bak=JSON.stringify(state.journals);const t=TITLE_DEFS.find(x=>x[0]==='걸음을 따라서');if(!t||!TITLES.includes('걸음을 따라서'))return false;state.journals={};const a=t[2]();const ids=Object.keys(QMARKS);ids.slice(0,-1).forEach(z=>state.journals[z]=1);const b=t[2]();state.journals[ids[ids.length-1]]=1;const c=t[2]();state.journals=JSON.parse(bak);return !a&&!b&&c&&ids.length===7})()"))
     check('every_zone_has_special_gear_and_own_quests', ev(pg, """DANGER_ZONES.every(z=>{const sp=(SHOPS[z.id]&&SHOPS[z.id].special||[]).filter(r=>ITEMS[r[0]]&&ITEMS[r[0]].tab==='장비'&&ITEMS[r[0]].slot&&ITEMS[r[0]].desc.includes(z.id+' 캠프의 특산'));const qs=QUESTS.filter(q=>q.board===z.id);const kill=qs.filter(q=>q.need.type==='kill'&&z.terrains.some(t=>t.monsters.some(m=>m.name===q.need.monster)));const item=qs.filter(q=>q.need.type==='item'&&ITEMS[q.need.name]&&z.terrains.some(t=>t.gather.includes(q.need.name)||t.rare===q.need.name));return sp.length>=1&&kill.length>=1&&item.length>=1&&qs.every(q=>(q.reward.items||[]).every(r=>!!ITEMS[r[0]]))})"""))
@@ -2202,7 +2205,7 @@ with sync_playwright() as p:
     check('billboard_has_deep_boss_rumor', ev(pg, "BILLBOARD.some(b=>b.t==='뉴스'&&b.text.includes('최심부'))") is True)
     check('billboard_event_overrides', ev(pg, "(()=>{BILLBOARD_EVENT.push('이벤트 임시 문구');const ok=bbPool().length===1&&bbPick().text==='이벤트 임시 문구';BILLBOARD_EVENT.length=0;return ok&&bbPool().length===BILLBOARD.length})()") is True)
     check('billboard_hidden_in_dungeon', ev(pg, "(()=>{state.location='제1구역';enterDungeon('제1구역');renderAction();const n=document.querySelectorAll('.billboard').length;state.dungeon=null;state.location='본부';renderAction();return n})()") == 0)
-    check('new_recipes_2026_10_24', ev(pg, "RECIPES.slice(55,59).map(r=>r.out).join()") == '오징어구이,피라냐튀김,초코바나나,이스터에그' and ev(pg, "RECIPES.length") == 80 and ev(pg, "new Set(RECIPES.map(r=>r.out)).size") == 80)
+    check('new_recipes_2026_10_24', ev(pg, "RECIPES.slice(55,59).map(r=>r.out).join()") == '오징어구이,피라냐튀김,초코바나나,이스터에그' and ev(pg, "RECIPES.length") == 86 and ev(pg, "new Set(RECIPES.map(r=>r.out)).size") == 86)
     check('easter_egg_uses_egg_group', ev(pg, "RECIPES.find(r=>r.out==='이스터에그').mats['알']") == 2)
     check('new_items_exist_and_shops', ev(pg, "['오징어구이','피라냐튀김','초코바나나','이스터에그','군용 컵라면','아이스크림 소드','노트북','초콜릿'].every(n=>ITEMS[n])") is True and ev(pg, "shopRows('보급품 상점').some(([n])=>n==='군용 컵라면')") is True and ev(pg, "shopRows('종합 상가').some(([n])=>n==='아이스크림 소드')&&shopRows('종합 상가').some(([n])=>n==='노트북')&&shopRows('종합 상가').some(([n])=>n==='초콜릿')") is True)
     check('laptop_gives_int_when_held', ev(pg, "(()=>{removeItem('노트북',countItem('노트북'));const a=totalStats().int;addItem('노트북',1);const b=totalStats().int;removeItem('노트북',1);return b===a+1})()") is True)
@@ -2247,10 +2250,10 @@ with sync_playwright() as p:
     check('buff_count_badge_hidden', ev(pg, "(()=>{const c=document.querySelector('.buff-icon .buff-count');return !c||getComputedStyle(c).display==='none'})()") is True)
     ev(pg, "(()=>{state.buffs=[];renderBuffs(true)})()")
     # 일일 의뢰
-    check('daily_quests_defined', ev(pg, "QUESTS.filter(q=>q.daily).length") == 12 and ev(pg, "new Set([...Array(40).keys()].map(i=>dailyQuestId(Date.now()+i*86400000))).size") >= 3)
+    check('daily_quests_defined', ev(pg, "QUESTS.filter(q=>q.daily===true).length") == 13 and ev(pg, "new Set([...Array(40).keys()].map(i=>dailyQuestId(Date.now()+i*86400000))).size") >= 3)
     check('daily_same_within_day', ev(pg, "(()=>{const t=Date.UTC(2026,9,24,3,0,0),b=Date.UTC(2026,9,23,19,0,0);return dailyQuestId(t)===dailyQuestId(t+3600000*10)&&todayIndex(b+3600000)!==todayIndex(b-3600000)&&todayIndex(b+3600000)===todayIndex(b+3600000*20)})()") is True)
     ev(pg, "(()=>{state.location='본부';state.questTaken={};state.questDone={};openQuestBoard()})()")
-    check('board_lists_exactly_five_dailies', ev(pg, "QUESTS.filter(q=>q.daily&&document.querySelector('#modalBody').textContent.includes(q.title)).length") == 5, text(pg, '#modalBody')[:100])
+    check('board_lists_exactly_five_dailies', ev(pg, "QUESTS.filter(q=>q.daily===true&&document.querySelector('#modalBody').textContent.includes(q.title)).length") == 5, text(pg, '#modalBody')[:100])
     ev(pg, "closeModal()")
     check('daily_quest_completable', ev(pg, """(()=>{const q=QUESTS.find(x=>x.id===dailyQuestId());state.questTaken={};state.questDone={};state.location='본부';const e=takeQuest(q.id);if(e)return e;needParts(q).forEach(n=>{if(n.type==='item')addItem(n.name,n.qty);if(n.type==='kill')state.qprog[progKey(q,0)]=n.qty});const r=completeQuest(q.id);return !!r&&!!state.questDone[q.id]})()""") is True)
     ev(pg, "(()=>{state.questTaken={};state.questDone={};state.qprog={}})()")
@@ -2353,8 +2356,8 @@ with sync_playwright() as p:
         for(const k of ['t','b','g','i']){let ok=false;for(let i=0;i<40;i++){const l=equipLine(k,Math.random);if(l){ok=true;if(/undefined|\\$\\{|이\\(가\\)|을\\(를\\)|[가-힣]{2,}(을|를)\\s?(을|를)/.test(l)&&/undefined|\\$\\{/.test(l))bad.push([w,k,l])}}if(!ok)bad.push([w,k,'empty'])}}
       state.equipment['무기']=old;return bad.length?bad.slice(0,4):true})()"""))
     check('gather_log_and_investigate_accept_equip', ev(pg, "typeof equipLine('g',Math.random)==='string'&&typeof equipLine('i',Math.random)==='string'"))
-    check('chat_tabs_default_all_on', ev(pg, "CHAT_TABS.join()==='월드,길드,파티,알림'&&CHAT_TABS.every(k=>state.settings.chatTabs[k]===true)"))
-    check('chat_tabs_harden', ev(pg, "(()=>{const s=JSON.parse(JSON.stringify(state));s.settings.chatTabs={월드:false,길드:false,파티:false,알림:false};hardenState(s);const a=Object.values(s.settings.chatTabs).every(Boolean);s.settings.chatTabs={월드:false};s.chatTab='월드';hardenState(s);return a&&s.chatTab==='길드'})()"))
+    check('chat_tabs_default_all_on', ev(pg, "CHAT_TABS.join()==='월드,길드,파티,RP,알림'&&CHAT_TABS.every(k=>state.settings.chatTabs[k]===true)"))
+    check('chat_tabs_harden', ev(pg, "(()=>{const s=JSON.parse(JSON.stringify(state));s.settings.chatTabs={월드:false,길드:false,파티:false,RP:false,알림:false};hardenState(s);const a=Object.values(s.settings.chatTabs).every(Boolean);s.settings.chatTabs={월드:false};s.chatTab='월드';hardenState(s);return a&&s.chatTab==='길드'})()"))
     check('party_offline_state_empty', ev(pg, "PARTY.id===0&&partyOthers().length===0"))
     check('old_save_gets_leisure_and_tabs', ev(pg, "(()=>{const s=JSON.parse(JSON.stringify(state));delete s.leisure;delete s.settings.chatTabs;delete s.character.mainStat;hardenState(s);return s.leisure.day===-1&&s.leisure.id===''&&s.settings.chatTabs['파티']===true&&s.character.mainStat===''})()"))
     # ---- 쿨타임 중 주/부 스탯 최초 설정 · 도감 검색 ----
@@ -2438,7 +2441,7 @@ with sync_playwright() as p:
     check('settings_select_applies_immediately', ev(pg, "state.settings.fontSize") == 'l')
     pg.select_option('#fontSize', 'm'); pg.wait_for_timeout(60)
     ev(pg, "CHAT_TABS.forEach(k=>{state.settings.chatTabs[k]=true})")
-    for k in ['월드', '길드', '파티']: sw('ctab_' + k, False)
+    for k in ['월드', '길드', '파티', 'RP']: sw('ctab_' + k, False)
     pg.wait_for_timeout(40); sw('ctab_알림', False); pg.wait_for_timeout(60)
     check('settings_last_chat_tab_cannot_be_turned_off', ev(pg, "state.settings.chatTabs['알림']") is True and pg.locator('#ctab_알림').is_checked())
     for k in ['월드', '길드', '파티']: sw('ctab_' + k, True)
@@ -2447,7 +2450,7 @@ with sync_playwright() as p:
     check('promo_a_defined', ev(pg, "PROMO_ORDER.join('')")== 'FEDCBA' and ev(pg, "(()=>{const q=QUESTS.find(x=>x.promo==='A');return !!q&&q.lv===20&&q.reward.items.some(i=>i[0]==='선봉 배낭')&&q.need.parts.filter(p=>p.type==='kill').every(p=>DANGER_ZONES.some(z=>z.terrains.some(t=>t.monsters.some(m=>m.name===p.monster))))&&q.need.parts.filter(p=>p.type==='item').every(p=>!!ITEMS[p.name])})()"))
     check('rank_a_bag_and_title', ev(pg, "ITEMS['선봉 배낭'].capacity")== 60 and ev(pg, "TITLES.includes('에이스 대원')") and ev(pg, "(()=>{const t=TITLE_DEFS.find(x=>x[0]==='에이스 대원');const r=state.character.rank;state.character.rank='A';const a=t[2]();state.character.rank='B';const b=t[2]();state.character.rank=r;return a&&!b})()"))
     check('promo_difficulty_scales_with_a_hardest', ev(pg, "(()=>{const t=['e','d','c','b','a'].map(k=>{const ps=QUESTS.find(q=>q.id==='promo_'+k).need.parts;return{k:ps.filter(p=>p.type==='kill').reduce((a,p)=>a+p.qty,0),r:ps.find(p=>p.type==='recipe').qty,i:ps.filter(p=>p.type==='item').reduce((a,p)=>a+p.qty,0)}});return t.every((x,i)=>i===0||(x.k>t[i-1].k&&x.r>t[i-1].r&&x.i>t[i-1].i))&&t[4].k>=40&&t[4].r>=50&&t[4].r<=RECIPES.length-STARTER_RECIPES.length})()"))
-    check('next_promo_after_b_is_a', ev(pg, "(()=>{const r=state.character.rank;state.character.rank='B';const q=nextPromo();state.character.rank='A';const e=nextPromo();state.character.rank=r;return q&&q.promo==='A'&&e===null})()"))
+    check('next_promo_after_b_is_a', ev(pg, "(()=>{const r=state.character.rank;state.character.rank='B';const q=nextPromo();state.character.rank='A';const e=nextPromo();state.character.rank=r;return q&&q.promo==='A'&&e&&e.id==='limit_35'})()"))  # 10/27 A 다음은 한계 돌파
 
     # ---------- 2026-10-24 (3): 내 프로필 보기 · HP 10/클론 · UI 기본값 · ROOM 구경 · 디버프 · 칭호 슬라이드 · 낚시터 · 분실물 · 펫 간식 · 서브잡 숙련 · 사마리아인 · 마지막 저널 · 대원 구조 ----------
     ev(pg, "closeModal()")
@@ -2534,7 +2537,7 @@ with sync_playwright() as p:
     check('rescue_loss_never_kills', r == [False, False, True, '제1구역'], r)
     check('rescue_zone_cooldown', ev(pg, "(()=>{const z=zoneOf('제1구역');for(let sd=1;sd<300;sd++)for(let y=0;y<z.map.length;y++)for(let x=0;x<z.map[y].length;x++)if(terrainIndex(tileOf(z,x,y))>=0&&rescueShown(z,x,y,sd))return false;return true})()"))
     ev(pg, "(()=>{state.rescueAt={};state.dungeon=null;state.location='본부';state.vitals.hp=state.vitals.hpMax;renderBars();renderMap();renderAction()})()")
-    check('patch_notes_mention_rescue_not_hidden_stuff', (lambda t: '대원 구하기' in t and '사마리아인' not in t and '분실물' not in t)(ev(pg, "POSTS['공지'][0][1]")))
+    check('patch_notes_mention_rescue_not_hidden_stuff', '대원 구하기' in ev(pg, "POSTS['공지'].map(p=>p[1]).join()") and all('사마리아인' not in t and '분실물' not in t and '저널' not in t and '파비콘' not in t for t in ev(pg, "POSTS['공지'].slice(0,2).map(p=>p[1])")))
 
     # ---------- 2026-10-24 (4): 펫 허기 · 이모티콘 · 스탯 칭호 · 배달의 민족 ----------
     r = ev(pg, """(()=>{const id=Object.keys(PET_SPECIES)[0],bak=state.pets,loc=state.location,pa=state.petActive;state.location='개인실';state.pets=[{id,lv:1,pxp:0,acc:'',bond:100,fedAt:0,full:0,fullAt:Date.now(),decayAt:Date.now(),exp:null,pers:PET_PERS_LIST[0]}];state.petActive=-1;
@@ -2542,15 +2545,15 @@ with sync_playwright() as p:
       p.full=0;p.fullAt=Date.now()-1;p.decayAt=0;const t=Date.now;Date.now=()=>t()+13*3600*1000;petHungerTick();out.push(p.bond);Date.now=t;
       p.full=100;p.fullAt=Date.now()-12*3600*1000;out.push(Math.round(petFull(p)));
       state.pets=bak;state.location=loc;state.petActive=pa;return out})()""")
-    check('pet_hunger_fill_full_and_decay', r == [False, 60, 100, None, 0, 100, 96, 50], r)
+    check('pet_hunger_fill_full_and_decay', r[:7] == [False, 60, 100, None, 0, 100, 96] and r[7] in (74, 75), r)  # 10/27 친밀도 100이면 2배 느리게 (12시간 뒤 75)
     check('two_snacks_a_day_keep_pet_fed', ev(pg, "(()=>{const g=feedFull('감자');return g*2>=PET_FULL_MAX&&g>=PET_FULL_MAX*12*3600*1000/PET_FULL_DRAIN_MS})()"))
     check('old_pet_fedat_converts_to_fullness', ev(pg, """(()=>{const h=JSON.parse(JSON.stringify(state));h.pets=[{id:Object.keys(PET_SPECIES)[0],bond:30,fedAt:Date.now()-12*3600*1000,exp:null}];hardenState(h);const p=h.pets[0];return Math.abs(p.full-50)<=1&&Number.isFinite(p.fullAt)&&Number.isFinite(p.decayAt)})()"""))
     check('pet_on_expedition_does_not_starve', ev(pg, """(()=>{const id=Object.keys(PET_SPECIES)[0],bak=state.pets;state.pets=[{id,bond:80,full:0,fullAt:0,decayAt:0,exp:{zone:'제1구역',at:Date.now(),ms:PET_EXP_MS}}];petHungerTick();const b=state.pets[0].bond;state.pets=bak;return b===80})()"""))
     check('stickers_v2', ev(pg, "STICKERS.map(s=>s[0]).join()") == '인사,확인,감사,웃음,응원,슬픔,신남,당황,걱정,잘 자' and ev(pg, "STICKERS_OLD.length") == 2)
     check('old_sticker_still_renders', ev(pg, "(()=>{const bak=state.chats['월드'].slice();state.chats['월드'].push(['누군가','[주의]',Date.now()]);state.chatTab='월드';renderChat();const ok=document.querySelectorAll('#chatFeed .sticker-msg').length>0&&[...document.querySelectorAll('#chatFeed .sticker-msg')].some(e=>e.title==='주의');state.chats['월드']=bak;renderChat();return ok})()"))
     r = ev(pg, """(()=>{const bs=JSON.stringify(state.stats),bt=state.titles.slice(),bp=JSON.stringify(state.statPeak||{});state.titles=state.titles.filter(t=>!Object.values(STAT_PEAK_TITLES).includes(t));state.statPeak={};
-      state.buffs=[];state.stats.str=0;const off=totalStats().str;state.stats.str=Math.max(0,38-off);checkTitles();const a=state.titles.includes('강함의 증표')||totalStats().str!==38;addBuff('여가 · '+Object.keys(LEISURE).find(k=>LEISURE[k].stat==='str'));checkTitles();const b=state.titles.includes('강함의 증표')&&totalStats().str===40;
-      state.stats.str=1;state.buffs=[];checkTitles();const c=state.titles.includes('강함의 증표')&&(state.statPeak.str|0)>=40;
+      state.buffs=[];state.stats.str=0;const off=totalStats().str;state.stats.str=Math.max(0,28-off);checkTitles();const a=state.titles.includes('강함의 증표')||totalStats().str!==28;addBuff('여가 · '+Object.keys(LEISURE).find(k=>LEISURE[k].stat==='str'));checkTitles();const b=state.titles.includes('강함의 증표')&&totalStats().str===30;
+      state.stats.str=1;state.buffs=[];checkTitles();const c=state.titles.includes('강함의 증표')&&(state.statPeak.str|0)>=30;
       state.stats=JSON.parse(bs);state.titles=bt;state.statPeak=JSON.parse(bp);return [a,b,c,Object.values(STAT_PEAK_TITLES).every(n=>TITLE_DEFS.some(t=>t[0]===n))]})()""")
     check('stat_peak_titles_with_buffs_and_kept', r == [False, True, True, True], r)
     r = ev(pg, """(()=>{const bt=state.titles.slice(),bf=state.friends.slice(),bm=state.mailItemSent;state.titles=state.titles.filter(t=>t!=='배달의 민족');state.friends=['배달테스트'];state.mailItemSent=18;addItem(MAIL_SHIP_ITEM,3);addItem('감자',3);

@@ -109,7 +109,12 @@ def api(route):
     if '/rpc/guild_rename' in u: server['gcalls'].append(['rename', body]); (server['ginfo'].get('guild') or {}).update({'name': body.get('p_name')}); return route.fulfill(headers=h, body=json.dumps({'ok': True}))
     if '/rpc/guild_leave' in u: server['gcalls'].append(['leave', body]); server['ginfo']['guild'] = None; return route.fulfill(headers=h, body='null')
     if '/rpc/announce_rank' in u: server.setdefault('anno', []).append(body.get('p_rank')); return route.fulfill(headers=h, body=json.dumps({'ok': not server.get('annofail'), 'msg': 'not_yet'}))
-    if '/rpc/chat_fetch' in u: return route.fulfill(headers=h, body=json.dumps([m for m in server['chat'] if m['id'] > body.get('p_after', 0)]))
+    if '/rpc/chat_fetch_all' in u: # 10/27: 켜 둔 채널을 한 번에 (world=server['chat'], rp=server['rp'], 그 외는 빈 목록)
+        server['fetch_all'] = server.get('fetch_all', 0) + 1; aft = body.get('p_after') or {}
+        if server.get('noall'): return route.fulfill(status=404, headers=h, body=json.dumps({'message': 'Could not find the function public.chat_fetch_all'}))
+        src = {'world': server['chat'], 'rp': server.get('rp', [])}
+        return route.fulfill(headers=h, body=json.dumps({k: [m for m in src.get(k, []) if m['id'] > (aft.get(k) or 0)] for k in aft}))
+    if '/rpc/chat_fetch' in u: server['fetch_one'] = server.get('fetch_one', 0) + 1; return route.fulfill(headers=h, body=json.dumps([m for m in server['chat'] if m['id'] > body.get('p_after', 0)]))
     if '/rpc/get_profile' in u:
         return route.fulfill(headers=h, body=json.dumps({'uid': '33333333-3333-3333-3333-333333333333', 'name': body.get('p_name'), 'title': '신입 능력자', 'rank': 'E', 'level': '7', 'age': '24', 'keywords': '과묵,정찰', 'ability': '그림자 이동', 'abilityDesc': '그림자 사이를 건넌다', 'online': True, 'guild': '별무리'}) if body.get('p_name') == '하늘' else 'null')
     if '/rpc/chat_send' in u: server['chatsent'].append(body); return route.fulfill(headers=h, body=json.dumps({'ok': True}))
@@ -285,6 +290,20 @@ with sync_playwright() as p:
     pg.evaluate("chatPoll()"); pg.wait_for_timeout(700)
     check('rank_announcement_rendered_centered', pg.locator('#chatFeed .msg-sys').count() == 1 and 'A급으로 승급' in pg.inner_text('#chatFeed .msg-sys') and pg.evaluate("getComputedStyle(document.querySelector('#chatFeed .msg-sys')).justifyContent") == 'center' and pg.locator('#chatFeed .msg').count() == 4, pg.locator('#chatFeed .msg-sys').count())
     check('fake_sys_flag_ignored', pg.evaluate("view.chatSrv['월드'].filter(r=>r[5]).length") == 1)
+    # ── 10/27: 채팅은 요청 한 번(chat_fetch_all), RP 채널, 만렙 공지도 가운데 공지 ──
+    f0 = [server.get('fetch_all', 0), server.get('fetch_one', 0)]; pg.evaluate("chatPoll()"); pg.wait_for_timeout(500)
+    check('chat_uses_single_fetch_all', server.get('fetch_all', 0) == f0[0] + 1 and server.get('fetch_one', 0) == f0[1], [f0, server.get('fetch_all'), server.get('fetch_one')])
+    server['rp'] = [{'id': 7, 'name': '하늘', 'body': '(창밖을 본다)', 'uid': '11111111-1111-1111-1111-111111111111', 'at': '2026-10-21T09:04:00Z'}]
+    server['chat'].append({'id': 6, 'name': '미나', 'body': '미나님이 최고 레벨에 도달해 정점에 다다르셨습니다. 축하합니다!', 'uid': '11111111-1111-1111-1111-111111111111', 'at': '2026-10-21T09:03:30Z', 'sys': 'rank:MAX'})
+    pg.evaluate("chatPoll()"); pg.wait_for_timeout(500)
+    check('max_level_announce_centered', pg.locator('#chatFeed .msg-sys').count() == 2 and '정점' in pg.inner_text('#chatFeed .msg-sys >> nth=1'), pg.inner_text('#chatFeed')[-200:])
+    pg.evaluate("state.chatTab='RP';renderChat()"); pg.wait_for_timeout(100)
+    check('rp_channel_from_server', '창밖을 본다' in pg.inner_text('#chatFeed') and pg.evaluate("view.chatLast['RP']") == 7)
+    pg.evaluate("chatPoll()"); pg.wait_for_timeout(400)
+    check('rp_chat_send_channel', (pg.fill('#chatInput', '(고개를 끄덕인다)') or pg.press('#chatInput', 'Enter') or True) and (pg.wait_for_timeout(300) or True) and any(c.get('p_channel') == 'rp' for c in server['chatsent']), server['chatsent'][-2:])
+    server['noall'] = True; pg.evaluate("view._noAll=false;chatPoll()"); pg.wait_for_timeout(600)
+    check('chat_fetch_all_missing_falls_back', pg.evaluate("view._noAll") is True and server.get('fetch_one', 0) > f0[1])
+    server['noall'] = False; pg.evaluate("view._noAll=false;state.chatTab='월드';renderChat()")
     pg.evaluate("state.flags.annoA='pending';announceRankA()"); pg.wait_for_timeout(900)
     check('rank_announce_calls_server_once_done', server.get('anno') == ['A'] and pg.evaluate("state.flags.annoA") == 'done', server.get('anno'))
     pg.evaluate("announceRankA()"); pg.wait_for_timeout(300)
@@ -381,7 +400,7 @@ with sync_playwright() as p:
     ev("state.vitals.sp=state.vitals.spMax")
     # 파티장은 자기 위치만 올린다
     saved_party = json.loads(json.dumps(server['party']))
-    ev("(()=>{window.__uid0=Cloud.userUid;Cloud.userUid='77777777-7777-7777-7777-777777777777';PARTY.members=[{uid:Cloud.userUid,name:'나',leader:true,online:true,place:''}];PARTY.id=3;view.placeSent='';state.location='상점가';state.dungeon=null})()")
+    ev("(()=>{window.__uid0=Cloud.userUid;Cloud.userUid='77777777-7777-7777-7777-777777777777';PARTY.members=[{uid:Cloud.userUid,name:'나',leader:true,online:true,place:''}];PARTY.id=3;view.placeSent='';state.location='상점가';state.dungeon=null;_pollAt.party=Date.now()+1e8})()")  # 10/27: 배경 파티 확인(POLLS.party)이 끼어들지 않게
     ev("partyPlacePush()"); pg.wait_for_timeout(400)
     check('leader_pushes_place', server.get('places') and server['places'][-1] == '상점가', [server.get('places'), ev("[partyLeader(),partyOn(),!!PARTY.id]")])
     n0 = len(server.get('places', []))
@@ -419,7 +438,7 @@ with sync_playwright() as p:
     ev("(()=>{state.partyMove=false;state.follow=false})()")
     server['party'] = {'party': None, 'incoming': []}; ev("view.partyAt=0"); ev("partySync()"); pg.wait_for_timeout(300)
     check('follow_off_without_party', ev("state.follow") is False and ev("PARTY.id") == 0)
-    ev("Cloud.userUid=window.__uid0"); server['party'] = saved_party; ev("partySync()"); pg.wait_for_timeout(400)
+    ev("Cloud.userUid=window.__uid0;_pollAt.party=0"); server['party'] = saved_party; ev("partySync()"); pg.wait_for_timeout(400)
     # ---------- 실시간 교환 ----------
     LT = lambda: [c[0] for c in server.get('ltcalls', [])]
     pg.evaluate("state.trades={day:'',n:0};state.mail=[];state.bench=null;state.ltSeen=[];view.lt=null;removeItem('목재',countItem('목재'));addItem('목재',6);removeItem('약초',countItem('약초'));addItem('약초',1)")
@@ -648,7 +667,7 @@ with sync_playwright() as p:
     check('sync_without_head_rpc_falls_back', server.get('pulls', 0) == p1 + 1 and pg.evaluate("_noHead") is True)
     server['nohead'] = False
     check('poll_mode_idle_after_5min', pg.evaluate("(()=>{const b=_lastInput;_lastInput=Date.now()-6*60*1000;const m=pollMode();_lastInput=b;return m})()") == 'idle' and pg.evaluate("pollMode()") == 'active')
-    check('idle_polls_less_often', pg.evaluate("Object.values(POLLS).every(p=>{const a=typeof p[1]==='function'?p[1]():p[1];return p[2]>=a&&(p[3]===null||p[3]>=p[2])})"))
+    check('idle_polls_less_often', pg.evaluate("Object.values(POLLS).every(p=>{const g=v=>typeof v==='function'?v():v,a=g(p[1]),i=g(p[2]),h=g(p[3]),w=g(p[4]);return i>=a&&(h===null||h>=i)&&(w===null||w>=i)})") and pg.evaluate("(()=>{const b=_lastInput;_lastInput=Date.now()-16*60*1000;const m=pollMode();_lastInput=b;return m})()") == 'away')
     n0 = len(server.get('nbcalls', [])); pg.evaluate("(()=>{view.nbSent=locKey();_pollAt.nearby=Date.now();pollTick()})()"); pg.wait_for_timeout(300)
     n1 = len(server.get('nbcalls', [])); pg.evaluate("(()=>{view.nbSent='제9구역:0,0';_pollAt.nearby=0;Object.keys(POLLS).forEach(k=>{if(k!=='nearby')_pollAt[k]=Date.now()});pollTick()})()"); pg.wait_for_timeout(300)
     check('location_sent_only_when_changed', n1 == n0 and len(server.get('nbcalls', [])) == n0 + 1, [n0, n1, len(server.get('nbcalls', []))])

@@ -288,3 +288,34 @@ STUB_ICONS=1 python3 tests/smoke.py   # 아이콘 폰트를 못 받는 환경(�
 - 퀵슬롯 `#quickBar`(state.quick 8칸·`quickSet/quickClear`, 클릭=1개 사용, 우클릭=빼기, 소리 3개 토글, 펼치기 `state.quickOpen`, 설정 `settings.quickBar`, ≤1200px 숨김). 먹이통 `state.petBowl`(`bowlAutoFeed`), 운동 숙련(사냥 승리 `MASTERY_GAIN.hunt`, 드롭 아이템 '운동' 태그), 승리 디버프 `WIN_DEBUFF`, SOS `RESCUE_APPEAR` .03, 지도 헤더 위험도(`DANGER_LEVELS`), 임무↔채팅 높이(`layout.questH`), 농장 알림 `plot.told`, '단련' 표시 이름은 '속성학습'(ACTIONS 키는 그대로).
 - HUD 보정(10/25): 탭 제목은 원래 글씨·높이 34px 통일·강조줄 없음, 대각선 테두리는 남는 쪽에 그림, HP바는 기울어진 20칸(합성 레이어 skew로 계단 없이, px 칸), 작은 버튼·탭·칩·채팅 화면·퀵슬롯도 잘린 모서리 + 잘린 자리 테두리 선(background-origin:border-box), 퀵슬롯 위쪽(top 78px), 시간·날씨 아래 정렬, 지도: 휠 확대·축소 + 빈 곳 왼쪽 끌기 이동(타일·노드 클릭은 그대로).
 - HUD 테두리 정밀(10/25): 패널·창은 배경=테두리색 + ::before 안쪽 도형(--icut = cut-0.59px, 단말기 2px은 -1.17px)으로 대각선도 1px. 작은 버튼은 1px 그라데이션 선. 안전지대 지도 노드는 원래 동그라미. 퀵슬롯 여백 .app padding-right 58px.
+
+## 2026-10-27 1차 (UI · 아이템 · 밸런스 · 임무 · 펫 · 요청 줄이기 · 칭호)
+- 요청 줄이기: 채팅은 `chat_fetch_all(p_after jsonb)` 한 번(월드·길드·파티·RP, 없으면 `view._noAll`로 예전 채널별), 친구·메일·교환·길드는 `poll_inbox()` 한 번(`Cloud.prefetchInbox`가 받아 두고 각 함수가 한 번씩 꺼내 씀, finally에서 `clearPrefetch`). 파티는 `POLLS.party`(20초, 동행 중 3초). `pollMode`에 'away'(15분 무조작, `AWAY_MS`) 열 추가 — POLLS 배열은 [함수, active, idle, hidden, away]. 돌아오면 `pollWake`. 측정(모의 서버): 분당 조작 중 20.6→14.2, 자리 비움 14.6→5.4, 15분+ 0.6. **friends.sql 재실행 필요**.
+- 오래 켜 두기: 미리보기 3시간 시뮬레이션에서 힙·DOM·리스너 증가 없음. 채팅은 내용이 같으면 다시 그리지 않음(`view.chatHtml`). 로그 `LOG_KEEP`=60.
+- 채팅 RP 탭(`CHAT_TABS`에 'RP', 서버 채널 'rp'), 알림 탭은 `.bell-tab`(정사각형, renderChat에서 너비=높이). 파비콘: Cinzel Decorative Black 'D' 글리프 경로를 SVG data URI로 index/signup에 넣음(패치노트 금지).
+- 고기·가죽 분류: `BEAST_CLASS`(몬스터→포유류/조류/파충류/양서류/어류/절지류, 없으면 포유류), 아이템 `○○ 고기`, `○○ 가죽`, 제3구역부터 `두꺼운 ○○ 가죽`. 옛 이름은 `BEAST_LEGACY`→`LEGACY_ITEMS`, 불러올 때 칸 합치기(`mergeStacks`), 메일·거래·대기 결과·도감도 `legacyName`. 새 짐승은 BEAST_CLASS에 한 줄.
+- 분실물 보관함 `state.lostBox`(`LOSTBOX_SLOTS`=5, 본부 ACTIONS '분실물 보관함' kind 'lostbox'): `claimResult`·`claimExpedition`에서 못 담은 보상(`boxed`). 가방 가득(`bagFull`)이면 채집·전투·조사·길들이기·구조 시작 전 `bagFullWarn`(`BAG_FULL_MSG`).
+- 캠프 신호기 `${구역} 캠프 신호기`(use.camp, 그 구역 캠프 special 70CR): `campsOf(zone)`(둘이면 북/남·서/동), `useBeacon(name, ci)`, UI `openBeacon`. useItem은 camp를 처리하지 않는다.
+- 레벨: `MAX_LEVEL`=35(절대), `LEVEL_CAP_BASE`=30, `levelCap()`(flags.cap35). 임무 `limit_35`(cap, lv 30, A등급 다음 `nextPromo`), `isTaken`에 q.cap 포함. 칭호 '정점에 다다른'은 Lv30, '한계를 넘어선' Lv35.
+- 칭호: `STAT_PEAK_NEED` 30, '맡은 바를 다 하는'(questCount≥40), '그럼에도 나 자신'(flags.rpChat), '승부다!'(flags.duel — 대련은 2차), '장사꾼'(flags.marketSell), '주머니가 두둑한'(`crEarned`≥5000, checkTitles에서 money 증가분 누적), 레시피 칭호 `CRAFT_TITLES` 30/40/50(만들어 본 레시피 수 = codex.recipes, 높은 것을 얻으면 낮은 것 교체). 도감 '칭호' 탭 `titleCodexHtml`, `HIDDEN_TITLES`는 얻기 전 ???.
+- 운동 숙련 Lv-1 만큼 소지품 칸(`exerciseSlots`, bagCapacityFor). 제작 숙련 배수 `CRAFT_MASTERY_MULT`(재봉·목공·대장·가죽공예·보석공예·약학 ×2), 쉬운 레시피 `EASY_RECIPES` 6종.
+- 임무: `daily:'ws'` 공방 의뢰(본부, 하루 2개), `daily:'camp'` 구역 고유 재료·물고기(`CAMP_QUESTS`, 하루 2개), `rotPick`/`boardDailyOk`(게시판 필터). 본부 일일 의뢰에 '신선한 생선'.
+- 펫: 새 종 `PET_WILD`(몬스터 아님, 지형 칸에 `PET_WILD_APPEAR`, 행동 `t.tameId2`, `a.pet`, `tameShown2`). 허기 `petDrainMs`(친밀도 100이면 2배 느림), 탐험은 먹이통이 있으면 먼저 거기서(`bowlCheapest`, `BOWL_BAIT`). 펫 돌보기 그리드 `.pet-card`(`view.petSel`, 선택한 펫만 상세), 간식 후 스크롤 유지(`view.petScroll`).
+- 동행: 이동 시작 시 `set_place(..., p_eta)` 남은 ms → 서버 `presence.eta_at`, `party_info` 멤버 `eta` → `etaAt` → `followStep(raw, eta)`가 `syncArrive`로 같은 때 도착(0.25~2배). 동행 묘사는 `travelLogFor` 첫 줄. 만렙 공지 `sys='rank:MAX'`를 가운데 공지로(정규식 수정).
+- UI: 결과 카드는 새 행동 시작 시 비움, 스탯 별은 `.stat-head` 안, 소모품 회복 미리보기 `gainBarsHtml`/`renderBars(pv)`(퀵슬롯 hover), 프로필 사진 `AVATAR_PX` 300 + 서버 `avatars.big`(`set_avatar_big/get_avatar_big`, 누르면 `openAvatarZoom`), 퀵슬롯 top은 `quickTop()`(오른쪽 열 top), 상단 줄 구분선 제거·오른쪽 끝 정렬.
+- 퀵슬롯 사용 후 지도 확대가 초기화되는 문제는 재현되지 않았다(월드·미궁, 휠 확대 후 퀵슬롯 사용 모두 유지).
+
+## 2026-10-27 2차 훈련장
+- 안전지대 `훈련장`(SAFE_ZONES, x20 y64): '대련장'(kind duel) · '보스전 안내'(bossinfo, 보스는 아직 없음) · '훈련 메시지'(tmsg, `state.trainMsg` help/win/lose ≤ `DUEL_MSG_MAX`).
+- 대련: 서버(friends.sql 끝 `duel_rooms/duel_members`, RPC `duel_list/create/join/leave/start/view`, `_duel_snap`이 능력치 범위·이름을 서버 기준으로 자름)는 방·팀·시드만 정한다. 모든 기기가 `duelSim(fighters, seed)`(core, seededRng, 참가 순서 = joined_at)로 같은 결과. D6 배율 `DUEL_D6`, 묘사 `DUEL_LINES`(주 능력 × 5단계) · `DUEL_SUB`(부 능력) · `DUEL_DODGE` · `DUEL_KO`, `duelText`. UI `openDuel`(연습 1:1~1:3 `duelDummies`, 서버 방 목록) → `openDuelRoom`(2초 `duelPollRoom`) → `duelPlay`(`DUEL_LINE_MS`마다 한 줄, 끝나면 승패·대사, `flags.duel` → 칭호 '승부다!', `state.duelSeen`). 창을 닫으면 열린 방에서 나간다(closeModal). 보상 없음.
+- 컷인 시안 3종: 저장소 밖(scratchpad/cutin_mockups.html). 보스전을 만들 때 고른 시안으로.
+- 3차(저널 이후 '?' 선택지·일기)는 초안만(scratchpad/hidden_draft_3cha.md), 사용자 확인 전 게임에 넣지 않음.
+- 테스트: `python3 tests/feat_test.py` (1차·2차 기능, 빠름).
+
+## 2026-10-27 (3) 피드백 패치
+- 보스전 지원 컷인은 **A안(사선 띠)** 으로 결정 (scratchpad/cutin_mockups.html, 보스전 구현 때 사용).
+- '?' 칸 저널 이후 선택지(히든): `QMARK_ACTS`(data.js 끝, 구역마다 3개, solo 5 · p2/p3/p4 각 3, {1}{2}{3}=파티원), ACTIONS `${구역} 머무르기 N`(kind lounge, `act`), `allJournals()`일 때만 '?' 칸에 보임, `state.qact[구역]` 비트. 일기(3개 다 하면 열림)는 보류 — 아직 없음.
+- 지도 칸 아이콘 크기는 원래대로(17·20px, 가운데 정렬만), 상단 줄 아래 구분선 복구.
+- 임무 순환: 캠프 고정 임무도 순환 목록에 넣음(kill → `daily:'campk'` `CAMP_KILLS`, item → `daily:'camp'` `CAMP_QUESTS`), 구역 몬스터마다 `ck_N_이름` 사냥 의뢰, 본부 `hk_N_이름` '수배 · ○○ 사냥'(`HQ_HUNTS`, 하루 `HQ_HUNT_DAILY`). `boardDailyOk`는 let(뒤에서 감쌈).
+- 레시피 분야 `craftField`(제작 탭 `.tag.field`, 도감 설명 앞 [분야]). 투두 '모두 체크/해제'(`todo-all`). 남의 프로필 장비에 히든 장비(안대)도 표시. 모바일 내 프로필 `.profile-card` 줄바꿈.
+- 캠프별 임무(10/27): 캠프가 둘인 구역은 으로 같은 날 2n개를 뽑아 캠프 순서(campsOf)대로 나눔. 게시판은 지금 서 있는 캠프 번호 ci로 .

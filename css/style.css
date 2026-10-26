@@ -1357,3 +1357,80 @@ button.primary{--bd:var(--primary-line)}
 .panel.chat-panel.terminal{--pline:var(--bezel-line);--pbg:var(--bezel);--icut:calc(var(--cut) - 1.17px)} /* 단말기 테두리는 2px */
 /* 작은 버튼·탭·칩의 잘린 자리 선도 테두리와 같은 1px */
 button.primary,.tabs button,.chips .chip,.chip{background-image:linear-gradient(to bottom right,transparent 50%,var(--bd,var(--btn-line)) 50%,var(--bd,var(--btn-line)) calc(50% + 1px),transparent calc(50% + 1px)),linear-gradient(to bottom right,transparent calc(50% - 1px),var(--bd,var(--btn-line)) calc(50% - 1px),var(--bd,var(--btn-line)) 50%,transparent 50%)!important}
+/* ---------- 2026-10-26 UI 정리 ---------- */
+/* 버튼 안 아이콘을 글자와 세로 가운데로 (퀵슬롯 등록·버리기 등) */
+button>.material-symbols-rounded{vertical-align:middle;position:relative;top:-.06em}
+/* 지도 칸: 아이콘을 칸 크기에 맞춰 정확히 가운데 */
+.tile>.material-symbols-rounded{display:block;margin:auto} /* 크기는 원래대로(17px·20px), 가운데만 */
+.tile .pawn{margin:auto}
+/* 주/부 스탯 별: 이름(근력 STR) 바로 오른쪽 */
+.stat-head .stat-star{margin-left:-2px;vertical-align:0;line-height:1}
+/* 상단 오른쪽 아이콘: 퀵슬롯 끝선까지 오른쪽 정렬, 아래 구분선 없음 */
+@media(min-width:1201px){body.has-quick .topbar{margin-right:-59px}}
+.top-actions{gap:4px}
+.top-actions .logout{margin-left:8px}
+/* 채팅 알림 탭: 벨 아이콘 정사각형 */
+.term-screen .tabs .bell-tab{flex:0 0 auto;width:var(--bellw,30px);padding:0;display:grid;place-items:center}
+.term-screen .tabs .bell-tab .material-symbols-rounded{font-size:calc(14px*var(--fs))}
+/* 소모품 회복 미리보기 막대 */
+.bar .gain{position:absolute;top:0;bottom:0;display:block;background:var(--good,#3c9);opacity:.55;animation:gainpulse 1.2s ease-in-out infinite;pointer-events:none}
+.bar.hp .gain{background:color-mix(in srgb,var(--hp) 55%,#fff)}
+.bar.sp .gain{background:color-mix(in srgb,var(--sp) 55%,#fff)}
+.bar{position:relative}
+@keyframes gainpulse{50%{opacity:.9}}
+.bar-row.gaining .val{color:var(--text);font-weight:700}
+.use-gain p{margin:0 0 6px}
+.gain-bars{margin:4px 0 2px;max-width:320px}
+.gain-bars .bar-row{grid-template-columns:34px minmax(0,1fr) 74px}
+/* 프로필 사진 크게 보기 */
+.round-avatar.zoomable{cursor:zoom-in}
+.av-zoom{position:fixed;inset:0;z-index:300;display:grid;place-content:center;justify-items:center;gap:8px;background:rgba(0,0,0,.72);cursor:zoom-out;animation:avz .15s ease-out}
+.av-zoom img{width:min(300px,80vw);height:min(300px,80vw);object-fit:cover;border:1px solid var(--line);background:var(--panel);image-rendering:auto}
+.av-zoom .tiny{color:#ddd}
+@keyframes avz{from{opacity:0;transform:scale(.97)}}
+/* 펫 목록 그리드 */
+.pet-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:6px;margin:4px 0 10px}
+.pet-card{display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 4px 6px;min-height:84px;text-align:center;background:var(--panel-2);border:1px solid var(--line);line-height:1.2}
+.pet-card .material-symbols-rounded{font-size:calc(22px*var(--fs));color:var(--accent)}
+.pet-card strong{font-size:calc(11.5px*var(--fs));max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pet-card small{font-size:calc(9.5px*var(--fs));color:var(--muted);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pet-card em{font-style:normal;font-size:calc(9.5px*var(--fs));color:var(--text-2)}
+.pet-card.away em{color:var(--warn)}
+.pet-card.ready em{color:var(--good);font-weight:700}
+.pet-card.act em{color:var(--accent-2);font-weight:700}
+.pet-card.selected{border-color:var(--accent);background:var(--accent-soft);box-shadow:inset 0 0 0 1px var(--accent)}
+/* 칭호 도감 */
+.title-dex-list{display:grid;gap:5px}
+.title-dex{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:8px;padding:6px 8px;border:1px solid var(--line);background:var(--panel-2);opacity:.75}
+.title-dex.got{opacity:1;border-color:var(--accent-line)}
+.title-dex small{color:var(--muted);font-size:calc(10.5px*var(--fs))}
+.title-dex em{font-style:normal;font-size:calc(10px*var(--fs));color:var(--good);display:flex;align-items:center;gap:2px}
+/* 분실물 보관함 · 신호기 */
+.lostbox-grid{grid-template-columns:repeat(5,minmax(0,52px))}
+.beacon-list{display:grid;gap:6px}
+.beacon-list button{display:flex;align-items:center;gap:6px;justify-content:center}
+/* 훈련장 */
+.boss-info p{margin:0 0 8px;line-height:1.55}
+.boss-info b{display:inline-flex;align-items:center;gap:4px}
+.tmsg-row{display:grid;grid-template-columns:90px 1fr;align-items:center;gap:8px;margin:6px 0}
+.duel-teams{display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:start}
+.duel-vs{align-self:center;font-family:var(--mono);font-weight:900;color:var(--accent)}
+.duel-f{padding:5px 7px;border:1px solid var(--line);background:var(--panel-2);margin-bottom:4px}
+.duel-f.me{border-color:var(--accent)}
+.duel-f strong{display:block;font-size:calc(12px*var(--fs))}
+.duel-f small{color:var(--muted);font-size:calc(10px*var(--fs))}
+.duel-team.t2 .choice-label{text-align:right}
+.duel-log{margin-top:8px;max-height:260px;min-height:120px;overflow-y:auto}
+.duel-result{margin:8px 0 4px;padding:8px;text-align:center;font-weight:800;border:1px solid var(--line);background:var(--panel-2)}
+.duel-result.win{border-color:var(--good);color:var(--good)}
+.duel-result.lose{border-color:var(--bad);color:var(--bad)}
+.duel-say{margin:3px 0;font-size:calc(12px*var(--fs))}
+/* 모바일 내 프로필: 이름 옆 정보가 잘리지 않게, 허용 스위치는 아래 줄로 */
+@media(max-width:560px){
+  .profile-card{flex-wrap:wrap;align-items:flex-start}
+  .profile-card>div:not(.pf-sw){flex:1 1 0;min-width:0}
+  .profile-card .pf-sw{flex:1 0 100%;margin-left:0;flex-direction:row;flex-wrap:wrap;justify-content:flex-start;align-items:center;gap:6px 14px}
+}
+.todo-foot{display:flex;gap:4px;justify-content:flex-end;flex-wrap:wrap}
+.todo-foot button{display:inline-flex;align-items:center;gap:3px}
+.recipe .tag.field{background:var(--accent-soft);color:var(--accent-2)}
