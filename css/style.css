@@ -81,7 +81,7 @@ textarea{min-height:75px;resize:vertical}
   .app{height:100vh;height:100dvh;min-height:700px}
   .left-column .profile-panel{flex:0 0 auto}
   .left-column .status-panel{flex:0 0 auto}
-  .left-column .tabs-panel{flex:0 1 auto;min-height:200px}
+  .left-column .tabs-panel{flex:0 1 auto;min-height:160px}
   .map-panel{flex:1 1 0;min-height:300px}
   .action-panel{flex:0 0 auto;min-height:230px} /* 내용만큼 늘어나 스크롤이 생기지 않는다 */
   .quest-panel{flex:0 0 38%}
@@ -1366,7 +1366,7 @@ button>.material-symbols-rounded{vertical-align:middle;position:relative;top:-.0
 /* 주/부 스탯 별: 이름(근력 STR) 바로 오른쪽 */
 .stat-head .stat-star{margin-left:-2px;vertical-align:0;line-height:1}
 /* 상단 오른쪽 아이콘: 퀵슬롯 끝선까지 오른쪽 정렬, 아래 구분선 없음 */
-@media(min-width:1201px){body.has-quick .topbar{margin-right:-59px}}
+@media(min-width:1201px){body.has-quick .topbar{margin-right:-58px}}
 .top-actions{gap:4px}
 .top-actions .logout{margin-left:8px}
 /* 채팅 알림 탭: 벨 아이콘 정사각형 */
