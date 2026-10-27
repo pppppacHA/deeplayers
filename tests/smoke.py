@@ -374,14 +374,14 @@ with sync_playwright() as p:
     ff(30); check('craft_not_done_at_30s', ev(pg, "countItem('응급 키트')")== n_kit and ev(pg, "!!state.crafting"))
     ff(25); ff(2)
     check('craft_completes_and_collects', ev(pg, "countItem('응급 키트')")== n_kit + 1 and ev(pg, "state.crafting")is None and '제작 완료' in text(pg, '#toast') or ev(pg, "countItem('응급 키트')")== n_kit + 1)
-    check('craft_no_success_rate_text', '성공률' not in text(pg, '#viewCraft') and pg.locator('#craftTags button').count() >= 1 and ev(pg, "typeof craftChance")== 'undefined')
+    check('craft_no_success_rate_text', '성공률' not in text(pg, '#viewCraft') and pg.locator('#craftTabs button').count() == 4 and ev(pg, "typeof craftChance")== 'undefined')
     # ---------- 제작 탭 / 필터 / 여러 개 제작·사용 ----------
     inv_bak = ev(pg, "JSON.stringify(state.inventory)")
     ev(pg, "state.craftTab=null;state.crafting=null;renderCraft()")
-    check('craft_tabs_food_med', ev(pg, "[...document.querySelectorAll('#craftTags button')].map(b=>b.dataset.craft).every(t=>TAG_NAMES.includes(t)&&RECIPES.some(r=>recipeKnown(r)&&(ITEMS[r.out].tags||[]).includes(t)))") and pg.locator('#craftTags button').count() >= 1 and ev(pg, "craftCat('응급 키트')")== '약')  # 10/27 제작 탭은 가진 레시피의 태그별
-    pg.click('#craftTags button[data-craft="약학"]')
-    check('craft_med_tab_filters', ev(pg, "[...document.querySelectorAll('#craftList .recipe strong')].length>=1&&RECIPES.filter(r=>recipeKnown(r)&&(ITEMS[r.out].tags||[]).includes('약학')).length===document.querySelectorAll('#craftList .recipe').length"))
-    pg.click('#craftTags button[data-craft="약학"]')
+    check('craft_tabs_food_med', ev(pg, "[...document.querySelectorAll('#craftTabs button')].map(b=>b.textContent).join()") == '장비,소모품,약,기타' and pg.locator('#craftTags button').count() >= 1 and ev(pg, "[...document.querySelectorAll('#craftTags button')].every(b=>RECIPES.some(r=>recipeKnown(r)&&(ITEMS[r.out].tags||[]).includes(b.dataset.ctag)))") and ev(pg, "craftCat('응급 키트')")== '약')  # 10/27 분류 4개 + 아래 태그
+    pg.click('#craftTabs button[data-craft="약"]')
+    check('craft_med_tab_filters', ev(pg, "[...document.querySelectorAll('#craftList .recipe strong')].every(e=>e.textContent.includes('약'))") and pg.locator('#craftList .recipe').count() >= 1)
+    pg.click('#craftTabs button[data-craft="약"]')
     ev(pg, "view.craftOnly=false;['약초','생체 섬유','수초','소금',...MAT_GROUPS['물고기']].forEach(n=>removeItem(n,countItem(n)));addItem('약초',6);addItem('생체 섬유',3);renderCraft()")
     n_all = pg.locator('#craftList .recipe').count()
     check('craft_only_is_button_top_right', ev(pg, "document.querySelector('#craftOnly').tagName")== 'BUTTON' and rect(pg, '#craftOnly')['x'] > rect(pg, '#craftCount')['x'] and abs(rect(pg, '#craftOnly')['y'] - rect(pg, '#craftCount')['y']) < 20 and 'n종' not in text(pg, '#craftCount') and '종' in text(pg, '#craftCount'))
@@ -487,8 +487,11 @@ with sync_playwright() as p:
     pg.click('[data-act="craft-cancel"]'); pg.wait_for_timeout(80)
     check('craft_cancel_refunds', ev(pg, "countItem('약초')")== n_herb and ev(pg, "state.crafting")is None)
     check('craft_great_chance_scales_with_luk', ev(pg, "(()=>{const l=state.stats.luk;state.stats.luk=50;const a=effects().craftGreat;state.stats.luk=l;return a>effects().craftGreat&&a<=.5})()"))
-    pg.click('#craftTags [data-craft="약학"]'); check('craft_subtab_filter', pg.locator('.recipe').count() == ev(pg, "RECIPES.filter(r=>(ITEMS[r.out].tags||[]).includes('약학')&&recipeKnown(r)).length") and pg.locator('#craftTags button.active').count() == 1)
-    pg.click('#craftTags [data-craft="약학"]'); check('craft_subtab_toggle_off', pg.locator('.recipe').count() == ev(pg, 'RECIPES.filter(recipeKnown).length'), pg.locator('.recipe').count())
+    pg.click('[data-craft="장비"]'); check('craft_subtab_filter', pg.locator('.recipe').count() == ev(pg, "RECIPES.filter(r=>ITEMS[r.out].tab==='장비'&&recipeKnown(r)).length") and pg.locator('#craftTabs button.active').count() == 1)
+    t0 = ev(pg, "(()=>{const t=[...document.querySelectorAll('#craftTags button')].map(b=>b.dataset.ctag).find(t=>RECIPES.some(r=>recipeKnown(r)&&ITEMS[r.out].tab==='장비'&&(ITEMS[r.out].tags||[]).includes(t)));return t})()")
+    pg.click(f'#craftTags [data-ctag="{t0}"]'); check('craft_category_and_tag_both', pg.locator('.recipe').count() == ev(pg, f"RECIPES.filter(r=>ITEMS[r.out].tab==='장비'&&recipeKnown(r)&&(ITEMS[r.out].tags||[]).includes('{t0}')).length") and pg.locator('.recipe').count() >= 1)
+    pg.click(f'#craftTags [data-ctag="{t0}"]')
+    pg.click('[data-craft="장비"]'); check('craft_subtab_toggle_off', pg.locator('.recipe').count() == ev(pg, 'RECIPES.filter(recipeKnown).length'), pg.locator('.recipe').count())
     pg.click('[data-ltab="EQUIP"]')
 
     # ---------- 전투/채집 대성공 규칙 ----------

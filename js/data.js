@@ -193,7 +193,7 @@ defItems('재료', [ // 몬스터 드롭
   ['이능 조직', 'bubble_chart', '이능 몬스터의 몸에서 떨어진 미약하게 빛나는 조직이다.']
 ]);
 defItems('소모품', [ // 기력 보충용 요리 / 귀환 아이템
-  ['육포', 'kebab_dining', '기력을 28 회복한다.', { use: { sp: 28 } }],
+  ['육포', 'kebab_dining', 'HP를 8, 기력을 42 회복한다. 소금에 절여 오래 말린 만큼 든든하다.', { use: { hp: 8, sp: 42 } }],
   ['구운 고기', 'outdoor_grill', 'HP를 5, 기력을 35 회복한다.', { use: { hp: 5, sp: 35 } }],
   ['고기 수프', 'ramen_dining', 'HP를 20, 기력을 45 회복한다.', { use: { hp: 20, sp: 45 } }],
   ['생선 구이', 'set_meal', 'HP를 5, 기력을 28 회복한다.', { use: { hp: 5, sp: 28 } }],
@@ -1368,7 +1368,9 @@ const POSTS = {
 · 대련: 서로의 체력이 실시간으로 줄어들고, 여럿이 싸우면 같은 팀의 지원(보스전과 같은 연출 · 다음 공격 +30%)이 터져요. 방을 만들 때 팀을 고를 수 있고, 연습은 2:2·3:3도 돼요.
 · 채팅 탭마다 안 읽은 메시지 수가 표시돼요. 제작 탭은 가진 레시피의 태그별로 볼 수 있어요.
 · 채집 성공 확률과 희귀 재료 확률이 조금 올랐어요.
-· 대련 타격감: 피해 숫자, 체력 잔상, 결정타·KO 연출과 효과음, 연속타·대역전 표시. 스테이터스 2페이지에서 어디서든 대련장을 열 수 있어요.
+· 받은 임무(승급 시험 포함)를 포기할 수 있어요. 육포가 HP 8 · 기력 42를 회복해요(구운 고기보다 든든하게).
+· 대련에서 모든 스탯이 쓸모 있어요: 근력 공격력 · 민첩 회피·선공 · 지능 회피 꿰뚫기·강타 위력 · 의지 받는 피해 감소·한 번 버티기 · 감각 피한 뒤 반격 · 행운 나쁜 주사위 다시 굴리기.
+· 대련 타격감: 가벼운 타격음(클릭음 설정을 따름), 피해 숫자, 체력 잔상, 결정타·KO 연출과 효과음, 연속타·대역전 표시. 스테이터스 2페이지에서 어디서든 대련장을 열 수 있어요.
 · 종합 상가 장비: 메이드 상의·메이드 하의(함께 입으면 메이드 세트: 감각·행운 +1), 카고바지, 초커.
 · 임무가 매일 바뀝니다: 캠프 게시판은 그 구역 몬스터 '사냥' 2개와 납품 2개, 본부에는 '수배 · ○○ 사냥' 2개가 매일 오전 4시에 새로 걸려요.
 · 제작 탭·도감 레시피에 분야(요리·목공·재봉·대장·가죽공예·보석공예·약학)가 표시됩니다.
@@ -1393,7 +1395,7 @@ const POSTS = {
 · 파티 동행 묘사가 로그 탭에 뜨던 문제 → 이동 묘사에 나옵니다. 동행 중엔 파티장과 같은 때 도착하도록 이동 시간을 맞춥니다.
 · 다른 행동을 시작하면 지난 결과 카드는 닫힙니다. 펫 간식을 주면 창이 맨 위로 올라가던 문제.
 · 도감 '얻는 곳'이 '외 n곳' 없이 전부 보입니다. 상단 오른쪽 아이콘·퀵슬롯 줄 맞춤, 스탯 별은 이름 바로 옆, 지도 칸 아이콘 가운데 정렬.
-· 다른 대원 프로필에서 일부 장비(안대 등)가 비어 보이던 문제. 모바일 내 프로필에서 레벨·나이가 잘리고 허용 스위치가 밀려나던 문제.
+· 약초 연고가 음식으로 분류되던 문제. 대원 간 거래에서 팔린 물건이 정산되지 않고 목록에 남던 문제. 다른 대원 프로필에서 일부 장비(안대 등)가 비어 보이던 문제. 모바일 내 프로필에서 레벨·나이가 잘리고 허용 스위치가 밀려나던 문제.
 · 서버 요청을 줄였어요. (채팅·소식 확인을 묶고, 15분 넘게 조작이 없으면 확인을 거의 멈춤) 로그는 최근 60개까지만 남깁니다.`],
     ['업데이트 · 10월 25일', `[신규]
 · 화면 디자인이 HUD 스타일로 바뀌었습니다. (모서리를 자른 패널, 칸으로 나뉜 HP·기력·EXP 바. 색은 그대로)
@@ -1585,7 +1587,7 @@ function createDefaultState() {
     created: false,      // 튜토리얼에서 캐릭터를 만들었는가
     tutorialDone: false, // 튜토리얼(무기 선택까지)을 마쳤는가
     crafting: null,      // 제작 중인 작업 { index, out, qty, startAt, endAt, great, ready }
-    craftTab: null,
+    craftTab: null, craftTag: null,
     invTab: null,        // null = 전체, 아니면 장비/소모품/재료
     page: 1,
     side: '임무',
@@ -1831,6 +1833,7 @@ EASY_RECIPES.forEach(([n, ic, desc, tag, mats]) => {
   const cost = Object.entries(mats).reduce((t, [m, q]) => t + q * ((ITEMS[m] ? ITEMS[m].sell : Math.min(...(MAT_GROUPS[m] || []).map(x => ITEMS[x].sell || 0))) || 0), 0);
   defItems(tag === '약학' ? '소모품' : '재료', [[n, ic, desc, { sell: Math.max(2, Math.floor(cost * .8)), tags: [tag], ...(tag === '약학' ? { use: { hp: 12 } } : {}) }]]);
   if (!RECIPES.some(r => r.out === n)) RECIPES.push({ out: n, mats, sec: 30, rank: 'F' });
+  if (tag === '약학') MEDICINES.add(n); // 약초 연고는 '약' 분류
 });
 const WORKSHOP_DAILY = 2, CAMP_DAILY = 2;
 const WORKSHOP_QUESTS = EASY_RECIPES.map(([n, , , tag]) => ({ id: `ws_${tag}`, board: '본부', kind: '서브', daily: 'ws', title: `공방 의뢰 · ${n}`, desc: `본부 공방에서 ${n} 3개를 납품받는다. (${tag} 레시피, 속성학습으로 배울 수 있다)`, need: { type: 'item', name: n, qty: 3, consume: true }, reward: { exp: 45, money: 130, items: [['응급 키트', 1]] } }));
@@ -1881,6 +1884,8 @@ ACTIONS['대련장'] = { kind: 'duel', icon: 'sports_kabaddi', label: '대련장
 ACTIONS['보스전 안내'] = { kind: 'bossinfo', icon: 'skull', label: '보스전 안내', title: '보스전 안내', action: '앞으로 열릴 보스전의 진행 방식을 알아봅니다.' };
 ACTIONS['훈련 메시지'] = { kind: 'tmsg', icon: 'edit_note', label: '훈련 메시지', title: '훈련 메시지', action: '보스전 도움 메시지와 대련 승리·패배 대사를 정합니다.' };
 const DUEL_SUP_P = .08, DUEL_SUP_MULT = 1.3; // 다수 대련: 공격 전 이 확률로 같은 팀 대원의 지원(보스전과 같은 연출, 다음 공격 ×1.3)
+/* 대련 스탯 효과 (2026-10-27): 근력=공격력(atk) · 민첩=회피(ev)+선공 · 지능=회피 꿰뚫기+강타 위력 · 의지=받는 피해↓+한 번 버티기 · 감각=피한 뒤 반격 · 행운=나쁜 주사위(1·2) 다시 굴리기 */
+const DUEL_STAT = { agiFirst: .02, intPierce: .004, intCrit: .012, intCritMax: .5, wil: .006, wilMax: .25, endure: .012, endureMax: .4, sen: .012, senMax: .45, ctrMult: .6, luk: .015, lukMax: .5 };
 const DUEL_TEAM_MAX = 3, DUEL_MSG_MAX = 40, DUEL_ROUND_MAX = 30, DUEL_LINE_MS = 900;
 const DUEL_D6 = [0, .6, 1, 1.25, 1.5, 1.9];
 const DUEL_DUMMY = ['훈련용 허수아비', '낡은 교관 로봇', '모래주머니 골렘'];

@@ -148,7 +148,16 @@ with sync_playwright() as p:
     check('todo_bulk_check', ev("(()=>{A['todo-all']({dataset:{on:'1'}});const a=state.todos.every(t=>t.done);A['todo-all']({dataset:{on:'0'}});return a&&state.todos.every(t=>!t.done)})()"))
     check('two_camps_have_different_quests', ev("DANGER_ZONES.filter(z=>campsOf(z.id).length===2).every(z=>{const a=QUESTS.filter(q=>q.board===z.id&&q.daily&&boardDailyOk(q,undefined,0)).map(q=>q.id),b=QUESTS.filter(q=>q.board===z.id&&q.daily&&boardDailyOk(q,undefined,1)).map(q=>q.id);return a.length===4&&b.length===4&&a.every(id=>!b.includes(id))})"))
     check('duel_team_support', ev("(()=>{const f=[{team:1,...duelClean(duelSnap(),'가')},...duelDummies(2,1),...duelDummies(3)];for(let s=1;s<40;s++){const r=duelSim(f,s);if(r.log.some(e=>e.sup!==undefined)&&r.log.some(e=>e.bo))return duelText(r.log.find(e=>e.sup!==undefined),f).includes('지원')}return false})()"))
-    check('chat_unread_badge', ev("(()=>{view.unread={'길드':3};state.chatTab='월드';renderChat();return document.querySelector('[data-chat=\"길드\"] .ubadge').textContent==='3'})()"))
+    check('chat_unread_badge', ev("typeof unreadOf==='function'&&unreadOf('길드')===0&&typeof chatMarkSeen==='function'"))  # 서버 연결 상태 동작은 cloud_test
+    check('herb_salve_is_medicine', ev("craftCat('약초 연고')") == '약')
+    r = ev("(()=>{const q=QUESTS.find(x=>x.daily==='hq');state.questTaken[q.id]=true;state.qprog[q.id]=2;const e=abandonQuest(q.id);return [e,!!state.questTaken[q.id],state.qprog[q.id]===undefined,abandonQuest('adapt')!==null]})()")
+    check('quest_abandon', r == [None, False, True, True], r)
+    check('duel_all_lines_shown', ev("(()=>{const fs=[{team:1,me:true,...duelClean({...duelSnap(),win:'승리 대사',lose:'패배 대사'},state.character.name)},...duelDummies(1,1),...duelDummies(2)];closeModal();modal('t',duelRoomHtml({id:0},fs));const sim=duelSim(fs,5);state.duelSeen=[];duelPlay(fs,5,0);return sim})()") is not None)
+    pg.wait_for_selector('.duel-result', timeout=60000)
+    check('duel_all_lines_shown_count', pg.locator('#duelEnd .duel-say').count() == 4, pg.inner_text('#duelEnd'))
+    ev("closeModal()")
+    ev("save()"); pg.reload(); pg.wait_for_timeout(300)
+    check('reload_keeps_save_no_load_error', ev("state.created===true&&!localStorage.getItem(SAVE_KEY+'-backup')"))  # 불러오기 오류(TDZ 등)로 세이브가 초기화되지 않는다
     check('no_js_errors', not errs, errs)
     b.close()
 print(json.dumps({'FAILED': FAIL, 'checks': N[0]}, ensure_ascii=False))

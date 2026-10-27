@@ -266,6 +266,7 @@ with sync_playwright() as p:
     check('guild_rename_calls_server_and_updates', ['rename', {'p_name': '새달빛'}] in server['gcalls'] and pg.evaluate("state.guild && state.guild.name") == '새달빛' and '새달빛' in pg.inner_text('#modalTitle'), [server['gcalls'][-1], pg.evaluate("state.guild")])
     pg.evaluate("closeModal()")
     # ---------- 채팅 서버 연결 / 프로필 이미지 ----------
+    pg.evaluate("_pollAt.sync=Date.now()+1e9;_pollAt.friend=Date.now()+1e9")  # 배경 동기화가 채팅 검사 도중 세이브를 바꾸지 않게
     PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
     server['avatars'] = {'하늘': PNG}
     server['chat'] = [{'id': 1, 'name': '하늘', 'body': '안녕하세요', 'uid': '11111111-1111-1111-1111-111111111111', 'at': '2026-10-21T09:00:00Z'}, {'id': 2, 'name': '<b>해커</b>', 'body': '<img src=x onerror=alert(1)>', 'uid': '22222222-2222-2222-2222-222222222222', 'at': '2026-10-21T09:00:05Z'}]
@@ -280,6 +281,7 @@ with sync_playwright() as p:
     cache = pg.evaluate("JSON.parse(localStorage.getItem('deeplayer-chat'))")
     check('chat_cached_on_device', cache and len(cache['월드']['rows']) == 3 and cache['월드']['rows'][0][1] == '안녕하세요', cache)
     saved_chat = server['chat']; server['chat'] = []
+    pg.evaluate("cloudPushNow()"); pg.wait_for_timeout(600)  # 새로고침 전에 서버에도 올려 둔다 (안 그러면 부팅 동기화가 시험용 최소 세이브를 받아 온다)
     pg.evaluate("flushSave && flushSave()"); pg.reload(); pg.wait_for_timeout(500)
     pg.evaluate("document.querySelector('#tutorial') && document.querySelector('#tutorial').classList.add('hidden')")
     check('chat_survives_reload', pg.evaluate("state.chatTab") == '월드' and '안녕하세요' in pg.inner_text('#chatFeed') and '새 메시지' in pg.inner_text('#chatFeed'), pg.inner_text('#chatFeed')[:200])
@@ -292,7 +294,7 @@ with sync_playwright() as p:
     check('fake_sys_flag_ignored', pg.evaluate("view.chatSrv['월드'].filter(r=>r[5]).length") == 1)
     # ── 10/27: 채팅은 요청 한 번(chat_fetch_all), RP 채널, 만렙 공지도 가운데 공지 ──
     f0 = [server.get('fetch_all', 0), server.get('fetch_one', 0)]; pg.evaluate("chatPoll()"); pg.wait_for_timeout(500)
-    check('chat_uses_single_fetch_all', server.get('fetch_all', 0) == f0[0] + 1 and server.get('fetch_one', 0) == f0[1], [f0, server.get('fetch_all'), server.get('fetch_one')])
+    check('chat_uses_single_fetch_all', server.get('fetch_all', 0) == f0[0] + 1 and server.get('fetch_one', 0) == f0[1], [f0, server.get('fetch_all'), server.get('fetch_one'), pg.evaluate("[view.chatBusy,state.created,chatOnline(),document.hidden]")])
     server['rp'] = [{'id': 7, 'name': '하늘', 'body': '(창밖을 본다)', 'uid': '11111111-1111-1111-1111-111111111111', 'at': '2026-10-21T09:04:00Z'}]
     server['chat'].append({'id': 6, 'name': '미나', 'body': '미나님이 최고 레벨에 도달해 정점에 다다르셨습니다. 축하합니다!', 'uid': '11111111-1111-1111-1111-111111111111', 'at': '2026-10-21T09:03:30Z', 'sys': 'rank:MAX'})
     pg.evaluate("chatPoll()"); pg.wait_for_timeout(500)
@@ -301,9 +303,13 @@ with sync_playwright() as p:
     check('rp_channel_from_server', '창밖을 본다' in pg.inner_text('#chatFeed') and pg.evaluate("view.chatLast['RP']") == 7)
     pg.evaluate("chatPoll()"); pg.wait_for_timeout(400)
     check('rp_chat_send_channel', (pg.fill('#chatInput', '(고개를 끄덕인다)') or pg.press('#chatInput', 'Enter') or True) and (pg.wait_for_timeout(300) or True) and any(c.get('p_channel') == 'rp' for c in server['chatsent']), server['chatsent'][-2:])
-    server['noall'] = True; pg.evaluate("view._noAll=false;chatPoll()"); pg.wait_for_timeout(600)
-    check('chat_fetch_all_missing_falls_back', pg.evaluate("view._noAll") is True and server.get('fetch_one', 0) > f0[1])
-    server['noall'] = False; pg.evaluate("view._noAll=false;state.chatTab='월드';renderChat()")
+    pg.wait_for_function("!view.chatBusy", timeout=10000); pg.evaluate("state.chatTab='월드';renderChat()"); server['rp'].append({'id': 8, 'name': '하늘', 'body': '두 번째', 'uid': '11111111-1111-1111-1111-111111111111', 'at': '2026-10-21T09:05:00Z'}); pg.evaluate("chatPoll()"); pg.wait_for_timeout(500)
+    check('unread_badge_other_tab', pg.evaluate("(document.querySelector('[data-chat=\"RP\"] .ubadge')||{}).textContent") == '1')
+    pg.wait_for_function("!view.chatBusy", timeout=10000); pg.evaluate("state.chatTab='RP';renderChat();state.chatTab='월드';renderChat();chatPoll()"); pg.wait_for_timeout(500)
+    check('unread_badge_clears_after_view', pg.locator('[data-chat="RP"] .ubadge').count() == 0)
+    pg.wait_for_function("!view.chatBusy", timeout=10000); server['noall'] = True; pg.evaluate("view._noAll=false;chatPoll()"); pg.wait_for_timeout(600)
+    check('chat_fetch_all_missing_falls_back', pg.evaluate("view._noAll") is True and server.get('fetch_one', 0) > f0[1], [pg.evaluate("[view._noAll,view.chatBusy,chatOnline(),document.hidden,state.created,CHAT_TABS.map(chatTabOn).join(),!!state.guild,PARTY.id]"), server.get('fetch_one'), f0, server.get('fetch_all')])
+    server['noall'] = False; pg.evaluate("view._noAll=false;state.chatTab='월드';renderChat();_pollAt.sync=0;_pollAt.friend=0")
     pg.evaluate("state.flags.annoA='pending';announceRankA()"); pg.wait_for_timeout(900)
     check('rank_announce_calls_server_once_done', server.get('anno') == ['A'] and pg.evaluate("state.flags.annoA") == 'done', server.get('anno'))
     pg.evaluate("announceRankA()"); pg.wait_for_timeout(300)

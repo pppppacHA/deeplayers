@@ -1483,3 +1483,13 @@ button>.material-symbols-rounded{vertical-align:middle;position:relative;top:-.0
 /* 대련장: 방 이름 입력칸을 넓게, 팀 고르기는 좁게 */
 #duelTitle{flex:1 1 auto;min-width:0}
 #duelTeam{flex:0 0 auto;width:auto;max-width:96px}
+#craftTagStrip{margin:0 0 6px;flex:none}
+#craftTabs{flex-wrap:nowrap}
+.tag-scroll button{padding:3px 9px;font-size:calc(10.5px*var(--fs));min-height:0}
+.duel-chip{position:fixed;right:70px;bottom:16px;z-index:60;display:flex;align-items:center;gap:6px;padding:8px 12px;background:var(--accent);color:var(--bg);border:0;box-shadow:var(--shadow);font-weight:700}
+.duel-start{position:absolute;left:0;right:0;top:-30px;text-align:center;font:900 34px/1 var(--mono);letter-spacing:6px;color:var(--bad,#d33);text-shadow:0 2px 0 var(--panel);animation:fstart .9s ease-out forwards}
+@keyframes fstart{0%{transform:scale(1.8);opacity:0}25%{transform:scale(1);opacity:1}80%{opacity:1}100%{opacity:0}}
+
+/* 10/27 FIGHT! 배너 글꼴 */
+.duel-start{font:400 44px/1 'Black Ops One',var(--mono);letter-spacing:4px;font-style:normal;color:transparent;background:linear-gradient(180deg,#fff2b0 0,#ffb030 45%,#d8321f 55%,#7a1010 100%);-webkit-background-clip:text;background-clip:text;-webkit-text-stroke:1.5px #1a0606;filter:drop-shadow(0 3px 0 rgba(0,0,0,.55)) drop-shadow(0 0 8px rgba(255,120,40,.55));transform-origin:center}
+.duel-start::after{content:'';position:absolute;left:18%;right:18%;top:50%;height:2px;background:linear-gradient(90deg,transparent,#ffd27a,transparent);opacity:.8}

@@ -323,3 +323,11 @@ STUB_ICONS=1 python3 tests/smoke.py   # 아이콘 폰트를 못 받는 환경(�
 - 10/27 (5): 채팅 확인 5초(대화 3분 안)/15초. 종합 상가 메이드 상의·하의(메이드 세트), 카고바지, 초커.
 - 10/27 (6): 대련 타격감 — 피해 숫자(.dmg-pop, 결정타·지원·MISS), 체력 잔상(.ghost), 템포(평소 0.6초·결정타/KO 1.2초·지원 1.5초, setTimeout 체인), 효과음(결정타 levelup·회피 click·KO error), KO 도장·창 흔들림, 승리팀 반짝(.win-glow), N연속!, 대역전!(이긴 팀 남은 체력 20% 미만). 스테이터스 2페이지 '대련' 카드(어디서든 openDuel). 제작 탭 스크롤 막대 표시.
 - 10/27 (7): 지원 8%, 대련 템포 0.38/0.75/0.95초·컷인 1초, 피격 흔들림(.duel-f.hit, 결정타는 창 흔들림), 설정 '대련 흔들림 효과'(settings.duelFx).
+- 10/27 (8): 제작 탭 = 분류 4개(장비·소모품·약·기타, craftGroup) + 아래 태그 줄(state.craftTag, data-ctag), 둘 다 맞는 것만.
+- 10/27 (9): 대련방 최소화(창 닫기=최소화, #duelChip, 4초 확인, 들어오면 알림), 끝나도 방 유지(duel_reset 다시 대련, duelSeen=시드). 채팅 배지는 탭별 마지막 본 번호(view.chatSeen, localStorage deeplayer-chatseen) 기준.
+- X/닫기 = 방에서 나감(방장이면 방 닫힘, 끝난 방도), '최소화'만 유지(view.duelMinimize).
+- 임무 포기: canAbandon/abandonQuest(수주·승급·한계돌파만), 임무 카드 '포기' 버튼(askConfirm). 약초 연고 MEDICINES.
+- 대련 시작 알림: duelPlay 시작 시 FIGHT! 배너(.duel-start)·소리, 서버 방이면 토스트·탭 알림(notifyDone).
+- 최소화 중 대련 시작: 3초 카운트다운(토스트·칩) 뒤 대련 창(view.duelCd).
+- 대련 스탯 효과 DUEL_STAT(민첩 선공, 지능 꿰뚫기·강타, 의지 피해감소·버티기 endure, 감각 반격 ctr, 행운 재굴림 lucky). 스냅샷 st(서버 _duel_snap 0~80).
+- 대련 타격음 hitSfx(lv 0 보통·1 강타/반격·2 치명타 d6), 회피는 swishSfx(허공 가르는 소리), 클릭음 설정을 따름. FIGHT! 배너는 Black Ops One(index.html 별도 link, text=FIGHT! KO 글자만). **주의: hardenState(불러오기)에서 core.js 뒤쪽 const(DUEL_STATS 등)를 쓰면 TDZ로 세이브가 초기화된다 — feat_test reload_keeps_save_no_load_error가 잡는다.**

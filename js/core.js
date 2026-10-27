@@ -196,7 +196,7 @@ function hardenState(s) {
   s.logs = (Array.isArray(s.logs) ? s.logs : []).filter(l => l && typeof l.text === 'string').map(l => ({ time: cleanText(l.time, 10), text: cleanText(l.text, 400) })).slice(0, 60);
   if (s.crafting && (!RECIPES[s.crafting.index] || !Number.isFinite(s.crafting.endAt))) s.crafting = null;
   if (s.crafting) { s.crafting.out = RECIPES[s.crafting.index].out; s.crafting.qty = intIn(s.crafting.qty, 1, MAX_BATCH, 1); s.crafting.great = !!s.crafting.great; s.crafting.ready = !!s.crafting.ready; s.crafting.used = (Array.isArray(s.crafting.used) ? s.crafting.used : []).map(u => Array.isArray(u) && LEGACY_ITEMS[u[0]] ? [LEGACY_ITEMS[u[0]], u[1]] : u).filter(u => Array.isArray(u) && ITEMS[u[0]]).map(u => typeof u[2] === 'string' && cleanText(u[2], MK_LEN) ? [u[0], intIn(u[1], 1, 9999, 1), cleanText(u[2], MK_LEN)] : [u[0], intIn(u[1], 1, 9999, 1)]).slice(0, 24); }
-  if (!(typeof s.craftTab === 'string' && TAG_NAMES.includes(s.craftTab))) s.craftTab = null; // 제작 탭 필터 = 아이템 태그 (10/27)
+  if (!['장비', '소모품', '약', '기타'].includes(s.craftTab)) s.craftTab = null; if (!(typeof s.craftTag === 'string' && TAG_NAMES.includes(s.craftTag))) s.craftTag = null; // 제작 탭: 분류(craftTab) + 태그(craftTag) 둘 다 맞는 것만
   if (s.active && s.active.id === '구역 이동' && !(LOCATIONS[s.active.to] && LOCATIONS[s.active.to].danger && !s.dungeon && Number.isFinite(s.active.endAt))) s.active = null;
   if (s.active && s.active.id === '타일 이동' && !(s.dungeon && Array.isArray(s.active.path) && s.active.path.length)) s.active = null;
 }
@@ -1903,6 +1903,12 @@ function placeKey() {
   if (state.dungeon) { const z = zoneOf(state.dungeon.zone); return tileOf(z, state.dungeon.x, state.dungeon.y) === 'C' ? z.id : null; }
   return state.location;
 }
+const canAbandon = q => !!q && !!(q.board || q.promo || q.cap) && !!state.questTaken[q.id] && !state.questDone[q.id]; // 수주한 임무·승급 시험은 포기할 수 있다 (기본 메인 임무 제외)
+function abandonQuest(id) {
+  const q = QUESTS.find(x => x.id === id); if (!canAbandon(q)) return '포기할 수 없는 임무입니다.';
+  needParts(q).forEach((_, i) => delete state.qprog[progKey(q, i)]); delete state.questTaken[q.id]; delete state.questAt[q.id]; save();
+  return null;
+}
 const isTaken = q => (q.board || q.promo || q.cap) ? !!state.questTaken[q.id] : true;
 const takenQuests = () => QUESTS.filter(isTaken);
 /* 조건 목록: 단일 조건이면 하나, multi면 여러 개. 처치 진행도는 qprog에 조건별 키로 저장한다 */
@@ -2613,34 +2619,41 @@ const DUEL_STATS = ['str', 'agi', 'int', 'wil', 'sen', 'luk'];
 function duelSnap() { // 내 대련 능력치 (서버에도 이 값을 올리고, 서버가 범위를 다시 자른다)
   const bs = battleSnap(), c = state.character, m = state.trainMsg || {};
   return { name: c.name, lv: c.level, hp: Math.max(20, Math.min(600, state.vitals.hpMax)), atk: Math.max(1, Math.min(200, Math.round((3 + bs.wa) * (1 + bs.atk) * 10) / 10)), ev: Math.max(0, Math.min(.5, +bs.evade.toFixed(3))),
-    main: DUEL_STATS.includes(c.mainStat) ? c.mainStat : bs.top || 'str', sub: DUEL_STATS.includes(c.subStat) ? c.subStat : '', help: cleanText(m.help || '', DUEL_MSG_MAX), win: cleanText(m.win || '', DUEL_MSG_MAX), lose: cleanText(m.lose || '', DUEL_MSG_MAX) };
+    main: DUEL_STATS.includes(c.mainStat) ? c.mainStat : bs.top || 'str', sub: DUEL_STATS.includes(c.subStat) ? c.subStat : '', st: (() => { const t = totalStats(); return Object.fromEntries(DUEL_STATS.map(k => [k, Math.max(0, Math.min(80, t[k] | 0))])); })(), help: cleanText(m.help || '', DUEL_MSG_MAX), win: cleanText(m.win || '', DUEL_MSG_MAX), lose: cleanText(m.lose || '', DUEL_MSG_MAX) };
 }
 function duelClean(sn, name) { // 받은 능력치를 다시 거른다
   const o = sn && typeof sn === 'object' ? sn : {}, num = (v, a, b, d) => Number.isFinite(+v) ? Math.max(a, Math.min(b, +v)) : d;
   return { name: cleanText(name || o.name, 12) || '?', lv: intIn(o.lv, 1, MAX_LEVEL, 1), hp: Math.round(num(o.hp, 20, 600, 100)), atk: num(o.atk, 1, 200, 5), ev: num(o.ev, 0, .5, 0),
-    main: DUEL_STATS.includes(o.main) ? o.main : 'str', sub: DUEL_STATS.includes(o.sub) ? o.sub : '', help: cleanText(o.help || '', DUEL_MSG_MAX), win: cleanText(o.win || '', DUEL_MSG_MAX), lose: cleanText(o.lose || '', DUEL_MSG_MAX) };
+    main: DUEL_STATS.includes(o.main) ? o.main : 'str', sub: DUEL_STATS.includes(o.sub) ? o.sub : '', st: Object.fromEntries(DUEL_STATS.map(k => [k, intIn(o.st && o.st[k], 0, 80, 0)])), help: cleanText(o.help || '', DUEL_MSG_MAX), win: cleanText(o.win || '', DUEL_MSG_MAX), lose: cleanText(o.lose || '', DUEL_MSG_MAX) };
 }
 function duelDummies(n, team = 2, off = 0) { // 연습 상대(2팀) · 연습 동료(1팀): 내 능력치를 조금 낮춘 허수아비
   const me = duelSnap();
-  return Array.from({ length: Math.max(0, Math.min(DUEL_TEAM_MAX, n)) }, (_, k) => { const i = k + off; return { team, ...duelClean({ ...me, help: team === 1 ? '뒤는 맡겨!' : '', name: team === 1 ? ['동료 훈련병', '교관 보조 로봇'][k] || '동료' : DUEL_DUMMY[i % DUEL_DUMMY.length], hp: Math.round(me.hp * (.75 + i * .05)), atk: me.atk * .8, ev: me.ev * .6, main: DUEL_STATS[(i * 2 + 1) % 6], sub: DUEL_STATS[(i * 2 + 4) % 6], win: '훈련 종료. 자세를 다시 점검하십시오.', lose: '삐빅… 훌륭합니다.' }) }; });
+  return Array.from({ length: Math.max(0, Math.min(DUEL_TEAM_MAX, n)) }, (_, k) => { const i = k + off; return { team, ...duelClean({ ...me, help: team === 1 ? '뒤는 맡겨!' : '', name: team === 1 ? ['동료 훈련병', '교관 보조 로봇'][k] || '동료' : DUEL_DUMMY[i % DUEL_DUMMY.length], hp: Math.round(me.hp * (.75 + i * .05)), atk: me.atk * .8, ev: me.ev * .6, main: DUEL_STATS[(i * 2 + 1) % 6], sub: DUEL_STATS[(i * 2 + 4) % 6], ...(team === 1 ? { win: '해냈다! 같이 싸워서 다행이야.', lose: '다음엔 꼭 이기자.' } : { win: '훈련 종료. 자세를 다시 점검하십시오.', lose: '삐빅… 훌륭합니다.' }) }) }; });
 }
 /* fighters: [{team(1|2), name, hp, atk, ev, main, sub}] (순서 고정) → { log:[{r,a,t,d,dmg,dodge,ko}], win: 1|2, hp:[남은 HP] } */
 function duelSim(fighters, seed) {
-  const rnd = seededRng((seed >>> 0) || 1), hp = fighters.map(f => f.hp), log = [], boost = [];
+  const rnd = seededRng((seed >>> 0) || 1), hp = fighters.map(f => f.hp), log = [], boost = [], used = [];
   const alive = t => fighters.map((f, i) => i).filter(i => fighters[i].team === t && hp[i] > 0);
   let r = 0;
   while (alive(1).length && alive(2).length && r < DUEL_ROUND_MAX) {
     r++;
-    const order = fighters.map((f, i) => i).filter(i => hp[i] > 0).sort(() => rnd() - .5);
+    const ord = fighters.map((f, i) => [i, rnd() + (f.st.agi || 0) * DUEL_STAT.agiFirst]); const order = ord.filter(([i]) => hp[i] > 0).sort((x, y) => y[1] - x[1]).map(x => x[0]); // 민첩: 먼저 움직일 가능성↑
     for (const a of order) {
       if (hp[a] <= 0) continue;
       const foes = alive(fighters[a].team === 1 ? 2 : 1); if (!foes.length) break;
       const mates = fighters.map((f, i) => i).filter(i => i !== a && fighters[i].team === fighters[a].team && hp[i] > 0);
       if (mates.length && !boost[a] && rnd() < DUEL_SUP_P) { const h = mates[Math.floor(rnd() * mates.length)]; boost[a] = 1; log.push({ r, sup: h, a, s: Math.floor(rnd() * 1000) }); } // 같은 팀의 지원
-      const t = foes[Math.floor(rnd() * foes.length)], d = 1 + Math.floor(rnd() * 6), dodge = d < 6 && d > 1 && rnd() < fighters[t].ev * .5, bo = !!boost[a];
-      const dmg = dodge ? 0 : Math.round(fighters[a].atk * DUEL_D6[d - 1] * (.9 + rnd() * .2) * (bo ? DUEL_SUP_MULT : 1)); if (!dodge) boost[a] = 0;
+      const A = fighters[a], t = foes[Math.floor(rnd() * foes.length)], T = fighters[t], S = DUEL_STAT;
+      let d = 1 + Math.floor(rnd() * 6), lucky = false;
+      if (d <= 2 && rnd() < Math.min(S.lukMax, (A.st.luk || 0) * S.luk)) { d = 1 + Math.floor(rnd() * 6); lucky = true; } // 행운: 나쁜 주사위를 다시 굴린다
+      const dodge = d < 6 && d > 1 && rnd() < Math.max(0, T.ev * .5 - (A.st.int || 0) * S.intPierce), bo = !!boost[a]; // 지능: 상대 회피를 꿰뚫는다
+      let dmg = dodge ? 0 : A.atk * DUEL_D6[d - 1] * (.9 + rnd() * .2) * (bo ? DUEL_SUP_MULT : 1);
+      if (!dodge && d >= 5) dmg *= 1 + Math.min(S.intCritMax, (A.st.int || 0) * S.intCrit); // 지능: 강타·결정타 위력↑
+      dmg = dodge ? 0 : Math.round(dmg * (1 - Math.min(S.wilMax, (T.st.wil || 0) * S.wil))); if (!dodge) boost[a] = 0; // 의지: 받는 피해↓
+      let endure = false; if (dmg >= hp[t] && !used[t] && rnd() < Math.min(S.endureMax, (T.st.wil || 0) * S.endure)) { dmg = hp[t] - 1; used[t] = 1; endure = true; } // 의지: 한 번은 1로 버틴다
       hp[t] = Math.max(0, hp[t] - dmg);
-      log.push({ r, a, t, d, dmg, dodge, ko: hp[t] <= 0, bo, hp: hp[t], s: Math.floor(rnd() * 1000) });
+      log.push({ r, a, t, d, dmg, dodge, ko: hp[t] <= 0, bo, hp: hp[t], lucky, endure, s: Math.floor(rnd() * 1000) });
+      if (dodge && hp[a] > 0 && rnd() < Math.min(S.senMax, (T.st.sen || 0) * S.sen)) { const c = Math.max(1, Math.round(T.atk * S.ctrMult)); hp[a] = Math.max(0, hp[a] - c); log.push({ r, a: t, t: a, d: 0, dmg: c, ctr: true, ko: hp[a] <= 0, hp: hp[a], s: Math.floor(rnd() * 1000) }); } // 감각: 피한 뒤 반격
     }
   }
   const left = tm => fighters.reduce((s, f, i) => s + (f.team === tm ? hp[i] / f.hp : 0), 0);
@@ -2650,9 +2663,12 @@ function duelSim(fighters, seed) {
 function duelText(e, fighters) { // 기록 한 줄 → 묘사 (주 능력·주사위 단계, 가끔 부 능력 한 줄)
   if (e.sup !== undefined) { const H = fighters[e.sup], A0 = fighters[e.a]; return `✦ ${H.name}의 지원! 「${H.help || '힘내!'}」 ${A0.name}의 다음 공격 +${Math.round((DUEL_SUP_MULT - 1) * 100)}%`; }
   const A = fighters[e.a], T = fighters[e.t], f = s => s.replace(/\{a\}/g, A.name).replace(/\{t\}/g, T.name), pk = l => l[e.s % l.length];
+  if (e.ctr) return `↺ ${A.name}이(가) 틈을 놓치지 않고 반격했다! (-${e.dmg})${e.ko ? ' ' + f(pk(DUEL_KO)) : ''}`;
   const tier = e.d === 1 ? 0 : e.d === 2 ? 1 : e.d <= 4 ? 2 : e.d === 5 ? 3 : 4;
   let out = `🎲${e.d} ` + (e.dodge ? f(pk(DUEL_DODGE)) : f(pk(DUEL_LINES[A.main][tier])) + (e.dmg ? ` (-${e.dmg})` : ''));
   if (A.sub && !e.dodge && e.s % 4 === 0) out += ' ' + f(pk(DUEL_SUB[A.sub]));
+  if (e.lucky) out = '🍀' + out;
+  if (e.endure) out += ` ${T.name}이(가) 이를 악물고 버텨 냈다! (HP 1)`;
   if (e.ko) out += ' ' + f(pk(DUEL_KO));
   return out;
 }
