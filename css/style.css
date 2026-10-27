@@ -1436,3 +1436,47 @@ button>.material-symbols-rounded{vertical-align:middle;position:relative;top:-.0
 .todo-foot{display:flex;gap:4px;justify-content:flex-end;flex-wrap:wrap}
 .todo-foot button{display:inline-flex;align-items:center;gap:3px}
 .recipe .tag.field{background:var(--accent-soft);color:var(--accent-2)}
+
+/* 제작 탭 태그 필터: 한 줄, 넘치면 좌우 화살표 + 스와이프 */
+#craftTabs{flex-wrap:nowrap}
+.tag-strip{display:flex;align-items:center;gap:2px;min-width:0;flex:1 1 auto}
+.tag-scroll{display:flex;gap:4px;overflow-x:auto;scrollbar-width:none;min-width:0;flex:1 1 auto;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch}
+.tag-scroll::-webkit-scrollbar{display:none}
+.tag-scroll button{flex:none;white-space:nowrap}
+.tag-strip .ts-arr{flex:none;padding:2px 5px;line-height:1}
+#craftTabs .inv-search{flex:0 1 120px;min-width:80px}
+.term-screen .tabs button{position:relative}
+.ubadge{position:absolute;top:1px;right:1px;min-width:16px;height:16px;padding:0 4px;border-radius:8px;background:var(--bad,#d33);color:#fff;font-style:normal;font-size:10px;line-height:16px;font-weight:700;text-align:center;pointer-events:none;z-index:2}
+#duelRoot{position:relative}
+.duel-f .bars{margin:0 0 3px}.duel-f.ko{opacity:.45}.duel-f .bar-row{grid-template-columns:22px minmax(0,1fr) 30px}
+.bl.sup{color:var(--warn);font-weight:700}
+.duel-cut{position:absolute;left:0;right:0;top:34%;height:0;pointer-events:none;overflow:visible;z-index:5}
+.cut-band{position:absolute;left:-6%;right:-6%;top:-36px;height:72px;background:var(--accent);color:var(--bg);display:flex;align-items:center;gap:12px;padding-left:16%;transform:skewY(-5deg) translateX(-115%);opacity:0}
+.cut-band>*{transform:skewY(5deg)}.cut-band b{display:block;font-size:15px}.cut-band small{font-size:12px;opacity:.9}
+.cut-ava{width:46px;height:46px;display:grid;place-items:center;background:linear-gradient(135deg,#6d8da8,#2f4458);color:#fff;font-weight:800;overflow:hidden}.cut-ava img{width:100%;height:100%;object-fit:cover}
+.duel-cut.play .cut-band{animation:cutA 1.7s cubic-bezier(.2,.8,.2,1) forwards}
+@keyframes cutA{0%{transform:skewY(-5deg) translateX(-115%);opacity:1}20%,78%{transform:skewY(-5deg) translateX(0);opacity:1}100%{transform:skewY(-5deg) translateX(115%);opacity:0}}
+@media (prefers-reduced-motion:reduce){.duel-cut.play .cut-band{animation-duration:.01s}}
+/* 제작 탭은 스크롤 막대 표시 (10/27) */
+#viewCraft{scrollbar-width:thin}
+#viewCraft::-webkit-scrollbar{display:block;width:8px}
+#viewCraft::-webkit-scrollbar-thumb{background:var(--line)}
+.duel-f{position:relative}
+.duel-f .bar .ghost{position:absolute;left:0;top:0;bottom:0;background:#fff;opacity:.8;transition:width .5s ease-out}
+.duel-f .bar span{position:relative;z-index:1;transition:width .15s}
+.dmg-pop{position:absolute;right:8px;top:-4px;font-style:normal;font-weight:900;font-size:14px;color:var(--bad,#d33);pointer-events:none;animation:dpop .95s ease-out forwards;z-index:3;text-shadow:0 1px 0 var(--panel)}
+.dmg-pop.crit{font-size:20px;color:#e0221a}.dmg-pop.miss{color:var(--muted)}.dmg-pop.boost{color:var(--warn)}.dmg-pop.combo{right:auto;left:8px;color:var(--accent-2);font-size:12px}
+@keyframes dpop{0%{transform:translateY(6px) scale(.7);opacity:0}20%{transform:translateY(-4px) scale(1.15);opacity:1}100%{transform:translateY(-18px);opacity:0}}
+.ko-stamp{position:absolute;right:10px;top:50%;transform:translateY(-50%) rotate(-12deg);border:2px solid var(--bad,#d33);color:var(--bad,#d33);padding:0 6px;font-size:14px;letter-spacing:1px;animation:stamp .25s ease-out}
+@keyframes stamp{from{transform:translateY(-50%) rotate(-12deg) scale(1.8);opacity:0}}
+.duel-f.win-glow{border-color:var(--good);box-shadow:0 0 0 2px var(--good-soft,rgba(60,180,100,.3));animation:wglow 1.2s ease-in-out 2}
+@keyframes wglow{50%{box-shadow:0 0 0 4px var(--good-soft,rgba(60,180,100,.35))}}
+#duelRoot.shake{animation:dshake .3s}
+@keyframes dshake{25%{transform:translateX(-3px)}50%{transform:translateX(3px)}75%{transform:translateX(-2px)}}
+.comeback{font-style:normal;color:var(--warn);margin-left:4px}
+@media (prefers-reduced-motion:reduce){.dmg-pop,#duelRoot.shake,.duel-f.win-glow,.ko-stamp{animation-duration:.01s}}
+.duel-cut.play .cut-band{animation-duration:1s}
+.duel-f.hit{animation:dhit .22s ease-out}
+@keyframes dhit{0%{transform:translateX(0);background:color-mix(in srgb,var(--bad,#d33) 22%,var(--panel-2))}30%{transform:translateX(-3px)}60%{transform:translateX(3px)}100%{transform:none}}
+#duelRoot.shake{animation-duration:.22s}
+.dmg-pop{animation-duration:.7s}

@@ -319,3 +319,7 @@ STUB_ICONS=1 python3 tests/smoke.py   # 아이콘 폰트를 못 받는 환경(�
 - 임무 순환: 캠프 고정 임무도 순환 목록에 넣음(kill → `daily:'campk'` `CAMP_KILLS`, item → `daily:'camp'` `CAMP_QUESTS`), 구역 몬스터마다 `ck_N_이름` 사냥 의뢰, 본부 `hk_N_이름` '수배 · ○○ 사냥'(`HQ_HUNTS`, 하루 `HQ_HUNT_DAILY`). `boardDailyOk`는 let(뒤에서 감쌈).
 - 레시피 분야 `craftField`(제작 탭 `.tag.field`, 도감 설명 앞 [분야]). 투두 '모두 체크/해제'(`todo-all`). 남의 프로필 장비에 히든 장비(안대)도 표시. 모바일 내 프로필 `.profile-card` 줄바꿈.
 - 캠프별 임무(10/27): 캠프가 둘인 구역은 으로 같은 날 2n개를 뽑아 캠프 순서(campsOf)대로 나눔. 게시판은 지금 서 있는 캠프 번호 ci로 .
+- 10/27 (4): 대련 체력 막대(`duelShow`, `#dh{i}`)·같은 팀 지원(`DUEL_SUP_P` 12%, 다음 공격 ×`DUEL_SUP_MULT`, 로그 `sup`, A안 사선 띠 `#duelCut`, 지원 메시지 = 훈련 메시지 help), 방 만들 때 팀 선택(`duel_create(p_title,p_snap,p_team)` 옛 2인자 drop), 연습 1:1~3:3. 채팅 탭 안 읽은 수 `view.unread`(.ubadge). 제작 탭 필터 = 가진 레시피 출력물의 태그(`#craftTags` 한 줄 스크롤, `tagArrows`). 채팅 확인 8초/조용하면 15초. `GATHER_FIND` .85, 희귀 `RARE_BASE` .08.
+- 10/27 (5): 채팅 확인 5초(대화 3분 안)/15초. 종합 상가 메이드 상의·하의(메이드 세트), 카고바지, 초커.
+- 10/27 (6): 대련 타격감 — 피해 숫자(.dmg-pop, 결정타·지원·MISS), 체력 잔상(.ghost), 템포(평소 0.6초·결정타/KO 1.2초·지원 1.5초, setTimeout 체인), 효과음(결정타 levelup·회피 click·KO error), KO 도장·창 흔들림, 승리팀 반짝(.win-glow), N연속!, 대역전!(이긴 팀 남은 체력 20% 미만). 스테이터스 2페이지 '대련' 카드(어디서든 openDuel). 제작 탭 스크롤 막대 표시.
+- 10/27 (7): 지원 8%, 대련 템포 0.38/0.75/0.95초·컷인 1초, 피격 흔들림(.duel-f.hit, 결정타는 창 흔들림), 설정 '대련 흔들림 효과'(settings.duelFx).

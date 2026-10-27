@@ -115,7 +115,7 @@ const Cloud = (() => {
     },
     clearPrefetch() { _pre.clear(); },
     async duelList() { return (await call('/rest/v1/rpc/duel_list', {}, await token())) || []; },
-    async duelCreate(title, snap) { return await call('/rest/v1/rpc/duel_create', { p_title: String(title || '').slice(0, 20), p_snap: snap }, await token()); },
+    async duelCreate(title, snap, team) { const b = { p_title: String(title || '').slice(0, 20), p_snap: snap }; try { return await call('/rest/v1/rpc/duel_create', { ...b, p_team: team === 2 ? 2 : 1 }, await token()); } catch (e) { if (!/404|PGRST202|Could not find/i.test(String(e && e.message))) throw e; return await call('/rest/v1/rpc/duel_create', b, await token()); } },
     async duelJoin(id, team, snap) { return await call('/rest/v1/rpc/duel_join', { p_room: id, p_team: team, p_snap: snap }, await token()); },
     async duelLeave(id) { await call('/rest/v1/rpc/duel_leave', { p_room: id }, await token()); },
     async duelStart(id) { return await call('/rest/v1/rpc/duel_start', { p_room: id }, await token()); },

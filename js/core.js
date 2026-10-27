@@ -104,6 +104,7 @@ function hardenState(s) {
   s.lostBox = (Array.isArray(s.lostBox) ? s.lostBox : []).filter(x => x && ITEMS[legacyName(x.n)]).map(x => { const n = legacyName(x.n), mk = typeof x.mk === 'string' ? cleanText(x.mk, MK_LEN) : ''; return { n, q: intIn(x.q, 1, ITEMS[n].tab === '장비' ? 1 : STACK_MAX, 1), ...(mk ? { mk } : {}) }; }).slice(0, LOSTBOX_SLOTS);
   s.quick = Array.from({ length: QUICK_SLOTS }, (_, i) => { const n = Array.isArray(s.quick) ? s.quick[i] : null; return typeof n === 'string' && ITEMS[n] && ITEMS[n].use ? n : null; }); s.quickOpen = s.quickOpen === true;
   if (s.settings && typeof s.settings.quickBar !== 'boolean') s.settings.quickBar = true;
+  if (s.settings && typeof s.settings.duelFx !== 'boolean') s.settings.duelFx = true;
   { const b = s.petBowl && typeof s.petBowl === 'object' ? s.petBowl : {}; let left = PET_BOWL_MAX; s.petBowl = {}; Object.entries(b).forEach(([n, q]) => { const k = intIn(q, 0, left, 0); if (ITEMS[n] && ITEMS[n].feed && k > 0) { s.petBowl[n] = k; left -= k; } }); } s.mailItemSent = intIn(s.mailItemSent, 0, 999999, 0);
   s.statPeak = Object.fromEntries(STAT_DEFS.map(d => [d.key, intIn((s.statPeak || {})[d.key], 0, 9999, 0)]));
   s.tickets = intIn(s.tickets, 0, 9999, 0); s.questCount = intIn(s.questCount, 0, 999999, 0); s.actMs = Number.isFinite(s.actMs) ? clamp(s.actMs, 0, 1e12) : 0;
@@ -195,7 +196,7 @@ function hardenState(s) {
   s.logs = (Array.isArray(s.logs) ? s.logs : []).filter(l => l && typeof l.text === 'string').map(l => ({ time: cleanText(l.time, 10), text: cleanText(l.text, 400) })).slice(0, 60);
   if (s.crafting && (!RECIPES[s.crafting.index] || !Number.isFinite(s.crafting.endAt))) s.crafting = null;
   if (s.crafting) { s.crafting.out = RECIPES[s.crafting.index].out; s.crafting.qty = intIn(s.crafting.qty, 1, MAX_BATCH, 1); s.crafting.great = !!s.crafting.great; s.crafting.ready = !!s.crafting.ready; s.crafting.used = (Array.isArray(s.crafting.used) ? s.crafting.used : []).map(u => Array.isArray(u) && LEGACY_ITEMS[u[0]] ? [LEGACY_ITEMS[u[0]], u[1]] : u).filter(u => Array.isArray(u) && ITEMS[u[0]]).map(u => typeof u[2] === 'string' && cleanText(u[2], MK_LEN) ? [u[0], intIn(u[1], 1, 9999, 1), cleanText(u[2], MK_LEN)] : [u[0], intIn(u[1], 1, 9999, 1)]).slice(0, 24); }
-  if (!['장비', '음식', '약', '재료'].includes(s.craftTab)) s.craftTab = null;
+  if (!(typeof s.craftTab === 'string' && TAG_NAMES.includes(s.craftTab))) s.craftTab = null; // 제작 탭 필터 = 아이템 태그 (10/27)
   if (s.active && s.active.id === '구역 이동' && !(LOCATIONS[s.active.to] && LOCATIONS[s.active.to].danger && !s.dungeon && Number.isFinite(s.active.endAt))) s.active = null;
   if (s.active && s.active.id === '타일 이동' && !(s.dungeon && Array.isArray(s.active.path) && s.active.path.length)) s.active = null;
 }
@@ -993,7 +994,7 @@ function actionPreview(id, mi = 0) {
       const h = a.hazard;
       costs.push(`${h.text} 사고 시 HP -${h.hp[0]}~${h.hp[1]} (회당 ${Math.round(h.chance * 100)}%)`);
       const find = Math.min(1, GATHER_FIND + weatherFx().gather) * gatherRepeat(n0 + 1);
-      const odds = `재료 획득 ${pct(find)} (빈손 ${pct(1 - find)}) · 대성공(2배) ${pct(fx.ggreat)}${a.rare ? ` · 희귀 ${a.rare} ${pct(.05 + fx.rare)}` : ''} · 사고로 다칠 확률 ${pct(h.chance)} (안 다칠 확률 ${pct(1 - h.chance)})`;
+      const odds = `재료 획득 ${pct(find)} (빈손 ${pct(1 - find)}) · 대성공(2배) ${pct(fx.ggreat)}${a.rare ? ` · 희귀 ${a.rare} ${pct(RARE_BASE + fx.rare)}` : ''} · 사고로 다칠 확률 ${pct(h.chance)} (안 다칠 확률 ${pct(1 - h.chance)})`;
       return { time, gain: `${a.items.join(' / ')} 회당 1~3개 · EXP +6/회 (총 ${rng(cMin * 6, cMax * 6)})`, cost: costs.join(' · '), note, odds };
     }
     const m = monsterOf(a);
@@ -1483,7 +1484,7 @@ function investigate(a) {
   const r = { text: '', items: [], exp: 2, money: 0, hp: 0, sp: 0, spCost: spOf(a), buff: null };
   discover('monsters', m.name);
   r.text = `${t.name}: ${t.desc} 서식 몬스터는 ${m.name}(${m.kind}), 채집물은 ${t.gather.join('·')}입니다.`;
-  if (chance(.05 + fx.rare)) { r.items.push([t.rare, 1]); r.text += ` 조사 중 희귀한 ${t.rare}을(를) 발견했습니다!`; }
+  if (chance(RARE_BASE + fx.rare)) { r.items.push([t.rare, 1]); r.text += ` 조사 중 희귀한 ${t.rare}을(를) 발견했습니다!`; }
   else if (chance(INVEST_ITEM)) { const n = pick(t.gather); r.items.push([n, 1]); r.text += ` 조사 중 ${n}을(를) 발견했습니다.`; }
   else r.text += ' 눈에 띄는 물건은 없었습니다.';
   { const ln = chance(.3) ? equipLine('i', Math.random) : ''; if (ln) r.text += ` ${ln}`; }
@@ -1526,7 +1527,7 @@ function resolveAction(id, cycles = 1, spPaid = 0, act = null) {
     if (!keep) lowered++;
     if (great) greats++;
     if (a.kind === 'gather') {
-      if (keep) { const it = pick(a.items); add(it, rand(1, 3) * mult); if (chance((jf.gather[a.method] || 0) + masteryBonus(a.method).gather)) add(it, 1); if (dd && chance(DEPTH_GATHER.more * dd)) add(it, 1); if (a.rare && chance(.05 + fx.rare + DEPTH_GATHER.rare * dd)) add(a.rare, mult); if (seed && chance(SEED_DROP.gather)) add(seed, 1); if (chance(PERS_SEED_DROP)) add(pick(PERS_SEEDS), 1); }
+      if (keep) { const it = pick(a.items); add(it, rand(1, 3) * mult); if (chance((jf.gather[a.method] || 0) + masteryBonus(a.method).gather)) add(it, 1); if (dd && chance(DEPTH_GATHER.more * dd)) add(it, 1); if (a.rare && chance(RARE_BASE + fx.rare + DEPTH_GATHER.rare * dd)) add(a.rare, mult); if (seed && chance(SEED_DROP.gather)) add(seed, 1); if (chance(PERS_SEED_DROP)) add(pick(PERS_SEEDS), 1); }
       r.exp += 6;
       if (chance(a.hazard.chance)) { r.hp -= rand(...a.hazard.hp); accidents++; }
     } else {
@@ -2612,20 +2613,20 @@ const DUEL_STATS = ['str', 'agi', 'int', 'wil', 'sen', 'luk'];
 function duelSnap() { // 내 대련 능력치 (서버에도 이 값을 올리고, 서버가 범위를 다시 자른다)
   const bs = battleSnap(), c = state.character, m = state.trainMsg || {};
   return { name: c.name, lv: c.level, hp: Math.max(20, Math.min(600, state.vitals.hpMax)), atk: Math.max(1, Math.min(200, Math.round((3 + bs.wa) * (1 + bs.atk) * 10) / 10)), ev: Math.max(0, Math.min(.5, +bs.evade.toFixed(3))),
-    main: DUEL_STATS.includes(c.mainStat) ? c.mainStat : bs.top || 'str', sub: DUEL_STATS.includes(c.subStat) ? c.subStat : '', win: cleanText(m.win || '', DUEL_MSG_MAX), lose: cleanText(m.lose || '', DUEL_MSG_MAX) };
+    main: DUEL_STATS.includes(c.mainStat) ? c.mainStat : bs.top || 'str', sub: DUEL_STATS.includes(c.subStat) ? c.subStat : '', help: cleanText(m.help || '', DUEL_MSG_MAX), win: cleanText(m.win || '', DUEL_MSG_MAX), lose: cleanText(m.lose || '', DUEL_MSG_MAX) };
 }
 function duelClean(sn, name) { // 받은 능력치를 다시 거른다
   const o = sn && typeof sn === 'object' ? sn : {}, num = (v, a, b, d) => Number.isFinite(+v) ? Math.max(a, Math.min(b, +v)) : d;
   return { name: cleanText(name || o.name, 12) || '?', lv: intIn(o.lv, 1, MAX_LEVEL, 1), hp: Math.round(num(o.hp, 20, 600, 100)), atk: num(o.atk, 1, 200, 5), ev: num(o.ev, 0, .5, 0),
-    main: DUEL_STATS.includes(o.main) ? o.main : 'str', sub: DUEL_STATS.includes(o.sub) ? o.sub : '', win: cleanText(o.win || '', DUEL_MSG_MAX), lose: cleanText(o.lose || '', DUEL_MSG_MAX) };
+    main: DUEL_STATS.includes(o.main) ? o.main : 'str', sub: DUEL_STATS.includes(o.sub) ? o.sub : '', help: cleanText(o.help || '', DUEL_MSG_MAX), win: cleanText(o.win || '', DUEL_MSG_MAX), lose: cleanText(o.lose || '', DUEL_MSG_MAX) };
 }
-function duelDummies(n) { // 연습 상대: 내 능력치를 조금 낮춘 허수아비
+function duelDummies(n, team = 2, off = 0) { // 연습 상대(2팀) · 연습 동료(1팀): 내 능력치를 조금 낮춘 허수아비
   const me = duelSnap();
-  return Array.from({ length: Math.max(1, Math.min(DUEL_TEAM_MAX, n)) }, (_, i) => ({ team: 2, ...duelClean({ ...me, name: DUEL_DUMMY[i], hp: Math.round(me.hp * (.75 + i * .05)), atk: me.atk * .8, ev: me.ev * .6, main: DUEL_STATS[(i * 2 + 1) % 6], sub: DUEL_STATS[(i * 2 + 4) % 6], win: '훈련 종료. 자세를 다시 점검하십시오.', lose: '삐빅… 훌륭합니다.' }) }));
+  return Array.from({ length: Math.max(0, Math.min(DUEL_TEAM_MAX, n)) }, (_, k) => { const i = k + off; return { team, ...duelClean({ ...me, help: team === 1 ? '뒤는 맡겨!' : '', name: team === 1 ? ['동료 훈련병', '교관 보조 로봇'][k] || '동료' : DUEL_DUMMY[i % DUEL_DUMMY.length], hp: Math.round(me.hp * (.75 + i * .05)), atk: me.atk * .8, ev: me.ev * .6, main: DUEL_STATS[(i * 2 + 1) % 6], sub: DUEL_STATS[(i * 2 + 4) % 6], win: '훈련 종료. 자세를 다시 점검하십시오.', lose: '삐빅… 훌륭합니다.' }) }; });
 }
 /* fighters: [{team(1|2), name, hp, atk, ev, main, sub}] (순서 고정) → { log:[{r,a,t,d,dmg,dodge,ko}], win: 1|2, hp:[남은 HP] } */
 function duelSim(fighters, seed) {
-  const rnd = seededRng((seed >>> 0) || 1), hp = fighters.map(f => f.hp), log = [];
+  const rnd = seededRng((seed >>> 0) || 1), hp = fighters.map(f => f.hp), log = [], boost = [];
   const alive = t => fighters.map((f, i) => i).filter(i => fighters[i].team === t && hp[i] > 0);
   let r = 0;
   while (alive(1).length && alive(2).length && r < DUEL_ROUND_MAX) {
@@ -2634,10 +2635,12 @@ function duelSim(fighters, seed) {
     for (const a of order) {
       if (hp[a] <= 0) continue;
       const foes = alive(fighters[a].team === 1 ? 2 : 1); if (!foes.length) break;
-      const t = foes[Math.floor(rnd() * foes.length)], d = 1 + Math.floor(rnd() * 6), dodge = d < 6 && d > 1 && rnd() < fighters[t].ev * .5;
-      const dmg = dodge ? 0 : Math.round(fighters[a].atk * DUEL_D6[d - 1] * (.9 + rnd() * .2));
+      const mates = fighters.map((f, i) => i).filter(i => i !== a && fighters[i].team === fighters[a].team && hp[i] > 0);
+      if (mates.length && !boost[a] && rnd() < DUEL_SUP_P) { const h = mates[Math.floor(rnd() * mates.length)]; boost[a] = 1; log.push({ r, sup: h, a, s: Math.floor(rnd() * 1000) }); } // 같은 팀의 지원
+      const t = foes[Math.floor(rnd() * foes.length)], d = 1 + Math.floor(rnd() * 6), dodge = d < 6 && d > 1 && rnd() < fighters[t].ev * .5, bo = !!boost[a];
+      const dmg = dodge ? 0 : Math.round(fighters[a].atk * DUEL_D6[d - 1] * (.9 + rnd() * .2) * (bo ? DUEL_SUP_MULT : 1)); if (!dodge) boost[a] = 0;
       hp[t] = Math.max(0, hp[t] - dmg);
-      log.push({ r, a, t, d, dmg, dodge, ko: hp[t] <= 0, s: Math.floor(rnd() * 1000) });
+      log.push({ r, a, t, d, dmg, dodge, ko: hp[t] <= 0, bo, hp: hp[t], s: Math.floor(rnd() * 1000) });
     }
   }
   const left = tm => fighters.reduce((s, f, i) => s + (f.team === tm ? hp[i] / f.hp : 0), 0);
@@ -2645,6 +2648,7 @@ function duelSim(fighters, seed) {
   return { log, win, hp, rounds: r };
 }
 function duelText(e, fighters) { // 기록 한 줄 → 묘사 (주 능력·주사위 단계, 가끔 부 능력 한 줄)
+  if (e.sup !== undefined) { const H = fighters[e.sup], A0 = fighters[e.a]; return `✦ ${H.name}의 지원! 「${H.help || '힘내!'}」 ${A0.name}의 다음 공격 +${Math.round((DUEL_SUP_MULT - 1) * 100)}%`; }
   const A = fighters[e.a], T = fighters[e.t], f = s => s.replace(/\{a\}/g, A.name).replace(/\{t\}/g, T.name), pk = l => l[e.s % l.length];
   const tier = e.d === 1 ? 0 : e.d === 2 ? 1 : e.d <= 4 ? 2 : e.d === 5 ? 3 : 4;
   let out = `🎲${e.d} ` + (e.dodge ? f(pk(DUEL_DODGE)) : f(pk(DUEL_LINES[A.main][tier])) + (e.dmg ? ` (-${e.dmg})` : ''));

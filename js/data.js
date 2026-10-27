@@ -171,7 +171,8 @@ const GATHER_VERBS = {
   '얼음 조각': '얼음을 깨서 조각을 얻는다', '서리 결정': '서리 낀 암벽에서 결정을 캐낸다', '빙어': '얼음 구멍에 낚싯줄을 드리운다', '설산 약초': '눈을 헤치고 약초를 딴다', '서리 이끼': '언 바위의 이끼를 긁어모은다'
 };
 /* 행동 확률: 모든 행동은 빈손일 수도, 다치지 않을 수도 있다 */
-const GATHER_FIND = .8;        // 채집·채굴·낚시 1회에서 재료를 얻을 기본 확률 (같은 행동 반복 시 더 낮아짐)
+const GATHER_FIND = .85;       // (10/27 .8→.85)
+const RARE_BASE = .08;        // 희귀 재료 기본 확률 (10/27 .05→.08)        // 채집·채굴·낚시 1회에서 재료를 얻을 기본 확률 (같은 행동 반복 시 더 낮아짐)
 const BATTLE_MAT = .65;        // 전투 승리 시 지형 재료를 얻을 확률
 const INVEST_ITEM = .35, INVEST_HURT = .06, INVEST_HURT_HP = [1, 2]; // 조사: 물건 발견 / 함정 확률
 const TRAVEL_FIND = .015;      // 타일 한 칸을 지날 때 길가에서 재료를 주울 확률 (아주 낮다)
@@ -1364,6 +1365,11 @@ const NEARBY_PLAYERS = []; // 같은 장소의 다른 대원 [이름, 상태, �
 const POSTS = {
   '공지': [
     ['업데이트 · 10월 27일', `[신규]
+· 대련: 서로의 체력이 실시간으로 줄어들고, 여럿이 싸우면 같은 팀의 지원(보스전과 같은 연출 · 다음 공격 +30%)이 터져요. 방을 만들 때 팀을 고를 수 있고, 연습은 2:2·3:3도 돼요.
+· 채팅 탭마다 안 읽은 메시지 수가 표시돼요. 제작 탭은 가진 레시피의 태그별로 볼 수 있어요.
+· 채집 성공 확률과 희귀 재료 확률이 조금 올랐어요.
+· 대련 타격감: 피해 숫자, 체력 잔상, 결정타·KO 연출과 효과음, 연속타·대역전 표시. 스테이터스 2페이지에서 어디서든 대련장을 열 수 있어요.
+· 종합 상가 장비: 메이드 상의·메이드 하의(함께 입으면 메이드 세트: 감각·행운 +1), 카고바지, 초커.
 · 임무가 매일 바뀝니다: 캠프 게시판은 그 구역 몬스터 '사냥' 2개와 납품 2개, 본부에는 '수배 · ○○ 사냥' 2개가 매일 오전 4시에 새로 걸려요.
 · 제작 탭·도감 레시피에 분야(요리·목공·재봉·대장·가죽공예·보석공예·약학)가 표시됩니다.
 · 투두리스트 '모두 체크'·'모두 해제' 버튼.
@@ -1603,7 +1609,7 @@ function createDefaultState() {
     buffs: [],          // [{id, endAt}]
     active: null,       // 진행 중인 행동 {id, startAt, endAt}
     pending: null,      // 완료됐지만 결과 확인 전인 행동 {id, result}
-    settings: { bgmOn: true, bgmVolume: BGM_DEFAULT_VOLUME, sfxVolume: 65, clickOn: true, alertOn: true, notify: true, guildAlert: true, chatTabs: { 월드: true, 길드: true, 파티: true, RP: true, 알림: true }, cursor: true, quickBar: true, fontSize: 'm', theme: 'light', customBase: 'light', customAccent: '#197da1' },
+    settings: { bgmOn: true, bgmVolume: BGM_DEFAULT_VOLUME, sfxVolume: 65, clickOn: true, alertOn: true, notify: true, guildAlert: true, chatTabs: { 월드: true, 길드: true, 파티: true, RP: true, 알림: true }, cursor: true, quickBar: true, duelFx: true, fontSize: 'm', theme: 'light', customBase: 'light', customAccent: '#197da1' },
     unlockSeen: {}, // 이미 알려 준 개방 알림 { 키: true }
     room: defaultRoom(), // 마이홈: { wall, floor, bg, zc, items:[{u,f,x,y,flip,c,z}] }
     storage: {}, // 개인실 창고: { 아이템 이름: 수량 }
@@ -1874,6 +1880,7 @@ PET_WILD.forEach(([zid, tn, id, name, ic]) => {
 ACTIONS['대련장'] = { kind: 'duel', icon: 'sports_kabaddi', label: '대련장', title: '대련장', action: '방을 만들거나 들어가 다른 대원과 대련합니다. 최대 3:3 팀전, D6 주사위로 유불리가 갈립니다. 보상은 없고 기록만 남아요.' };
 ACTIONS['보스전 안내'] = { kind: 'bossinfo', icon: 'skull', label: '보스전 안내', title: '보스전 안내', action: '앞으로 열릴 보스전의 진행 방식을 알아봅니다.' };
 ACTIONS['훈련 메시지'] = { kind: 'tmsg', icon: 'edit_note', label: '훈련 메시지', title: '훈련 메시지', action: '보스전 도움 메시지와 대련 승리·패배 대사를 정합니다.' };
+const DUEL_SUP_P = .08, DUEL_SUP_MULT = 1.3; // 다수 대련: 공격 전 이 확률로 같은 팀 대원의 지원(보스전과 같은 연출, 다음 공격 ×1.3)
 const DUEL_TEAM_MAX = 3, DUEL_MSG_MAX = 40, DUEL_ROUND_MAX = 30, DUEL_LINE_MS = 900;
 const DUEL_D6 = [0, .6, 1, 1.25, 1.5, 1.9];
 const DUEL_DUMMY = ['훈련용 허수아비', '낡은 교관 로봇', '모래주머니 골렘'];
@@ -2480,3 +2487,12 @@ DANGER_ZONES.forEach(z => {
   });
 });
 { const prev = boardDailyOk; boardDailyOk = (q, t, ci = 0) => q.daily === 'campk' ? campPick(CAMP_KILLS[q.board] || [], CAMP_KILL_DAILY, 50 + ((DANGER_ZONES.find(z => z.id === q.board) || {}).n || 1), t, ci).includes(q.id) : q.daily === 'hq' ? rotPick(HQ_HUNTS, HQ_HUNT_DAILY, 977, t).includes(q.id) : prev(q, t, ci); }
+/* 종합 상가 장비 추가 (2026-10-27): 메이드 상의·하의(함께 입으면 메이드 세트), 카고바지, 초커 */
+defItems('장비', [
+  ['메이드 상의', 'checkroom', '프릴이 달린 단정한 메이드복 상의다. 하의와 함께 입으면 세트 효과가 있다.', { slot: '상의', mods: { wil: 1, sen: 1 }, sell: 110 }],
+  ['메이드 하의', 'checkroom', '앞치마가 달린 메이드복 치마다. 상의와 함께 입으면 세트 효과가 있다.', { slot: '하의', mods: { agi: 1, luk: 1 }, sell: 100 }],
+  ['카고바지', 'checkroom', '주머니가 잔뜩 달린 튼튼한 작업 바지다. 뭐든 넣고 다닐 수 있을 것 같다.', { slot: '하의', mods: { str: 1, agi: 1 }, sell: 85 }],
+  ['초커', 'circle', '목에 딱 맞게 두르는 검은 초커다. 착용하면 마음이 단단해진다.', { slot: '목', mods: { sen: 1, wil: 1 }, sell: 70 }]
+]);
+ITEM_SETS.push({ name: '메이드 세트', need: ['메이드 상의', '메이드 하의'], mods: { sen: 1, luk: 1 } });
+SHOPS['종합 상가'].sections['장비'].push(['메이드 상의', 280], ['메이드 하의', 260], ['카고바지', 220], ['초커', 180]);

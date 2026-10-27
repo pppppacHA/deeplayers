@@ -374,14 +374,14 @@ with sync_playwright() as p:
     ff(30); check('craft_not_done_at_30s', ev(pg, "countItem('응급 키트')")== n_kit and ev(pg, "!!state.crafting"))
     ff(25); ff(2)
     check('craft_completes_and_collects', ev(pg, "countItem('응급 키트')")== n_kit + 1 and ev(pg, "state.crafting")is None and '제작 완료' in text(pg, '#toast') or ev(pg, "countItem('응급 키트')")== n_kit + 1)
-    check('craft_no_success_rate_text', '성공률' not in text(pg, '#viewCraft') and pg.locator('#craftTabs button').count() == 4 and ev(pg, "typeof craftChance")== 'undefined')
+    check('craft_no_success_rate_text', '성공률' not in text(pg, '#viewCraft') and pg.locator('#craftTags button').count() >= 1 and ev(pg, "typeof craftChance")== 'undefined')
     # ---------- 제작 탭 / 필터 / 여러 개 제작·사용 ----------
     inv_bak = ev(pg, "JSON.stringify(state.inventory)")
     ev(pg, "state.craftTab=null;state.crafting=null;renderCraft()")
-    check('craft_tabs_food_med', [t for t in ev(pg, "[...document.querySelectorAll('#craftTabs button')].map(b=>b.textContent)")] == ['장비', '음식', '약', '재료'] and ev(pg, "craftCat('응급 키트')")== '약' and ev(pg, "craftCat('육포')")== '음식' and ev(pg, "RECIPES.every(rc=>['장비','음식','약','재료'].includes(craftCat(rc.out)))"))
-    pg.click('#craftTabs button[data-craft="약"]')
-    check('craft_med_tab_filters', ev(pg, "[...document.querySelectorAll('#craftList .recipe strong')].every(e=>e.textContent.includes('약'))") and pg.locator('#craftList .recipe').count() >= 1)
-    pg.click('#craftTabs button[data-craft="약"]')
+    check('craft_tabs_food_med', ev(pg, "[...document.querySelectorAll('#craftTags button')].map(b=>b.dataset.craft).every(t=>TAG_NAMES.includes(t)&&RECIPES.some(r=>recipeKnown(r)&&(ITEMS[r.out].tags||[]).includes(t)))") and pg.locator('#craftTags button').count() >= 1 and ev(pg, "craftCat('응급 키트')")== '약')  # 10/27 제작 탭은 가진 레시피의 태그별
+    pg.click('#craftTags button[data-craft="약학"]')
+    check('craft_med_tab_filters', ev(pg, "[...document.querySelectorAll('#craftList .recipe strong')].length>=1&&RECIPES.filter(r=>recipeKnown(r)&&(ITEMS[r.out].tags||[]).includes('약학')).length===document.querySelectorAll('#craftList .recipe').length"))
+    pg.click('#craftTags button[data-craft="약학"]')
     ev(pg, "view.craftOnly=false;['약초','생체 섬유','수초','소금',...MAT_GROUPS['물고기']].forEach(n=>removeItem(n,countItem(n)));addItem('약초',6);addItem('생체 섬유',3);renderCraft()")
     n_all = pg.locator('#craftList .recipe').count()
     check('craft_only_is_button_top_right', ev(pg, "document.querySelector('#craftOnly').tagName")== 'BUTTON' and rect(pg, '#craftOnly')['x'] > rect(pg, '#craftCount')['x'] and abs(rect(pg, '#craftOnly')['y'] - rect(pg, '#craftCount')['y']) < 20 and 'n종' not in text(pg, '#craftCount') and '종' in text(pg, '#craftCount'))
@@ -487,8 +487,8 @@ with sync_playwright() as p:
     pg.click('[data-act="craft-cancel"]'); pg.wait_for_timeout(80)
     check('craft_cancel_refunds', ev(pg, "countItem('약초')")== n_herb and ev(pg, "state.crafting")is None)
     check('craft_great_chance_scales_with_luk', ev(pg, "(()=>{const l=state.stats.luk;state.stats.luk=50;const a=effects().craftGreat;state.stats.luk=l;return a>effects().craftGreat&&a<=.5})()"))
-    pg.click('[data-craft="장비"]'); check('craft_subtab_filter', pg.locator('.recipe').count() == ev(pg, "RECIPES.filter(r=>ITEMS[r.out].tab==='장비'&&recipeKnown(r)).length") and pg.locator('#craftTabs button.active').count() == 1)
-    pg.click('[data-craft="장비"]'); check('craft_subtab_toggle_off', pg.locator('.recipe').count() == ev(pg, 'RECIPES.filter(recipeKnown).length'), pg.locator('.recipe').count())
+    pg.click('#craftTags [data-craft="약학"]'); check('craft_subtab_filter', pg.locator('.recipe').count() == ev(pg, "RECIPES.filter(r=>(ITEMS[r.out].tags||[]).includes('약학')&&recipeKnown(r)).length") and pg.locator('#craftTags button.active').count() == 1)
+    pg.click('#craftTags [data-craft="약학"]'); check('craft_subtab_toggle_off', pg.locator('.recipe').count() == ev(pg, 'RECIPES.filter(recipeKnown).length'), pg.locator('.recipe').count())
     pg.click('[data-ltab="EQUIP"]')
 
     # ---------- 전투/채집 대성공 규칙 ----------
@@ -532,7 +532,7 @@ with sync_playwright() as p:
     pg.click('#choices button:has-text("종합 상가")'); pg.wait_for_timeout(80)
     check('mall_tabs_5', '종합 상가' in text(pg, '#modalTitle') and ev(pg, "[...document.querySelectorAll('.shop-tabs button')].map(b=>b.textContent)")== ['무기', '장비', '재료', '농사', 'RP템', '판매'] and text(pg, '.shop-tabs button.active') == '무기')
     check('shop_equipment_shows_effect', pg.locator('.shop-row').count() == ev(pg, "shopSections('종합 상가')['무기'].length") and pg.locator('.shop-row').count() >= 3 and pg.locator('.shop-row .item-info .it-l1').count() == pg.locator('.shop-row').count() and ev(pg, "[...document.querySelectorAll('.shop-row .it-l1')].every(e=>e.textContent.trim().length>0)"))
-    check('mall_weapon_gear_split', ev(pg, "(()=>{const s=shopSections('종합 상가');return s['무기'].every(([n])=>ITEMS[n].slot==='무기')&&s['장비'].every(([n])=>ITEMS[n].tab==='장비'&&ITEMS[n].slot!=='무기')&&s['무기'].length+s['장비'].length===22&&s['무기'].some(([n])=>n==='아이스크림 소드')})()") is True)
+    check('mall_weapon_gear_split', ev(pg, "(()=>{const s=shopSections('종합 상가');return s['무기'].every(([n])=>ITEMS[n].slot==='무기')&&s['장비'].every(([n])=>ITEMS[n].tab==='장비'&&ITEMS[n].slot!=='무기')&&s['무기'].length+s['장비'].length===26&&s['무기'].some(([n])=>n==='아이스크림 소드')})()") is True)
     pg.click('.shop-tabs button:has-text("장비")'); pg.wait_for_timeout(50)
     check('mall_gear_rows_show_wear_slot', pg.locator('.shop-row .slot-tag').count() == pg.locator('.shop-row').count() and pg.locator('.slot-hint').count() == 1)
     check('mall_gear_tab_rows', pg.locator('.shop-row').count() == ev(pg, "shopSections('종합 상가')['장비'].length") and text(pg, '.shop-tabs button.active') == '장비')
@@ -1630,7 +1630,7 @@ with sync_playwright() as p:
     pg.click('#resetMap'); check('dungeon_reset_pan', ev(pg, "view.dpan.x")== 0 and ev(pg, "view.dzoom")== 1 and ev(pg, "document.querySelector('#mapWorld').style.transform")== 'none')
     # ---------- 스테이터스 2페이지 / 모의 전투 / 재료 검색 ----------
     pg.click('#statusPager [data-p="1"]'); pg.wait_for_timeout(60)
-    check('status_page2_combat', '공격력' in text(pg, '#statusBody') and '방어력' in text(pg, '#statusBody') and '모의전투' in text(pg, '#statusBody') and pg.locator('#statusBody .stat').count() == 4)
+    check('status_page2_combat', '공격력' in text(pg, '#statusBody') and '방어력' in text(pg, '#statusBody') and '모의전투' in text(pg, '#statusBody') and pg.locator('#statusBody .stat').count() == 5)
     pg.click('[data-act="extras-open"]'); pg.wait_for_timeout(80)
     check('extras_opens_mock_overlay', '모의 전투' in text(pg, '#modalTitle') and pg.locator('#mockMon option').count() >= 10)
     hp_b, sp_b, money_b = ev(pg, "state.vitals.hp"), ev(pg, "state.vitals.sp"), ev(pg, "state.money")
@@ -2242,7 +2242,7 @@ with sync_playwright() as p:
     ev(pg, "(()=>{delete state.nicks['훈련용 검'];delete state.reinforce['훈련용 검'];state.equipment['무기']=null;renderEquip()})()")
     # 스테이터스 2페이지
     ev(pg, "(()=>{view.statusPage=1;renderStatus()})()")
-    check('status_p2_rows', ev(pg, "[...document.querySelectorAll('#statusBody .stat .stat-head b')].map(b=>b.textContent).join()") == '공격력,방어력,이동속도,모의전투' and pg.locator('#statusBody .stat.span2').count() == 2)
+    check('status_p2_rows', ev(pg, "[...document.querySelectorAll('#statusBody .stat .stat-head b')].map(b=>b.textContent).join()") == '공격력,방어력,이동속도,모의전투,대련' and pg.locator('#statusBody .stat.span2').count() == 1)
     check('status_p2_speed_value', '초' in text(pg, '#statusBody') and ev(pg, "document.querySelectorAll('#statusBody .stat')[2].textContent.includes(String(round1(stepSec())))") is True)
     ev(pg, "(()=>{view.statusPage=0;renderStatus()})()")
     # 버프 개수 점 숨김
