@@ -214,6 +214,13 @@ with sync_playwright() as p:
     check('duel_watch_close_does_not_leave_or_minimize', ev("window.__left===0&&!view.duelMin&&!view.duelRoom&&!document.querySelector('#duelChip')"))
     ev("duelInvitesIn([{room:5,from:'친구',title:'한판'}])")
     check('duel_invite_chip', ev("!!document.querySelector('#duelInvChip')&&view.duelInv.id===5"))
+    ev("closeModal();window.__fx=0;const h=hitSfx,w=swishSfx,f=sfx;hitSfx=(...a)=>{window.__fx++;h(...a)};swishSfx=(...a)=>{window.__fx++;w(...a)};openMock()"); pg.wait_for_timeout(100)
+    ev("document.querySelector('[data-act=mock-start]').click()"); pg.wait_for_timeout(250)
+    banner = pg.locator('#duelCut .duel-start').count(); pg.wait_for_timeout(2600)
+    check('mock_battle_like_duel', banner == 1 and ev("window.__fx") >= 3 and pg.locator('#mockArena .duel-f').count() == 2 and ev("document.querySelector('#dh1').style.width!=='100%'||document.querySelector('#dh0').style.width!=='100%'"), [banner, ev("window.__fx")])
+    ev("closeModal()")
+    r = ev("(async()=>{const bak={e:Object.getOwnPropertyDescriptor(Cloud,'enabled'),u:Cloud.user,m:Cloud.marketMine,st:Cloud.marketStatus,a:Cloud.marketAck,l:Cloud.marketList};try{Object.defineProperty(Cloud,'enabled',{get:()=>true,configurable:true});Cloud.user=()=>'tester';Cloud.marketMine=async()=>[];Cloud.marketStatus=async k=>[{id:5,ckey:k[0],item:'목재',qty:0,price:10,status:'sold',sold:3}];Cloud.marketAck=async()=>{};state.market.sell=[{key:'kkkkkk1',id:5,item:'목재',qty:3,price:10,got:0}];state.market.buy=[];state.mseen=[];const m0=state.money;await marketSync();return [state.market.sell.length,state.money-m0,Cloud.enabled===true]}finally{Object.defineProperty(Cloud,'enabled',bak.e);Cloud.user=bak.u;Cloud.marketMine=bak.m;Cloud.marketStatus=bak.st;Cloud.marketAck=bak.a}})()")
+    check('market_acked_elsewhere_settles', r[0] == 0 and r[1] == 27, r)  # 3×10 판매, 수수료 10% → 27
     ev("state.titles.push('강함의 증표');state.character.title='강함의 증표'")
     ev("view.duelInv=null;duelInvChip();stopDuelTimers();state.duelBets[999]={won:true,cr:20,items:[],lost:'',at:Date.now(),done:false};state.duelEscrow={room:5,bet:{cr:60},at:Date.now()};state.locks=['목재']")
     ev("save()"); pg.reload(); pg.wait_for_timeout(300)

@@ -546,7 +546,7 @@ function tick() {
       if (travelFinds.length) toast(`길가에서 ${[...new Set(travelFinds)].join(', ')}을(를) 주웠습니다!`), travelFinds.length = 0;
     } else updateRunning();
   }
-  if (state.pending && !(view.rescueAnim && $('#overlay').classList.contains('open') && $('#rescueLog'))) A.claim(); // 결과는 확인을 누르지 않아도 바로 받는다 (끝난 행동의 결과 카드는 행동 패널에 남는다)
+  if (state.pending && !(view.rescueAnim && $('#overlay').classList.contains('open') && $('#duelRoot.arena'))) A.claim(); // 결과는 확인을 누르지 않아도 바로 받는다 (끝난 행동의 결과 카드는 행동 패널에 남는다)
   if (craftTick()) {
     const name = state.crafting.out, res = collectCraft();
     renderBag(); sfx('done'); notifyDone(`${name} 제작이 완료되었습니다.`);
@@ -589,7 +589,7 @@ function openPetAcc(i) { // 펫 악세서리 창: 가진 악세서리를 달거�
   const row = (n, on) => `<div class="nearby-row"><div class="round-avatar">${icon(PET_ACC[n].icon)}</div><div class="grow"><strong>${esc(n)}</strong><small>${esc(PET_ACC[n].text)}</small><small>${esc(PET_ACC[n].desc)}</small></div>${on ? `<button data-act="pet-acc-off" data-i="${i}">벗기기</button>` : `<button class="primary" data-act="pet-acc-set" data-i="${i}" data-name="${esc(n)}">달아 주기</button>`}</div>`;
   modal(`${petName(p)}의 악세서리`, `<p class="tiny">잘 쓰이지 않는 재료로 제작한 악세서리를 펫에게 달아 줍니다. 한 번에 하나만 달 수 있고, 벗기면 소지품으로 돌아옵니다. 효과는 함께 다니는 든든한 펫에게만 적용돼요.</p>` +
     `<div class="choice-label">달고 있는 악세서리</div>${p.acc ? row(p.acc, true) : '<div class="empty">달고 있는 악세서리가 없습니다.</div>'}` +
-    `<div class="choice-label">가진 악세서리</div>${have.map(n => row(n, false)).join('') || '<div class="empty">가진 악세서리가 없습니다. 제작 탭에서 만들 수 있어요. (레시피는 단련이나 구입으로 배웁니다)</div>'}`, [btnClose], true);
+    `<div class="choice-label">가진 악세서리</div>${have.map(n => row(n, false)).join('') || '<div class="empty">가진 악세서리가 없습니다. 제작 탭에서 만들 수 있어요. (레시피는 속성학습이나 구입으로 배웁니다)</div>'}`, [btnClose], true);
 }
 const petRefresh = el => { if (el && el.closest && el.closest('#sideView')) renderSide(); else { openPets(true); renderSide(); } };
 const petSig = () => state.pets.map(p => `${p.id}|${p.name || ''}|${p.exp ? (expReady(p) ? 'R' : 'E') + p.exp.zone : state.petActive === state.pets.indexOf(p) ? 'A' : 'W'}|${p.bond}|${p.pers}`).join(';') + '|' + state.side + '|' + (view.petSub || '상태') + '|' + view.petNaming + '|' + state.petActive;
@@ -1023,7 +1023,7 @@ function codexEntries(tab) {
     .concat(allJournals() ? [{ sub: '', icon: 'menu_book', name: LAST_JOURNAL.name, desc: LAST_JOURNAL.text, known: true, journal: true, last: true }] : []); // 마지막 장은 다 모으기 전에는 자리('???')도 보이지 않는다
   if (tab === '몬스터') return DANGER_ZONES.flatMap(z => z.terrains.flatMap(t => t.monsters.map(m => ({ sub: m.kind, icon: m.kind === '짐승' ? 'pets' : 'bug_report', name: m.name,
     desc: `${m.desc} (HP ${m.hp} · 공격 ${m.atk})`, where: `${z.name} · ${t.name}`, known: c.monsters[m.name] }))));
-  return RECIPES.map(rc => ({ sub: '', icon: ITEMS[rc.out].icon, name: rc.out, desc: (craftField(rc.out) ? `[${craftField(rc.out)}] ` : '') + Object.entries(rc.mats).map(([n, q]) => `${n} ×${q}`).join(' + '), known: recipeKnown(rc), badge: recipeKnown(rc) ? (c.recipes[rc.out] ? '제작 완료' : '미제작') : (rankAtLeast(rc.rank) ? '단련으로 습득 가능' : `${rc.rank}등급부터 단련으로 습득`) }));
+  return RECIPES.map(rc => ({ sub: '', icon: ITEMS[rc.out].icon, name: rc.out, desc: (craftField(rc.out) ? `[${craftField(rc.out)}] ` : '') + Object.entries(rc.mats).map(([n, q]) => `${n} ×${q}`).join(' + '), known: recipeKnown(rc), badge: recipeKnown(rc) ? (c.recipes[rc.out] ? '제작 완료' : '미제작') : (rankAtLeast(rc.rank) ? '속성학습으로 습득 가능' : `${rc.rank}등급부터 속성학습으로 습득`) }));
 }
 function codexFiltered() { // 현재 탭·분류·정렬·검색을 적용한 목록 (검색은 발견한 항목의 이름·설명·서식지만 찾는다)
   const { tab, sub } = codexView, all = codexEntries(tab);
@@ -2428,7 +2428,10 @@ async function marketSync() { // 내가 올린 것·처리 중인 구매를 서�
     }
     if (state.market.sell.length) {
       for (const e of state.market.sell.filter(x => !x.id)) { try { const r = await Cloud.marketList(e.key, e.item, e.qty, e.price, e.mk || ''); if (r && r.ok === false && r.msg) { state.market.sell = state.market.sell.filter(x => x !== e); marketGiveBack(e, e.qty, 'r' + e.key.slice(-6)); toast('거래 등록이 거절돼 물건을 돌려받았어요.'); } } catch (x) { /* 다음에 다시 */ } }
-      const out = marketSettleSell(await Cloud.marketMine());
+      let rows = await Cloud.marketMine(); rows = Array.isArray(rows) ? rows : [];
+      { const have = new Set(rows.map(r => r && r.ckey)), lost = state.market.sell.filter(e => e.id && !have.has(e.key)).map(e => e.key); // 서버 목록에서 이미 정리된(다른 기기 등) 거래: 키로 직접 상태를 받아 정산한다
+        if (lost.length) { try { const more = await Cloud.marketStatus(lost); if (Array.isArray(more)) rows = rows.concat(more.filter(r => r && !have.has(r.ckey))); } catch (x) { /* 서버에 market_status 가 없으면 다음에 */ } } }
+      const out = marketSettleSell(rows);
       out.sold.forEach(s => { toast(`${s.item} ×${s.qty}이(가) 팔렸어요! +${s.net} CR`); addLog(`거래: ${s.item} ×${s.qty} 판매 (+${s.net} CR)`); sfx('ok'); });
       out.back.forEach(s => toast(`${s.item} ×${s.qty} 거래가 끝나 물건을 돌려받았어요.`));
       for (const id of out.acks) { try { await Cloud.marketAck(id); } catch (x) { /* 다음에 다시 */ } }
@@ -3155,57 +3158,79 @@ function mockMonsters() {
   for (const [id, a] of Object.entries(ACTIONS)) { if (a.kind !== 'battle') continue; const m = monsterBase(a); if (m && !seen.has(m.name)) { seen.add(m.name); out.push(m); } }
   return out.sort((x, y) => x.hp * x.atk - y.hp * y.atk); // 위쪽이 약한 몬스터, 아래로 갈수록 강한 몬스터
 }
+/* 모의전투 · 대원 구조: 대련과 같은 화면(체력 막대·잔상·피해 숫자·KO·흔들림·타격음·FIGHT!)으로 보여 준다 */
+function arenaHtml(me, foe) { // fs[0]=나, fs[1]=상대
+  const card = (f, i) => `<div class="duel-team t${i + 1}"><div class="duel-f ${i ? '' : 'me'}" id="df${i}"><div class="bars"><div class="bar-row"><b>HP</b><div class="bar hp"><i class="ghost" id="dg${i}" style="width:100%"></i><span id="dh${i}" style="width:100%"></span></div><span class="val" id="dv${i}">${f.hp}</span></div></div><strong>${esc(f.name)}</strong><small>${esc(f.sub || '')}</small></div></div>`;
+  return `<div id="duelRoot" class="arena"><div class="duel-teams">${card(me, 0)}<div class="duel-vs">VS</div>${card(foe, 1)}</div><div class="battle-log duel-log" id="duelLog"></div><div id="duelEnd"></div><div class="duel-cut" id="duelCut"></div></div>`;
+}
+function arenaStart() { const c = $('#duelCut'); if (c) { c.insertAdjacentHTML('beforeend', '<div class="duel-start">FIGHT!</div>'); setTimeout(() => { const x = c.querySelector('.duel-start'); if (x) x.remove(); }, 900); } sfx('levelup'); }
+function arenaEvent(l, hp, mhp, hp0, mhp0) { // mockRound 한 줄 → 대련 화면용 사건
+  if (l.k === 'hit' && l.d > 0) { const big = l.d >= mhp0 * .25; return { a: 0, t: 1, dmg: Math.round(l.d), hp: Math.max(0, Math.round(mhp)), d: big ? 6 : l.d >= mhp0 * .12 ? 5 : 4, ko: mhp <= 0 }; }
+  if (l.k === 'hurt' && l.h > 0) { const big = l.h >= hp0 * .2; return { a: 1, t: 0, dmg: Math.round(l.h), hp: Math.max(0, Math.round(hp)), d: big ? 6 : l.h >= hp0 * .1 ? 5 : 4, ko: hp <= 0 }; }
+  return { a: 0, t: 1, dmg: 0, hp: Math.max(0, Math.round(mhp)), dodge: true, d: 1 };
+}
+function arenaShow(e, fs) { // 대련과 같은 연출 + 소리
+  duelShow(e, fs, true);
+  if (e.ko) { sfx('error'); const r = $('#duelRoot'); if (r && state.settings.duelFx !== false) { r.classList.remove('shake'); void r.offsetWidth; r.classList.add('shake'); } }
+  else if (e.dodge) swishSfx(); else hitSfx(e.d === 6 ? 2 : e.d >= 5 ? 1 : 0);
+  return e.ko || e.d === 6 ? 750 : 420; // 템포: 평소 빠르게, 결정타·KO는 조금 길게
+}
+function arenaEnd(win, fs) { const w = $(`#df${win ? 0 : 1}`); if (w) w.classList.add('win-glow'); }
 function openRescueFight() { // 대원 구조 전투: 이미 정해진 결과(state.pending)를 한 줄씩 보여 주고, 끝나거나 창을 닫으면 결과를 받는다
   const p = state.pending, rs = p && p.result && p.result.rescue; if (!rs || !Array.isArray(rs.log) || !(rs.hp0 > 0) || !(rs.mhp0 > 0)) { A.claim(); return; } // 깨진 저장이면 바로 결과만 받는다
-  if (view.rescueTimer) clearInterval(view.rescueTimer);
+  if (view.rescueTimer) clearTimeout(view.rescueTimer);
   view.rescueAnim = true;
-  modal('위험에 처한 대원 구하기', `<p class="tiny">${esc(rs.who)} 대원을 구하러 ${esc(rs.foe)}에게 달려들었다!</p>` +
-    `<div class="mock-bars"><div><small id="rsMe">나</small><div class="progress"><span id="rsMeBar" style="width:100%"></span></div></div><div><small id="rsEn">상대</small><div class="progress"><span id="rsEnBar" class="bad" style="width:100%"></span></div></div></div>` +
-    `<div class="battle-log mock" id="rescueLog"></div>`, ['<button data-act="rescue-skip">건너뛰기</button>', '<button class="primary hidden" data-act="rescue-done">확인</button>'], true);
-  let i = 0, hp = rs.hp0, mhp = rs.mhp0;
-  const bars = () => { const a = $('#rsMeBar'), b = $('#rsEnBar'); if (!a) return; a.style.width = clamp(hp / rs.hp0 * 100, 0, 100) + '%'; b.style.width = clamp(mhp / rs.mhp0 * 100, 0, 100) + '%'; $('#rsMe').textContent = `나 ${Math.max(0, hp)}/${rs.hp0}`; $('#rsEn').textContent = `${rs.foe} ${Math.max(0, mhp)}/${rs.mhp0}`; };
-  const add = (t, k) => { const lg = $('#rescueLog'); if (!lg) return; lg.insertAdjacentHTML('beforeend', `<div class="bl ${esc(k)}">${esc(t)}</div>`); lg.scrollTop = lg.scrollHeight; };
+  const fs = [{ name: state.character.name, hp: rs.hp0, sub: `구하러 간 대원 · ${rs.who}` }, { name: rs.foe, hp: rs.mhp0, sub: '위험한 상대' }];
+  modal('위험에 처한 대원 구하기', `<p class="tiny">${esc(rs.who)} 대원을 구하러 ${esc(rs.foe)}에게 달려들었다!</p>` + arenaHtml(fs[0], fs[1]),
+    ['<button data-act="rescue-skip">건너뛰기</button>', '<button class="primary hidden" data-act="rescue-done">확인</button>'], true);
+  let i = 0, hp = rs.hp0, mhp = rs.mhp0, done = false;
+  const add = (t, k) => { const lg = $('#duelLog'); if (!lg) return; lg.insertAdjacentHTML('beforeend', `<div class="bl ${esc(k)}">${esc(t)}</div>`); lg.scrollTop = lg.scrollHeight; };
   const finish = () => {
-    clearInterval(view.rescueTimer); view.rescueTimer = 0;
-    for (; i < rs.log.length; i++) { const l = rs.log[i]; mhp -= l.d; hp -= l.h; add(l.t, l.k); }
-    bars(); add(rs.win ? `${rs.foe}을(를) 물리쳤다! ${rs.who} 대원을 구했다.` : `${rs.foe}을(를) 이기지 못했다…`, 'note');
+    if (done) return; done = true; clearTimeout(view.rescueTimer); view.rescueTimer = 0;
+    for (; i < rs.log.length; i++) { const l = rs.log[i]; mhp -= l.d; hp -= l.h; add(l.t, l.k); duelShow(arenaEvent(l, hp, mhp, rs.hp0, rs.mhp0), fs, false); }
+    add(rs.win ? `${rs.foe}을(를) 물리쳤다! ${rs.who} 대원을 구했다.` : `${rs.foe}을(를) 이기지 못했다…`, 'note'); arenaEnd(rs.win, fs);
     const sk = $('[data-act="rescue-skip"]'), ok = $('[data-act="rescue-done"]'); if (sk) sk.classList.add('hidden'); if (ok) ok.classList.remove('hidden');
     sfx(rs.win ? 'levelup' : 'error');
   };
   view.rescueFinish = finish;
-  bars(); add(`${rs.foe}와(과) 마주쳤다. 전투 시작!`, 'note');
-  view.rescueTimer = setInterval(() => {
-    if (!$('#rescueLog')) { clearInterval(view.rescueTimer); view.rescueTimer = 0; view.rescueAnim = false; return; }
+  add(`${rs.foe}와(과) 마주쳤다. 전투 시작!`, 'note'); arenaStart();
+  const step = () => {
+    if (!$('#duelLog')) { view.rescueTimer = 0; view.rescueAnim = false; return; }
     if (i >= rs.log.length) { finish(); return; }
-    const l = rs.log[i++]; mhp -= l.d; hp -= l.h; add(l.t, l.k); bars();
-  }, 450);
+    const l = rs.log[i++]; mhp -= l.d; hp -= l.h; add(l.t, l.k); const ms = arenaShow(arenaEvent(l, hp, mhp, rs.hp0, rs.mhp0), fs);
+    view.rescueTimer = setTimeout(step, ms);
+  };
+  view.rescueTimer = setTimeout(step, 700);
 }
 function openMock() {
   const ms = mockMonsters();
   modal('추가 기능 · 모의 전투', `<p class="tiny">상대를 골라 전투를 구경해 보세요. 위쪽일수록 약하고 아래로 갈수록 강한 상대예요. 보상·HP·기력에는 영향이 없어요.</p>` +
-    `<div class="srow fontrow"><span>상대</span><select id="mockMon">${ms.map((m, i) => `<option value="${i}">${esc(m.name)} (HP ${m.hp})</option>`).join('')}</select></div>` +
-    `<div class="mock-bars"><div><small id="mockMe">나</small><div class="progress"><span id="mockMeBar" style="width:100%"></span></div></div><div><small id="mockEn">상대</small><div class="progress"><span id="mockEnBar" class="bad" style="width:100%"></span></div></div></div>` +
-    `<div class="battle-log mock" id="mockLog"><div class="bl-note">상대를 고르고 시작을 누르세요.</div></div>`,
+    `<div class="srow fontrow"><span>상대</span><select id="mockMon">${ms.map((m, i) => `<option value="${i}">${esc(m.name)} (HP ${m.hp})</option>`).join('')}</select></div><div id="mockArena">${arenaHtml({ name: state.character.name, hp: Math.max(20, state.vitals.hpMax), sub: `Lv.${state.character.level}` }, { name: (ms[0] || {}).name || '상대', hp: ((ms[0] || {}).hp || 1) * 2, sub: '모의 상대' })}</div>`,
     [btnClose, '<button class="primary" data-act="mock-start">전투 시작</button>']);
+  { const lg = $('#duelLog'); if (lg) lg.innerHTML = '<div class="bl-note">상대를 고르고 시작을 누르세요.</div>'; }
 }
 function mockStart() {
-  if (view.mockTimer) { clearInterval(view.mockTimer); view.mockTimer = 0; }
+  if (view.mockTimer) { clearTimeout(view.mockTimer); view.mockTimer = 0; }
   const ms = mockMonsters(), m = ms[+$('#mockMon').value] || ms[0]; if (!m) return;
-  const st = { hp: Math.max(20, state.vitals.hpMax), mhp: m.hp * 2 }, hp0 = st.hp, mhp0 = st.mhp, log = $('#mockLog');
-  log.innerHTML = ''; let rounds = 0;
+  const st = { hp: Math.max(20, state.vitals.hpMax), mhp: m.hp * 2 }, hp0 = st.hp, mhp0 = st.mhp;
+  const fs = [{ name: state.character.name, hp: hp0, sub: `Lv.${state.character.level}` }, { name: m.name, hp: mhp0, sub: '모의 상대' }];
+  $('#mockArena').innerHTML = arenaHtml(fs[0], fs[1]); const log = $('#duelLog'); let rounds = 0;
   const add = (text, kind) => { log.insertAdjacentHTML('beforeend', `<div class="bl ${kind}">${esc(text)}</div>`); log.scrollTop = log.scrollHeight; };
-  const bars = () => { $('#mockMeBar').style.width = clamp(st.hp / hp0 * 100, 0, 100) + '%'; $('#mockEnBar').style.width = clamp(st.mhp / mhp0 * 100, 0, 100) + '%'; $('#mockMe').textContent = `나 ${Math.max(0, Math.round(st.hp))}/${hp0}`; $('#mockEn').textContent = `${m.name} ${Math.max(0, Math.round(st.mhp))}/${mhp0}`; };
-  add(`${m.name}와(과) 마주쳤다. 전투 시작!`, 'note'); bars();
+  add(`${m.name}와(과) 마주쳤다. 전투 시작!`, 'note'); arenaStart();
   $('[data-act="mock-start"]').disabled = true;
-  view.mockTimer = setInterval(() => {
-    if (!$('#mockLog')) { clearInterval(view.mockTimer); view.mockTimer = 0; return; }
-    rounds++; const l = mockRound(m, st); add(l.text, l.kind); bars();
+  const step = () => {
+    if (!$('#duelLog') || !$('#mockArena')) { view.mockTimer = 0; return; }
+    rounds++; const h0 = st.hp, m0 = st.mhp, l = mockRound(m, st); add(l.text, l.kind);
+    const ms2 = arenaShow(arenaEvent({ k: l.kind, d: m0 - st.mhp, h: h0 - st.hp }, st.hp, st.mhp, hp0, mhp0), fs);
     if (st.mhp <= 0 || st.hp <= 0 || rounds >= 40) {
-      clearInterval(view.mockTimer); view.mockTimer = 0;
+      view.mockTimer = 0;
       add(st.mhp <= 0 ? `${m.name}을(를) 쓰러뜨렸다! 모의 전투 승리.` : st.hp <= 0 ? '쓰러졌다… 모의 전투 패배.' : '승부가 나지 않은 채 전투가 끝났다.', 'note');
-      const b = $('[data-act="mock-start"]'); if (b) { b.disabled = false; b.textContent = '다시 하기'; }
+      if (st.mhp <= 0 || st.hp <= 0) arenaEnd(st.mhp <= 0, fs); setTimeout(() => sfx(st.mhp <= 0 ? 'levelup' : 'error'), 300);
+      const b = $('[data-act="mock-start"]'); if (b) { b.disabled = false; b.textContent = '다시 하기'; } return;
     }
-  }, 650);
+    view.mockTimer = setTimeout(step, ms2);
+  };
+  view.mockTimer = setTimeout(step, 700);
 }
 /* ---------- 실시간 교환 (교환대) ---------- */
 let _ltBusy = false;
@@ -3367,7 +3392,7 @@ function questFinish(q, drop) {
     const news = RECIPES.filter(rc => rc.rank === r.promo && !recipeKnown(rc)).map(rc => rc.out);
     renderCraft(); renderLeftTab();
     if (r.promo === 'A') { state.flags.annoA = 'pending'; save(); announceRankA(); } // A급이 되면 월드 채팅에 축하 공지가 올라간다
-    if (news.length) { addLog(`${r.promo}등급 승급! 속성학습으로 배울 수 있는 레시피 ${news.length}종 추가`); toast(`${r.promo}등급 승급! 단련으로 새 레시피 ${news.length}종을 배울 수 있게 되었습니다.`); }
+    if (news.length) { addLog(`${r.promo}등급 승급! 속성학습으로 배울 수 있는 레시피 ${news.length}종 추가`); toast(`${r.promo}등급 승급! 속성학습으로 새 레시피 ${news.length}종을 배울 수 있게 되었습니다.`); }
   }
   const lost = Object.entries(drop).filter(([, c]) => c > 0).map(([n, c]) => `${shownName(n)} ×${c}`);
   if (lost.length) toast(`보상 ${lost.join(', ')}은(는) 받지 않고 버렸습니다.`);

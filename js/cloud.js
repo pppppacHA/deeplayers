@@ -67,6 +67,7 @@ const Cloud = (() => {
       catch (e) { if (/market_list|PGRST|function/i.test(String(e && e.message))) return await call('/rest/v1/rpc/market_list', b, await token()); throw e; }
     },
     async marketBrowse(q) { return await call('/rest/v1/rpc/market_browse', { p_q: q || '' }, await token()); },
+    async marketStatus(keys) { return (await call('/rest/v1/rpc/market_status', { p_keys: (keys || []).slice(0, 10) }, await token())) || []; },
     async marketMine() { return await call('/rest/v1/rpc/market_mine', {}, await token()); },
     async marketBuy(id, qty, req) { return await call('/rest/v1/rpc/market_buy', { p_id: id, p_qty: qty, p_req: req }, await token()); },
     async marketCancel(id) { return await call('/rest/v1/rpc/market_cancel', { p_id: id }, await token()); },

@@ -1638,7 +1638,7 @@ with sync_playwright() as p:
     check('extras_opens_mock_overlay', '모의 전투' in text(pg, '#modalTitle') and pg.locator('#mockMon option').count() >= 10)
     hp_b, sp_b, money_b = ev(pg, "state.vitals.hp"), ev(pg, "state.vitals.sp"), ev(pg, "state.money")
     pg.click('[data-act="mock-start"]'); pg.wait_for_timeout(2300)
-    check('mock_battle_logs_stream', pg.locator('#mockLog .bl').count() >= 3 and pg.locator('[data-act="mock-start"]').is_disabled())
+    check('mock_battle_logs_stream', pg.locator('#mockArena #duelLog .bl').count() >= 3 and pg.locator('[data-act="mock-start"]').is_disabled())
     pg.click('#closeModal'); pg.wait_for_timeout(100); n_lines = ev(pg, "!view.mockTimer")
     check('mock_timer_stops_on_close_and_no_effect', n_lines and ev(pg, "state.vitals.hp")== hp_b and ev(pg, "state.vitals.sp")== sp_b and ev(pg, "state.money")== money_b)
     pg.click('#statusPager [data-p="0"]'); pg.wait_for_timeout(60)
@@ -2523,14 +2523,14 @@ with sync_playwright() as p:
     r = ev(pg, """(()=>{const z=zoneOf('제1구역');state.rescueAt={};state.active=null;state.pending=null;let hit=null;
       for(let sd=1;sd<400&&!hit;sd++)for(let y=0;y<z.map.length&&!hit;y++)for(let x=0;x<z.map[y].length&&!hit;x++){if(terrainIndex(tileOf(z,x,y))<0)continue;if(rescueShown(z,x,y,sd))hit=[x,y,sd]}
       if(!hit)return 'none';state.location='제1구역';state.dungeon={zone:'제1구역',x:hit[0],y:hit[1],seed:hit[2],seen:{},done:[],rs:{}};
-      const inGroup=currentGroups()[0].items.includes('제1구역 대원 구조');state.vitals.sp=50;const err=startAction('제1구역 대원 구조');const p=state.pending;
+      const inGroup=currentGroups()[0].items.includes('제1구역 대원 구조');state.vitals.sp=50;const err=startAction('제1구역 대원 구조');const p=state.pending;if(p)openRescueFight(); /* tick이 먼저 받아 가지 않게 바로 창을 연다 */
       return [inGroup,err,!!(p&&p.result.rescue&&Array.isArray(p.result.rescue.log)&&p.result.rescue.log.length>0),rescueShown(z,hit[0],hit[1],hit[2]),state.vitals.sp]})()""")
     check('rescue_appears_and_runs_once', r == [True, None, True, False, 47], r)
     check('rescue_preview_lists_reward_and_hp_risk', ev(pg, "(()=>{const p=state.pending;state.pending=null;const v=actionPreview('제1구역 대원 구조');state.pending=p;return /희귀 재료|CR/.test(v.gain)&&v.cost.includes('HP -1~14')})()"))
-    ev(pg, "openRescueFight()"); pg.wait_for_timeout(60)
-    check('rescue_fight_window_holds_result', pg.locator('#rescueLog').count() == 1 and ev(pg, "(()=>{tick();return !!state.pending})()"))
+    pg.wait_for_timeout(60)
+    check('rescue_fight_window_holds_result', pg.locator('#duelRoot.arena #duelLog').count() == 1 and ev(pg, "(()=>{tick();return !!state.pending})()"))
     pg.click('[data-act="rescue-skip"]'); pg.wait_for_timeout(60)
-    check('rescue_skip_shows_outcome', pg.locator('[data-act="rescue-done"]:not(.hidden)').count() == 1 and pg.locator('#rescueLog .bl').count() >= 2)
+    check('rescue_skip_shows_outcome', pg.locator('[data-act="rescue-done"]:not(.hidden)').count() == 1 and pg.locator('#duelRoot.arena #duelLog .bl').count() >= 2)
     pg.click('[data-act="rescue-done"]'); pg.wait_for_timeout(80)
     check('rescue_done_claims', ev(pg, "!state.pending") and pg.locator('#overlay.open').count() == 0)
     check('rescue_hp_loss_scales_1_to_14', ev(pg, "(()=>{let lo=0,hi=0,mn=99,mx=0;for(let i=0;i<300;i++){const a=rescueHpLoss(0),b=rescueHpLoss(1);lo+=a;hi+=b;mn=Math.min(mn,a,b);mx=Math.max(mx,a,b)}return mn>=1&&mx<=14&&hi/300>lo/300+8})()"))

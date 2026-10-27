@@ -207,7 +207,7 @@ function loadState() {
     if (raw) {
       const saved = JSON.parse(raw);
       if (saved && saved.version === SAVE_VERSION) {
-        // 단련 도입 전 저장: 예전 규칙(등급별 해금)으로 알고 있던 레시피를 그대로 이어받는다
+        // 속성학습 도입 전 저장: 예전 규칙(등급별 해금)으로 알고 있던 레시피를 그대로 이어받는다
         if (saved.created && !Array.isArray(saved.learned)) { const ri = RANK_ORDER.indexOf((saved.character || {}).rank); saved.learned = RECIPES.filter(rc => ri >= RANK_ORDER.indexOf(rc.rank) && !STARTER_RECIPES.includes(rc.out)).map(rc => rc.out); }
         return sanitize(merge(createDefaultState(), saved));
       }
