@@ -1585,3 +1585,4 @@ button.pcard:not(.off):hover{transform:translateY(-2px)}
 .ct-log{max-height:90px;margin-top:6px}
 .fly-card{position:fixed;z-index:95;width:30px;height:40px;pointer-events:none;transition:transform var(--fly,360ms) cubic-bezier(.2,.8,.2,1);box-shadow:var(--shadow)}
 @media (max-width:600px){.cw{left:4px!important;right:4px;width:auto!important}.ct-table{grid-template-columns:1fr 1.2fr 1fr}}
+#cardTitle{flex:1 1 auto;min-width:0}

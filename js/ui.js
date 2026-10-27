@@ -709,7 +709,10 @@ setInterval(async () => { // 끝까지 못 본 대련 판돈 정산 · 오래 �
   let ch = duelBetSweep(); const e = state.duelEscrow;
   if (e && Date.now() - e.at > 12 * 60000 && !(view.duelRoom === e.room || view.duelMin === e.room)) {
     let v = null, ok = false; try { v = duelOnline() ? await Cloud.duelView(e.room) : null; ok = true; } catch (er) { /* 다음에 */ }
-    if (ok) { const fs = v ? duelFighters(v.members || []) : []; if (v && v.seed && fs.some(f => f.me)) duelBetResolve(+v.seed, fs, duelSim(fs, +v.seed), e.room); else if (!v || v.status !== 'open') escrowRefund(); ch = 1; }
+    if (ok) { const fs = v ? duelFighters(v.members || []) : [];
+      if (v && CARD_GAMES[v.game] && v.seed && Number.isInteger(v.myseat) && v.myseat >= 0) { try { const mv = await Cloud.cardMoves(e.room, -1), names = (v.seats || []).slice(0, 4).map(n => cleanText(n, 12) || '?'), st = names.map((n, i) => ({ name: n, me: i === v.myseat, bot: false })); for (let k = 1; st.length < 4; k++) st.push({ name: `자동 대원 ${k}`, bot: true });
+          const G = cardReplay(v.game, st, +v.seed, (Array.isArray(mv) ? mv : []).map(m => ({ seq: m.seq, seat: m.seat, move: m.move, timeout: !!m.timeout }))); if (G.done) { cardBetResolve(+v.seed, e.room, G, v.myseat); duelBetSweep(); } else if (v.status === 'closed') escrowRefund(); } catch (er) { /* 다음에 */ } }
+      else if (v && v.seed && fs.some(f => f.me)) duelBetResolve(+v.seed, fs, duelSim(fs, +v.seed), e.room); else if (!v || v.status !== 'open') escrowRefund(); ch = 1; }
   }
   if (ch) { renderProfile(); renderInventory(); }
 }, 30000);
@@ -1782,9 +1785,14 @@ const A = {
   'card-suit': el => { const g = view.cg; if (!g || !g.pick7) return; cardSubmit({ c: g.pick7, s: CARD_SUITS.includes(el.dataset.s) ? el.dataset.s : '' }); },
   'card-draw': () => cardSubmit({ draw: true }),
   'tc-send': () => tableChatSend(),
+  'card-stake': async el => { const id = intIn(el.dataset.id, 1, 9e15, 0), c = intIn($('#cardStake') && $('#cardStake').value, 0, CARD_BET_MAX, 0);
+    try { const rr = await Cloud.duelSetStake(id, c ? { cr: c } : null); if (!rr || !rr.ok) { toast('판돈을 정하지 못했어요.'); return; } if (state.duelEscrow && state.duelEscrow.room === id) { escrowRefund(); renderProfile(); } toast(c ? `판돈 ${c} CR — 모두 다시 걸어야 해요.` : '판돈 없음'); const v = await Cloud.duelView(id); if (v) { view.duelSig = ''; openCardRoom(v); } } catch (e) { toast('판돈을 정하지 못했어요. 서버에 supabase/friends.sql 최신본이 필요해요.'); } },
+  'card-bet': async el => { const id = intIn(el.dataset.id, 1, 9e15, 0), c = intIn(el.dataset.cr, CARD_BET_MIN, CARD_BET_MAX, CARD_BET_MIN), err = escrowSet(id, { cr: c }, true); if (err) { toast(err); sfx('error'); return; }
+    el.disabled = true; try { const rr = await Cloud.duelSetBet(id, { cr: c }); if (!rr || !rr.ok) throw new Error(rr && rr.msg || 'fail'); toast(`판돈 ${c} CR을 걸었어요. (맡겨 둠)`); } catch (e) { escrowRefund(); toast('판돈을 걸지 못했어요. 방장이 금액을 바꿨을 수 있어요.'); }
+    renderProfile(); try { const v = await Cloud.duelView(id); if (v) { view.duelSig = ''; openCardRoom(v); } } catch (e) { /* 다음 확인 때 */ } },
   'cw-min': () => { const w = $('#cardWin'); if (w) { cwSave(); w.classList.add('min'); } },
   'cw-restore': () => { const w = $('#cardWin'); if (w) w.classList.remove('min'); },
-  'cw-close': async () => { const id = view.cwRoom, watching = view.duelWatch; cwClose(); if (id && !watching) { try { await Cloud.duelLeave(id); } catch (e) { /* 이미 닫힘 */ } toast('카드방에서 나왔어요.'); } },
+  'cw-close': async () => { const id = view.cwRoom, watching = view.duelWatch; if (id && state.duelEscrow && state.duelEscrow.room === id && !(view.cg && view.cg.room === id && !(view.cg.G && view.cg.G.done))) { const t = escrowRefund(); if (t) toast(`판돈 ${t}을 돌려받았어요.`); renderProfile(); } cwClose(); if (id && !watching) { try { await Cloud.duelLeave(id); } catch (e) { /* 이미 닫힘 */ } toast('카드방에서 나왔어요.'); } },
   'card-create': async el => { const g = $('#cardGame') && CARD_GAMES[$('#cardGame').value] ? $('#cardGame').value : 'joker'; el.disabled = true;
     try { const r = await Cloud.duelCreate($('#cardTitle') ? $('#cardTitle').value : '', duelSnap(), 1); if (r && r.ok) { const g2 = await Cloud.duelSetGame(r.id, g); if (!g2 || !g2.ok) { toast('카드방을 만들지 못했어요. 서버에 supabase/friends.sql 최신본이 필요해요.'); Cloud.duelLeave(r.id).catch(() => {}); el.disabled = false; return; } const v = await Cloud.duelView(r.id); if (v) { openDuelRoom(v); return; } } toast('방을 만들지 못했어요.'); }
     catch (e) { toast('방을 만들지 못했어요. 서버에 supabase/friends.sql 최신본이 필요해요.'); } el.disabled = false; },
@@ -2781,7 +2789,7 @@ async function duelPollRoom() {
   let v; try { v = await Cloud.duelView(id); } catch (e) { return; }
   if ((view.duelRoom || view.duelMin) !== id) return;
   if (!v || v.status === 'closed') { stopDuelTimers(); view.duelMin = null; duelChip(); toast('대련방이 닫혔어요.'); if (state.duelEscrow && state.duelEscrow.room === id && !(v && v.seed)) { const t = escrowRefund(); if (t) toast(`판돈 ${t}을 돌려받았어요.`); } if (open) openDuel(); return; }
-  const fs = duelFighters(v.members || []), sig = JSON.stringify([v.status, v.seed, fs.map(f => [f.name, f.team])]), names = fs.map(f => f.name);
+  const fs = duelFighters(v.members || []), sig = CARD_GAMES[v.game] ? JSON.stringify([v.status, v.seed, fs.map(f => [f.name, f.team, f.bet && f.bet.cr]), v.stake && v.stake.cr]) : JSON.stringify([v.status, v.seed, fs.map(f => [f.name, f.team])]), names = fs.map(f => f.name);
   const came = names.filter(n => !(view.duelNames || []).includes(n) && n !== state.character.name); view.duelNames = names;
   if (came.length && view.duelSig) { toast(`${came.join(', ')} 대원이 대련방에 들어왔어요.`); sfx('ok'); notifyDone(`${came.join(', ')} 대원이 대련방에 들어왔어요.`); }
   if (sig === view.duelSig) return;
@@ -2839,11 +2847,16 @@ function openCardRoom(v) { // 서버 카드방 → 떠 있는 창
   if ($('#cardList')) { view.cwRoom = v.id; view.duelRoom = v.id; closeModal(); } // 목록 창은 닫는다
   const same = $('#cardWin') && view.cwRoom === v.id && view.cg && view.cg.room === v.id && v.status === 'started' && view.cg.seed === +v.seed;
   if (!same) cwOpen(`${watch ? '관전 · ' : ''}${CARD_GAMES[v.game]} · ${cleanText(v.title, 20) || '이름 없는 방'}`, v.game);
-  view.cwRoom = v.id; view.duelRoom = v.id; view.duelWatch = watch; view.duelMin = null; view.duelLast = v; duelChip(); view.duelSig = JSON.stringify([v.status, v.seed, fs.map(f => [f.name, f.team])]); view.duelNames = fs.map(f => f.name);
+  view.cwRoom = v.id; view.duelRoom = v.id; view.duelWatch = watch; view.duelMin = null; view.duelLast = v; duelChip(); view.duelSig = JSON.stringify([v.status, v.seed, fs.map(f => [f.name, f.team, f.bet && f.bet.cr]), v.stake && v.stake.cr]); view.duelNames = fs.map(f => f.name);
   const invRow = open && mine && fs.length < 4 ? `<div class="search-row duel-inv"><select id="duelInvTo" aria-label="초대할 대원">${duelInviteTargets().map(([n, on]) => `<option value="${esc(n)}">${esc(n)}${on ? ' · 접속 중' : ''}</option>`).join('') || '<option value="">초대할 친구·파티원이 없어요</option>'}</select><button data-act="duel-invite" data-id="${v.id}">빈자리에 초대</button></div>` : '';
-  if (!same) { const ex = $('#cwExtra'); if (ex) ex.innerHTML = invRow + (open ? `<p class="tiny">${watch ? '관전 중이에요.' : v.host ? '대원이 한 명 이상 들어오면 시작할 수 있어요. 빈자리는 자동 대원이 채워요.' : '방장이 시작하면 게임이 펼쳐져요.'}</p>` : '') + (mine ? tableChatHtml() : '');
+  const st = cleanBet(v.stake), st0 = st && st.cr >= CARD_BET_MIN && st.cr <= CARD_BET_MAX ? st : null, betMiss = st0 ? fs.filter(f => !f.bet || f.bet.cr !== st0.cr) : [], esc0 = state.duelEscrow && state.duelEscrow.room === v.id ? state.duelEscrow : null;
+  const stakeRow = `<div class="duel-stake">${icon('paid')} 판돈 <b>${st0 ? `${st0.cr} CR` : '없음'}</b>${st0 ? fs.map(f => `<span class="bet-chip ${f.bet && f.bet.cr === st0.cr ? '' : 'none'}">${esc(f.name)} ${f.bet && f.bet.cr === st0.cr ? '걸었음' : '아직'}</span>`).join('') : ''}</div>`
+    + (st0 ? `<p class="tiny">${v.game === 'joker' ? '조커 당첨자(사람)의 판돈을 나머지 사람이 나눠 가져요. 자동 대원이 당첨되면 모두 돌려받아요.' : '사람 중 가장 높은 순위가 모든 판돈을 가져가요.'} (수수료 ${Math.round(DUEL_BET_FEE * 100)}%) 판돈은 걸 때 맡겨지고, 방을 나가면 돌려받아요.</p>` : '')
+    + (open && v.host && !watch ? `<div class="search-row duel-stake-set"><select id="cardStake" aria-label="판돈">${[0, 10, 20, 30, 50, 70, 100].map(c => `<option value="${c}" ${(st0 ? st0.cr : 0) === c ? 'selected' : ''}>${c ? `${c} CR` : '판돈 없음'}</option>`).join('')}</select><button data-act="card-stake" data-id="${v.id}">판돈 정하기</button></div>` : '')
+    + (open && mine && st0 && !(mine.bet && mine.bet.cr === st0.cr) ? `<div class="row-btns"><button class="primary" data-act="card-bet" data-id="${v.id}" data-cr="${st0.cr}" ${state.money + (esc0 && esc0.bet.cr ? esc0.bet.cr : 0) < st0.cr ? 'disabled' : ''}>판돈 ${st0.cr} CR 걸기</button></div>` : '');
+  if (!same) { const ex = $('#cwExtra'); if (ex) ex.innerHTML = stakeRow + invRow + (open ? `<p class="tiny">${watch ? '관전 중이에요.' : v.host ? '대원이 한 명 이상 들어오면 시작할 수 있어요. 빈자리는 자동 대원이 채워요.' : '방장이 시작하면 게임이 펼쳐져요.'}${betMiss.length ? ` <b>판돈을 아직 안 건 사람: ${esc(betMiss.map(f => f.name).join(', '))}</b>` : ''}</p>` : '');
     const ft = $('#cwFoot'); if (ft) ft.innerHTML = (watch ? [...(open && fs.length < 4 ? [`<button data-act="duel-join" data-id="${v.id}" data-team="${fs.filter(f => f.team === 1).length <= fs.filter(f => f.team === 2).length ? 1 : 2}">참가</button>`] : [])]
-      : [v.host && !open ? `<button class="primary hidden" id="duelAgain" data-act="duel-again" data-id="${v.id}">다시 하기</button>` : '', open && v.host ? `<button class="primary" data-act="duel-start" data-id="${v.id}" ${fs.length < 2 ? 'disabled' : ''}>게임 시작</button>` : '']).filter(Boolean).join(''); }
+      : [v.host && !open ? `<button class="primary hidden" id="duelAgain" data-act="duel-again" data-id="${v.id}">다시 하기</button>` : '', open && v.host ? `<button class="primary" data-act="duel-start" data-id="${v.id}" ${fs.length < 2 || betMiss.length ? 'disabled' : ''}>게임 시작</button>` : '']).filter(Boolean).join(''); }
   fs.forEach(f => { if (!f.me) avatarOf(f.name); });
   if (v.status === 'started' && Number.isFinite(+v.seed)) { const names = Array.isArray(v.seats) ? v.seats.slice(0, 4).map(n => cleanText(n, 12) || '?') : fs.map(f => f.name), my = Number.isInteger(v.myseat) ? v.myseat : -1;
     const st = names.map((n, i) => ({ name: n, me: i === my, bot: false })); for (let k = 1; st.length < 4; k++) st.push({ name: `자동 대원 ${k}`, me: false, bot: true });
@@ -2946,6 +2959,7 @@ function cardLive() { // 연출이 다 따라잡힌 뒤: 지금 모습 + 내 선
   let end = '';
   if (G.done) { const my = G.rank.indexOf(g.myseat);
     end = `<div class="ct-end"><div class="duel-result ${my === 0 ? 'win' : my === 3 ? 'lose' : ''}">${my === 0 ? '1등! 🎉' : my === 3 && g.game === 'joker' ? '조커 당첨…' : my >= 0 ? `${my + 1}등` : `${esc(g.seats[G.rank[0]].name)} 1등`}</div><ol class="card-rank">${G.rank.map(i => `<li class="${i === g.myseat ? 'me' : ''}">${esc(g.seats[i].name)}${g.game === 'joker' && i === G.loser ? ' 🃏' : ''}</li>`).join('')}</ol></div>`;
+    if (!g.ended && g.room) { const b = cardBetResolve(g.seed, g.room, G, g.myseat); if (b) { const t = duelBetSettle(g.seed); if (t) toast(t); renderProfile(); } }
     if (!g.ended) { g.ended = true; if (g.myseat >= 0) sfx(G.rank.indexOf(g.myseat) === 0 ? 'levelup' : G.rank.indexOf(g.myseat) === 3 ? 'error' : 'ok'); clearInterval(g.poll); g.poll = 0; if (g.room && !view.duelPoll) view.duelPoll = setInterval(duelPollRoom, 3000); }
     const ab = $('#duelAgain') || $('#cardAgain'); if (ab) ab.classList.remove('hidden'); }
   root.innerHTML = cardTableHtml(g, last.s, true) + end + cardLogHtml(G, G.log.length - 1);

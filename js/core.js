@@ -77,6 +77,7 @@ function petHungerOf(p) { // 저장 검증: 배부름 필드 (없던 옛 펫은 
 }
 function hardenState(s) {
   const c = s.character;
+  if (TITLE_RENAMES[c.title]) c.title = TITLE_RENAMES[c.title]; if (Array.isArray(s.titles)) s.titles = s.titles.map(t => TITLE_RENAMES[t] || t);
   c.name = cleanText(c.name, 12); c.title = TITLES.includes(c.title) ? c.title : TITLES[0];
   s.titles = [...new Set([TITLES[0], ...(Array.isArray(s.titles) ? s.titles : []).filter(t => TITLES.includes(t)), ...(TITLES.includes(c.title) ? [c.title] : [])])];
   c.age = intIn(c.age, AGE_MIN, AGE_MAX, 20); c.keywords = cleanText(c.keywords, 60);
@@ -829,7 +830,7 @@ function commitStatDraft(draft) {
 
 /* ---------- 경험치 / 레벨 ---------- */
 /* 레벨 곡선: 갈수록 급격히 늘어 만렙(30)은 오래 걸린다. 상한을 두지 않아 뒤로 갈수록 계속 힘들어진다 (Lv.20쯤 1천 이상, Lv.29는 2천 후반) */
-const expMax = lv => Math.round((50 + 4 * lv ** 1.85) * EXP_SLOW);
+const expMax = lv => Math.round((50 + 4 * lv ** 1.85) * EXP_SLOW * (lv >= LEVEL_CAP_BASE ? LIMIT_EXP_MULT * (1 + LIMIT_EXP_STEP * (lv - LEVEL_CAP_BASE)) : 1)); // 한계 돌파(Lv30~) 뒤에는 훨씬 많이
 /* 레벨이 모자라 못 쓰는 기능이면 사유, 아니면 '' */
 function levelGate(id) {
   const a = ACTIONS[id], lv = state.character.level;
@@ -2682,7 +2683,7 @@ function duelText(e, fighters) { // 기록 한 줄 → 묘사 (주 능력·주�
    서버는 CR·아이템을 옮기지 않는다(세이브 권한, 거래소와 같음). */
 function cleanBet(b) { // 판돈 하나를 거른다 (hardenState에서도 쓰므로 function 선언)
   if (!b || typeof b !== 'object') return null;
-  if (b.cr != null) { const c = Math.floor(+b.cr); return Number.isFinite(c) && c >= DUEL_BET_CR_MIN && c <= DUEL_BET_CR_MAX ? { cr: c } : null; }
+  if (b.cr != null) { const c = Math.floor(+b.cr); return Number.isFinite(c) && c >= CARD_BET_MIN && c <= DUEL_BET_CR_MAX ? { cr: c } : null; } // 대련 최소 50은 escrowSet·서버가 따로 본다
   const n = typeof b.item === 'string' ? b.item : '', q = Math.floor(+b.qty);
   return ITEMS[n] && !ITEMS[n].hidden && Number.isFinite(q) && q >= 1 && q <= DUEL_BET_QTY_MAX ? { item: n, qty: q } : null;
 }
@@ -2706,10 +2707,10 @@ function escrowRefund() { // 맡긴 판돈을 돌려받는다
   if (e.bet.cr) state.money += e.bet.cr; else { const a = addItem(e.bet.item, e.bet.qty); if (a < e.bet.qty) lostBoxPut(e.bet.item, e.bet.qty - a); }
   save(); return betText(e.bet);
 }
-function escrowSet(room, bet) { // 판돈 걸기(맡기기). 성공하면 null, 실패하면 사유. bet=null 이면 판돈 취소
+function escrowSet(room, bet, card) { // 판돈 걸기(맡기기). 성공하면 null, 실패하면 사유. bet=null 이면 판돈 취소. card = 카드놀이(10~100 CR)
   room = Math.floor(+room); if (!(room > 0)) return '방이 없어요.';
   if (bet == null) { escrowRefund(); return null; }
-  const b = cleanBet(bet); if (!b) return `판돈은 ${DUEL_BET_CR_MIN}~${DUEL_BET_CR_MAX} CR 또는 아이템 1~${DUEL_BET_QTY_MAX}개예요.`;
+  const b = cleanBet(bet); if (!b || (card ? !(b.cr >= CARD_BET_MIN && b.cr <= CARD_BET_MAX) : b.cr && b.cr < DUEL_BET_CR_MIN)) return card ? `카드놀이 판돈은 ${CARD_BET_MIN}~${CARD_BET_MAX} CR이에요.` : `판돈은 ${DUEL_BET_CR_MIN}~${DUEL_BET_CR_MAX} CR 또는 아이템 1~${DUEL_BET_QTY_MAX}개예요.`;
   if (b.item && isLocked(b.item)) return LOCK_MSG;
   if (!canPayBet(b)) return b.cr ? 'CR이 모자라요.' : '그 아이템이 모자라요.';
   escrowRefund();
@@ -2849,3 +2850,14 @@ function cardReplay(game, seats, seed, moves) { // 시드 + 사람들의 선택(
   G.used = k; return G;
 }
 function cardSim(game, seats, seed) { const G = cardInit(game, seats, seed); while (!G.done && G.turns < 420) cardApply(G, cardAuto(G)); return G; }
+
+function cardBetResolve(seed, room, G, myseat) { // 카드놀이 판돈: 판이 끝났을 때 한 번. 원카드=사람 중 가장 높은 순위가 모두, 조커 뽑기=조커 당첨자(사람)의 판돈을 나머지 사람이 나눔(자동 대원이 당첨이면 모두 돌려받음). 수수료 5%
+  state.duelBets = state.duelBets || {}; if (state.duelBets[seed]) return state.duelBets[seed];
+  const e = state.duelEscrow && state.duelEscrow.room === room ? state.duelEscrow : null; if (!e || !e.bet.cr || myseat < 0 || !G || !G.done) return null;
+  state.duelEscrow = null; const S = e.bet.cr, humans = G.seats.map((p, i) => i).filter(i => !G.seats[i].bot), H = humans.length;
+  let won = false, cr = 0;
+  if (G.game === 'onecard') { const best = G.rank.find(i => !G.seats[i].bot); won = best === myseat; cr = won ? S + Math.floor(S * (H - 1) * (1 - DUEL_BET_FEE)) : 0; }
+  else { const lo = G.loser; if (lo < 0 || G.seats[lo].bot) { won = true; cr = S; } else if (lo === myseat) { won = false; } else { won = true; cr = S + Math.floor(S / Math.max(1, H - 1) * (1 - DUEL_BET_FEE)); } }
+  const keys = Object.keys(state.duelBets); if (keys.length >= 20) delete state.duelBets[keys[0]];
+  state.duelBets[seed] = { won, cr, items: [], lost: won ? '' : `${S} CR`, at: Date.now(), done: false }; save(); return state.duelBets[seed];
+}
