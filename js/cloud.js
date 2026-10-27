@@ -120,6 +120,8 @@ const Cloud = (() => {
     async duelLeave(id) { await call('/rest/v1/rpc/duel_leave', { p_room: id }, await token()); },
     async duelStart(id) { return await call('/rest/v1/rpc/duel_start', { p_room: id }, await token()); },
     async duelReset(id) { return await call('/rest/v1/rpc/duel_reset', { p_room: id }, await token()); },
+    async duelInvite(id, name) { return await call('/rest/v1/rpc/duel_invite', { p_room: id, p_name: String(name || '').slice(0, 12) }, await token()); },
+    async duelSetStake(id, stake) { return await call('/rest/v1/rpc/duel_set_stake', { p_room: id, p_stake: stake || null }, await token()); },
     async duelView(id) { return await call('/rest/v1/rpc/duel_view', { p_room: id }, await token()); },
     async chatFetchAll(after) { return (await call('/rest/v1/rpc/chat_fetch_all', { p_after: after }, await token())) || {}; },
     async chatFetch(channel, after) { return (await call('/rest/v1/rpc/chat_fetch', { p_channel: channel, p_after: after || 0 }, await token())) || []; },

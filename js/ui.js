@@ -30,7 +30,7 @@ function modal(title, body, actions = [], small = false) {
   $('#modal').classList.toggle('small', small); $('#modal').classList.remove('terminal', 'room', 'solo');
   $('#overlay').classList.add('open');
 }
-const closeModal = () => { view.room = null; if (view.duelRoom) { if (true) { view.duelMinimize = false; view.duelMin = view.duelRoom; view.duelRoom = null; clearTimeout(view.duelTimer); view.duelTimer = 0; clearInterval(view.duelPoll); view.duelPoll = setInterval(duelPollRoom, 4000); duelChip(view.duelLast && view.duelLast.id === view.duelMin ? view.duelLast : null); setTimeout(duelPollRoom, 50); } else { const id = view.duelRoom; view.duelRoom = null; stopDuelTimers(); if (duelOnline()) Cloud.duelLeave(id).catch(() => {}); } } // X·닫기·최소화 모두 방을 유지하고 최소화(4초마다 확인). 방에서 나가기는 '나가기' 버튼(duel-leave)만
+const closeModal = () => { view.room = null; if (view.duelRoom && view.duelWatch) { view.duelRoom = null; view.duelWatch = false; stopDuelTimers(); } if (view.duelRoom) { if (true) { view.duelMinimize = false; view.duelMin = view.duelRoom; view.duelRoom = null; clearTimeout(view.duelTimer); view.duelTimer = 0; clearInterval(view.duelPoll); view.duelPoll = setInterval(duelPollRoom, 4000); duelChip(view.duelLast && view.duelLast.id === view.duelMin ? view.duelLast : null); setTimeout(duelPollRoom, 50); } else { const id = view.duelRoom; view.duelRoom = null; stopDuelTimers(); if (duelOnline()) Cloud.duelLeave(id).catch(() => {}); } } // X·닫기·최소화 모두 방을 유지하고 최소화(4초마다 확인). 방에서 나가기는 '나가기' 버튼(duel-leave)만
   { const rf = $('#roomFloat'); if (rf) rf.remove(); } if (view.mockTimer) { clearInterval(view.mockTimer); view.mockTimer = 0; } if (view.rescueTimer) { clearInterval(view.rescueTimer); view.rescueTimer = 0; } view.rescueAnim = false; $('#overlay').classList.remove('open'); applyTheme(); }; // 저장하지 않은 테마 미리보기는 되돌린다
 const btnClose = '<button data-act="close">닫기</button>';
 
@@ -704,6 +704,7 @@ async function fetchAvatars() { // 아직 모르는 대원의 이미지를 한�
     $$('#modalBody .round-avatar, #modalBody .member-row .round-avatar').forEach(el => { const nm = el.nextElementSibling && el.nextElementSibling.querySelector('strong'); const n = nm && nm.textContent.trim(); if (n && names.includes(n) && view.avatars[n]) el.innerHTML = avatarOf(n); });
   } catch (e) { names.forEach(n => { view.avatars[n] = ''; }); }
 }
+setInterval(() => { if (duelBetSweep()) { renderProfile(); renderInventory(); } }, 30000); // 끝까지 못 본 대련 판돈 정산
 setInterval(() => { view.avatars = {}; }, 10 * 60 * 1000); // 10분마다 새로 받아 다른 대원이 바꾼 이미지도 반영
 async function smallAvatar(dataUrl, px = 64, max = 19000) { // 서버에는 64px 작은 이미지(채팅·목록) + 크게 보기용 300px 이미지를 따로 올린다
   const img = await new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = no; i.src = dataUrl; });
@@ -735,7 +736,7 @@ async function chatPoll() { // 월드·길드 채팅을 서버에서 가져온�
       tabs.push(tab);
     }
     let all = null; // 켜 둔 채널을 요청 한 번으로 (서버에 chat_fetch_all 이 없으면 예전처럼 채널마다)
-    if (tabs.length && !view._noAll) { try { all = await Cloud.chatFetchAll(Object.fromEntries(tabs.map(t => [CHAT_CH[t], view.chatLast[t]]))); } catch (e) { if (/404|PGRST202|Could not find/i.test(String(e && e.message))) view._noAll = true; } }
+    if (tabs.length && !view._noAll) { try { all = await Cloud.chatFetchAll(Object.fromEntries(tabs.map(t => [CHAT_CH[t], view.chatLast[t]]))); if (all && all.duelinv) duelInvitesIn(all.duelinv); } catch (e) { if (/404|PGRST202|Could not find/i.test(String(e && e.message))) view._noAll = true; } }
     for (const tab of tabs) {
       let rows;
       if (all && typeof all === 'object') rows = Array.isArray(all[CHAT_CH[tab]]) ? all[CHAT_CH[tab]] : [];
@@ -2273,6 +2274,13 @@ const A = {
   'duel-restore': async () => { const id = view.duelMin; if (!id) return; try { const v = await Cloud.duelView(id); if (v && v.status !== 'closed') { clearInterval(view.duelPoll); view.duelPoll = 0; openDuelRoom(v); return; } if (!v || v.status === 'closed') { view.duelMin = null; duelChip(); toast('대련방이 닫혔어요.'); } else toast('방을 불러오지 못했어요. 잠시 뒤 다시 눌러 주세요.'); } catch (e) { toast('연결이 불안정해요. 잠시 뒤 다시 눌러 주세요.'); } }, // 일시적인 오류로는 방을 버리지 않는다
   'duel-again': async el => { const id = intIn(el.dataset.id, 1, 9e15, 0); el.disabled = true; try { const r = await Cloud.duelReset(id); if (r && r.ok) { const v = await Cloud.duelView(id); if (v) { clearInterval(view.duelPoll); view.duelPoll = 0; openDuelRoom(v); return; } } toast('다시 열지 못했어요.'); } catch (e) { toast('다시 열지 못했어요. 서버에 supabase/friends.sql 최신본이 필요해요.'); } el.disabled = false; },
   'duel-refresh': () => duelLoadList(),
+  'duel-watch': async el => { const id = intIn(el.dataset.id, 1, 9e15, 0); try { const v = await Cloud.duelView(id); if (v && v.status !== 'closed') { stopDuelTimers(); openDuelRoom(v); if (!view.duelPoll) view.duelPoll = setInterval(duelPollRoom, 3000); return; } } catch (e) { /* 아래 안내 */ } toast('닫힌 방이에요.'); duelLoadList(); },
+  'duel-unwatch': () => { closeModal(); openDuel(); },
+  'duel-invite': async el => { const id = intIn(el.dataset.id, 1, 9e15, 0), to = $('#duelInvTo') ? $('#duelInvTo').value : ''; if (!to) { toast('초대할 대원을 골라 주세요.'); return; } el.disabled = true; try { const r = await Cloud.duelInvite(id, to); toast(r && r.ok ? `${to} 대원에게 초대를 보냈어요.` : ({ not_friend: '친구나 같은 파티원만 초대할 수 있어요.', already: '이미 방에 있어요.', closed: '모집 중인 방이 아니에요.', slow: '잠시 뒤에 다시 초대해 주세요.', no_user: '그 대원을 찾지 못했어요.' }[r && r.msg] || '초대하지 못했어요.')); } catch (e) { toast('초대하지 못했어요. 서버에 supabase/friends.sql 최신본이 필요해요.'); } el.disabled = false; },
+  'duel-stake': async el => { const id = intIn(el.dataset.id, 1, 9e15, 0), k = $('#duelStakeKind').value; const st = k === 'cr' ? { cr: intIn($('#duelStakeCr').value, DUEL_BET_CR_MIN, DUEL_BET_CR_MAX, DUEL_BET_CR_MIN) } : k === 'item' ? { item: $('#duelStakeItem').value, qty: intIn($('#duelStakeQty').value, 1, DUEL_BET_QTY_MAX, 1) } : null;
+    if (st && !canPayStake(st)) { toast('내가 낼 수 있는 만큼만 걸 수 있어요.'); return; }
+    try { const r = await Cloud.duelSetStake(id, st); if (!r || !r.ok) { toast(r && r.msg === 'not_alone' ? '다른 대원이 들어온 뒤에는 판돈을 바꿀 수 없어요.' : '판돈을 정하지 못했어요.'); return; } const v = await Cloud.duelView(id); if (v) openDuelRoom(v); toast(st ? `판돈: ${duelStakeText(cleanDuelStake(st))}` : '판돈 없음'); } catch (e) { toast('판돈을 정하지 못했어요. 서버에 supabase/friends.sql 최신본이 필요해요.'); } },
+  'duel-inv-open': async () => { const iv = view.duelInv; if (!iv) return; let v = null; try { v = await Cloud.duelView(iv.id); } catch (e) { /* 아래 */ } if (!v || v.status !== 'open') { view.duelInv = null; duelInvChip(); toast('초대받은 방이 이미 시작했거나 닫혔어요.'); return; } view.duelInv = null; duelInvChip(); stopDuelTimers(); openDuelRoom(v); if (!view.duelPoll) view.duelPoll = setInterval(duelPollRoom, 2500); },
   'duel-create': async el => { el.disabled = true; try { const r = await Cloud.duelCreate($('#duelTitle') ? $('#duelTitle').value : '', duelSnap(), $('#duelTeam') && $('#duelTeam').value === '2' ? 2 : 1); if (r && r.ok) { const v = await Cloud.duelView(r.id); if (v) { openDuelRoom(v); return; } } toast('방을 만들지 못했어요.'); } catch (e) { toast('방을 만들지 못했어요. 서버에 supabase/friends.sql 최신본이 필요해요.'); } el.disabled = false; },
   'duel-join': async el => { const id = intIn(el.dataset.id, 1, 9e15, 0), t = el.dataset.team === '2' ? 2 : 1; try { const r = await Cloud.duelJoin(id, t, duelSnap()); if (!r || !r.ok) { toast({ full: '그 팀은 가득 찼어요.', closed: '이미 시작했거나 닫힌 방이에요.' }[r && r.msg] || '들어가지 못했어요.'); sfx('error'); duelLoadList(); return; } const v = await Cloud.duelView(id); if (v) { clearInterval(view.duelPoll); view.duelPoll = 0; openDuelRoom(v); } } catch (e) { toast('들어가지 못했어요.'); } },
   'duel-leave': async el => { const id = intIn(el.dataset.id, 1, 9e15, 0); stopDuelTimers(); view.duelRoom = null; view.duelMin = null; duelChip(); try { await Cloud.duelLeave(id); } catch (e) { /* 이미 닫힘 */ } openDuel(); },
@@ -2717,7 +2725,7 @@ function openDuel() {
 async function duelLoadList() {
   let list = []; try { list = await Cloud.duelList(); } catch (e) { if ($('#duelList')) $('#duelList').innerHTML = '<p class="tiny">방 목록을 받지 못했어요. 서버에 supabase/friends.sql 최신본이 필요해요.</p>'; return; }
   const box = $('#duelList'); if (!box) return;
-  box.innerHTML = (Array.isArray(list) ? list : []).slice(0, 30).map(r => { const id = intIn(r.id, 1, 9e15, 0), a = intIn(r.a, 0, 3, 0), b = intIn(r.b, 0, 3, 0); return id ? `<div class="nearby-row"><div class="grow"><strong>${esc(cleanText(r.title, 20) || `${cleanText(r.host, 12)}의 대련방`)}</strong><small>방장 ${esc(cleanText(r.host, 12))} · A팀 ${a}/${DUEL_TEAM_MAX} · B팀 ${b}/${DUEL_TEAM_MAX}</small></div><div class="row-btns"><button data-act="duel-join" data-id="${id}" data-team="1" ${a >= DUEL_TEAM_MAX ? 'disabled' : ''}>A팀</button><button data-act="duel-join" data-id="${id}" data-team="2" ${b >= DUEL_TEAM_MAX ? 'disabled' : ''}>B팀</button></div></div>` : ''; }).join('') || '<div class="empty">열린 대련방이 없어요. 방을 만들어 보세요.</div>';
+  box.innerHTML = (Array.isArray(list) ? list : []).slice(0, 30).map(r => { const id = intIn(r.id, 1, 9e15, 0), a = intIn(r.a, 0, 3, 0), b = intIn(r.b, 0, 3, 0); const st = cleanDuelStake(r.stake), on = r.status === 'open', pay = canPayStake(st); return id ? `<div class="nearby-row"><div class="grow"><strong>${esc(cleanText(r.title, 20) || `${cleanText(r.host, 12)}의 대련방`)}</strong>${on ? '' : ' <em class="tag">대련 중</em>'}${st ? ` <em class="tag">판돈 ${esc(duelStakeText(st))}</em>` : ''}<small>방장 ${esc(cleanText(r.host, 12))} · A팀 ${a}/${DUEL_TEAM_MAX} · B팀 ${b}/${DUEL_TEAM_MAX}${st && !pay ? ' · 판돈이 모자라요' : ''}</small></div><div class="row-btns">${on ? `<button data-act="duel-join" data-id="${id}" data-team="1" ${a >= DUEL_TEAM_MAX || !pay ? 'disabled' : ''}>A팀</button><button data-act="duel-join" data-id="${id}" data-team="2" ${b >= DUEL_TEAM_MAX || !pay ? 'disabled' : ''}>B팀</button>` : ''}<button data-act="duel-watch" data-id="${id}">관전</button></div></div>` : ''; }).join('') || '<div class="empty">열린 대련방이 없어요. 방을 만들어 보세요.</div>';
 }
 function stopDuelTimers() { clearInterval(view.duelPoll); clearTimeout(view.duelTimer); view.duelPoll = view.duelTimer = 0; }
 function duelRoomHtml(v, fs) {
@@ -2727,10 +2735,16 @@ function duelRoomHtml(v, fs) {
 function openDuelRoom(v) { // 서버 대련방 (v = duel_view 결과)
   const fs = duelFighters(Array.isArray(v.members) ? v.members : []), mine = fs.find(f => f.me), open = v.status === 'open';
   fs.forEach(f => { if (!f.me) avatarOf(f.name); }); // 지원 컷인에 쓸 프로필 사진을 미리 받아 둔다
-  modal(`대련방 · ${cleanText(v.title, 20) || '이름 없는 방'}`, duelRoomHtml(v, fs) + (open ? `<p class="tiny">${v.host ? '양 팀에 한 명 이상 모이면 시작할 수 있어요.' : '방장이 시작하면 대련이 펼쳐져요.'}</p>` : ''),
+  const st = cleanDuelStake(v.stake), watch = !mine, alone = fs.length <= 1;
+  const stakeRow = `<div class="duel-stake">${icon('paid')} 판돈 <b>${st ? esc(duelStakeText(st)) : '없음'}</b>${st ? `<small> · 이긴 팀이 진 팀 판돈을 나눠 가져요(수수료 ${Math.round(DUEL_BET_FEE * 100)}%)${mine && !canPayStake(st) ? ' · <em class="bad">지금 판돈이 모자라요</em>' : ''}</small>` : ''}</div>`
+    + (open && v.host && alone ? `<div class="search-row duel-stake-set"><select id="duelStakeKind" aria-label="판돈 종류"><option value="">판돈 없음</option><option value="cr" ${st && st.cr ? 'selected' : ''}>CR</option><option value="item" ${st && st.item ? 'selected' : ''}>아이템</option></select><input id="duelStakeCr" type="number" min="${DUEL_BET_CR_MIN}" max="${DUEL_BET_CR_MAX}" value="${st && st.cr ? st.cr : 50}" aria-label="CR"><select id="duelStakeItem" aria-label="아이템">${duelStakeItems().map(n => `<option ${st && st.item === n ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select><input id="duelStakeQty" type="number" min="1" max="${DUEL_BET_QTY_MAX}" value="${st && st.qty ? st.qty : 1}" aria-label="개수"><button data-act="duel-stake" data-id="${v.id}">판돈 정하기</button></div><p class="tiny">판돈은 다른 대원이 들어오기 전에만 정할 수 있어요. CR ${DUEL_BET_CR_MIN}~${DUEL_BET_CR_MAX} 또는 아이템 1~${DUEL_BET_QTY_MAX}개.</p>` : '');
+  const invRow = open && mine ? `<div class="search-row duel-inv"><select id="duelInvTo" aria-label="초대할 대원">${duelInviteTargets().map(([n, on]) => `<option value="${esc(n)}">${esc(n)}${on ? ' · 접속 중' : ''}</option>`).join('') || '<option value="">초대할 친구·파티원이 없어요</option>'}</select><button data-act="duel-invite" data-id="${v.id}">초대</button></div>` : '';
+  modal(`${watch ? '관전 · ' : '대련방 · '}${cleanText(v.title, 20) || '이름 없는 방'}`, duelRoomHtml(v, fs) + stakeRow + invRow + (open ? `<p class="tiny">${watch ? '관전 중이에요. 자리가 있으면 참가할 수도 있어요.' : v.host ? '양 팀에 한 명 이상 모이면 시작할 수 있어요.' : '방장이 시작하면 대련이 펼쳐져요.'}</p>` : ''),
+    watch ? ['<button data-act="duel-unwatch">관전 그만두기</button>', ...(open ? [1, 2].map(t => `<button data-act="duel-join" data-id="${v.id}" data-team="${t}" ${fs.filter(f => f.team === t).length >= DUEL_TEAM_MAX || !canPayStake(st) ? 'disabled' : ''}>${t === 1 ? 'A팀' : 'B팀'} 참가</button>`) : [])] :
     [`<button data-act="duel-leave" data-id="${v.id}">나가기</button>`, '<button data-act="duel-min">최소화</button>', v.host && !open ? `<button class="primary hidden" id="duelAgain" data-act="duel-again" data-id="${v.id}">다시 대련</button>` : '', open && mine ? `<button data-act="duel-join" data-id="${v.id}" data-team="${mine.team === 1 ? 2 : 1}">${mine.team === 1 ? 'B팀으로' : 'A팀으로'}</button>` : '', open && v.host ? `<button class="primary" data-act="duel-start" data-id="${v.id}" ${new Set(fs.map(f => f.team)).size < 2 ? 'disabled' : ''}>대련 시작</button>` : ''].filter(Boolean));
-  view.duelRoom = v.id; view.duelMin = null; view.duelLast = v; duelChip(); view.duelSig = JSON.stringify([v.status, v.seed, fs.map(f => [f.name, f.team])]); view.duelNames = fs.map(f => f.name);
-  if (v.status === 'started' && Number.isFinite(+v.seed)) duelPlay(fs, +v.seed, v.id);
+  { const k = $('#duelStakeKind'); if (k) { const sync = () => { $('#duelStakeCr').classList.toggle('hidden', k.value !== 'cr'); $('#duelStakeItem').classList.toggle('hidden', k.value !== 'item'); $('#duelStakeQty').classList.toggle('hidden', k.value !== 'item'); }; k.onchange = sync; sync(); } } // 판돈 종류에 맞는 칸만
+  view.duelRoom = v.id; view.duelWatch = watch; view.duelMin = null; view.duelLast = v; duelChip(); view.duelSig = JSON.stringify([v.status, v.seed, fs.map(f => [f.name, f.team])]); view.duelNames = fs.map(f => f.name);
+  if (v.status === 'started' && Number.isFinite(+v.seed)) duelPlay(fs, +v.seed, v.id, v.stake);
   if (!view.duelPoll && open) view.duelPoll = setInterval(duelPollRoom, 2500);
 }
 async function duelPollRoom() {
@@ -2745,6 +2759,24 @@ async function duelPollRoom() {
   if (sig === view.duelSig) return;
   if (!open) { view.duelSig = sig; view.duelLast = v; duelChip(v); if (v.status === 'started' && !state.duelSeen.includes(+v.seed) && !view.duelCd) { clearInterval(view.duelPoll); view.duelPoll = 0; let n = 3; const c = $('#duelChip'); const tickCd = () => { if (n > 0) { toast(`${n}초 뒤 대련이 시작합니다!`); if (c) c.innerHTML = `${icon('sports_kabaddi')} ${n}초 뒤 대련 시작!`; sfx('click'); n--; view.duelCd = setTimeout(tickCd, 1000); return; } view.duelCd = 0; view.duelMin = null; duelChip(); openDuelRoom(v); }; notifyDone('3초 뒤 대련이 시작합니다!'); tickCd(); } return; } // 최소화 중이어도 3초 카운트다운 뒤 대련 창을 연다
   clearInterval(view.duelPoll); view.duelPoll = 0; openDuelRoom(v);
+}
+function duelStakeItems() { // 판돈으로 걸 수 있는 아이템: 가진 것 중 숨은 아이템·착용 중 아닌 것
+  const out = []; Object.values(state.inventory).forEach(list => list.forEach(x => { if (ITEMS[x.n] && !ITEMS[x.n].hidden && !out.includes(x.n)) out.push(x.n); })); return out.slice(0, 80);
+}
+function duelInviteTargets() { // 초대할 수 있는 대원: 파티원 + 친구 (접속 중 먼저)
+  const m = new Map(); (PARTY.members || []).forEach(p => { if (p.name && p.name !== state.character.name) m.set(p.name, p.online === true); });
+  state.friends.forEach(n => { if (!m.has(n)) m.set(n, !!(view.friendOnline && view.friendOnline[n])); });
+  return [...m.entries()].sort((a, b) => b[1] - a[1]);
+}
+function duelInvitesIn(list) { // 채팅 확인에 실려 온 대련 초대
+  (Array.isArray(list) ? list : []).slice(0, 5).forEach(x => { const id = intIn(x.room, 1, 9e15, 0); if (!id) return; const from = cleanText(x.from, 12) || '?', title = cleanText(x.title, 20);
+    view.duelInv = { id, from, title }; toast(`${from} 대원이 대련에 초대했어요.${title ? ` (${title})` : ''}`); sfx('ok'); notifyDone(`${from} 대원이 대련에 초대했어요.`); });
+  duelInvChip();
+}
+function duelInvChip() {
+  let c = $('#duelInvChip'); if (!view.duelInv) { if (c) c.remove(); return; }
+  if (!c) { c = document.createElement('button'); c.id = 'duelInvChip'; c.className = 'duel-chip inv'; c.dataset.act = 'duel-inv-open'; document.body.appendChild(c); }
+  c.innerHTML = `${icon('mail')} 대련 초대 · ${esc(view.duelInv.from)}`;
 }
 function duelChip(v) { // 최소화한 대련방: 오른쪽 아래 작은 버튼 (누르면 다시 열림)
   let c = $('#duelChip'); if (!view.duelMin) { if (c) c.remove(); return; }
@@ -2762,20 +2794,23 @@ function duelShow(e, fs, live = true) { // 한 줄마다: 체력 막대(+잔상)
   if (live) { if (e.dodge || !e.dmg) duelPop(e.t, 'MISS', 'miss'); else duelPop(e.t, `-${e.dmg}`, e.d === 6 ? 'crit' : e.bo ? 'boost' : ''); }
   if (e.ko) { const d = $('#df' + e.t); if (d && !d.classList.contains('ko')) { d.classList.add('ko'); d.insertAdjacentHTML('beforeend', '<b class="ko-stamp">K.O.</b>'); } }
 }
-function duelPlay(fs, seed, roomId) { // 한 줄씩 보여 주고 끝나면 결과와 대사
+function duelPlay(fs, seed, roomId, stake) { // 한 줄씩 보여 주고 끝나면 결과와 대사
   clearInterval(view.duelPoll); clearTimeout(view.duelTimer); view.duelPoll = 0;
   const sim = duelSim(fs, seed), box = $('#duelLog'); let i = 0;
   if (!box) return;
+  const bet = roomId && cleanDuelStake(stake) ? (state.duelSeen.includes(seed) ? (state.duelBets && state.duelBets[seed]) || null : duelBetPay(seed, stake, fs, sim)) : null; // 판돈은 처음 볼 때 한 번만 낸다
+  if (bet && bet.at > Date.now() - 2000) toast(bet.paid ? `판돈 ${duelStakeText(bet.st)}을 걸었어요.` : '판돈이 모자라 이번 판은 걸지 않았어요.');
   box.innerHTML = `<div class="bl note">대련 시작! ${esc(fs.filter(f => f.team === 1).map(f => f.name).join('·'))} VS ${esc(fs.filter(f => f.team === 2).map(f => f.name).join('·'))}</div>`;
   const end = () => {
     clearTimeout(view.duelTimer); view.duelTimer = 0;
     fs.forEach((f, k) => { const d = $('#df' + k); if (d && f.team === sim.win) d.classList.add('win-glow'); });
     const wl = fs.reduce((a, f, k) => a + (f.team === sim.win ? sim.hp[k] : 0), 0) / Math.max(1, fs.reduce((a, f) => a + (f.team === sim.win ? f.hp : 0), 0)), comeback = wl > 0 && wl < .2;
     const me = fs.find(f => f.me), won = me ? me.team === sim.win : null, lines = fs.map((f, i) => { const w = f.team === sim.win, pool = w ? DUEL_SAY_WIN : DUEL_SAY_LOSE, t = (w ? f.win : f.lose) || pool[((+seed || 0) + i * 7) % pool.length]; return t ? `<p class="duel-say"><b>${esc(f.name)}</b> 「${esc(t)}」</p>` : ''; }).join('');
-    const el = $('#duelEnd'); if (el) el.innerHTML = `<div class="duel-result ${won === true ? 'win' : won === false ? 'lose' : ''}">${sim.win === 1 ? 'A팀' : 'B팀'} 승리!${comeback ? ' <em class="comeback">대역전!</em>' : ''}${won === true ? ' 🎉' : ''} <small>(${sim.rounds}합)</small></div>${lines}`;
+    const betTxt = bet ? duelBetSettle(seed) || (state.duelBets[seed] && state.duelBets[seed].paid ? (state.duelBets[seed].won ? `판돈 +${duelStakeText(duelBetGain(state.duelBets[seed]))}` : `판돈 -${duelStakeText(state.duelBets[seed].st)}`) : '') : '';
+    const el = $('#duelEnd'); if (el) el.innerHTML = `<div class="duel-result ${won === true ? 'win' : won === false ? 'lose' : ''}">${sim.win === 1 ? 'A팀' : 'B팀'} 승리!${comeback ? ' <em class="comeback">대역전!</em>' : ''}${won === true ? ' 🎉' : ''} <small>(${sim.rounds}합)</small></div>${betTxt ? `<p class="duel-bet">${esc(betTxt)}</p>` : ''}${lines}`;
     if (roomId && !state.duelSeen.includes(seed)) { state.duelSeen = [...state.duelSeen, seed].slice(-20); }
     if (roomId) { const ab = $('#duelAgain'); if (ab) ab.classList.remove('hidden'); if (!view.duelPoll) view.duelPoll = setInterval(duelPollRoom, 3000); } // 대련이 끝나도 방은 남는다
-    if (!state.flags.duel) { state.flags.duel = true; awardTitles(); }
+    if (me && !state.flags.duel) { state.flags.duel = true; awardTitles(); } // 관전만 한 사람은 칭호 없음
     save(); sfx(won === false ? 'error' : 'levelup');
   };
   if (roomId && state.duelSeen.includes(seed)) { box.innerHTML += sim.log.map(e => `<div class="bl ${e.sup !== undefined ? 'sup' : e.dodge ? 'dodge' : e.d >= 5 ? 'hit' : 'note'}">${esc(duelText(e, fs))}</div>`).join(''); sim.log.forEach(e => { if (e.sup === undefined) duelShow(e, fs, false); }); box.scrollTop = box.scrollHeight; end(); return; }

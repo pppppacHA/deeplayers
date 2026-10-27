@@ -22,13 +22,14 @@ jobs:
       - name: 배포 폴더 만들기
         run: |
           mkdir _site
-          cp -r index.html signup.html css js audio _site/
+          cp -r index.html signup.html favicon.ico favicon.svg favicon-32.png apple-touch-icon.png css js audio _site/
           cp -r assets _site/assets  && rm -f _site/assets/room/README.md _site/assets/room/_guide_room.png _site/assets/room/.gitkeep
           touch _site/.nojekyll
           echo "{\"v\":\"${GITHUB_SHA}\"}" > _site/version.json
           # 캐시 무효화: 스크립트/스타일 주소 뒤에 배포 번호를 붙인다 (그냥 F5로도 새 버전이 적용된다)
           V=${GITHUB_SHA::8}
           sed -i -E "s#(src|href)=\"((js|css)/[^\"?]+\.(js|css))\"#\1=\"\2?v=${V}\"#g" _site/index.html _site/signup.html
+          sed -i -E "s#href=\"((favicon[^\"?]*)|apple-touch-icon\.png)\"#href=\"\1?v=${V}\"#g" _site/index.html _site/signup.html
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site

@@ -99,7 +99,7 @@ function hardenState(s) {
   s.rescueAt = Object.fromEntries(Object.entries(s.rescueAt && typeof s.rescueAt === 'object' ? s.rescueAt : {}).filter(([k, v]) => DANGER_ZONES.some(z => z.id === k) && Number.isFinite(v)));
   if (s.dungeon) s.dungeon.rs = Object.fromEntries(Object.entries(s.dungeon.rs && typeof s.dungeon.rs === 'object' ? s.dungeon.rs : {}).filter(([k]) => /^-?\d{1,3},-?\d{1,3}$/.test(k)).map(([k]) => [k, 1]));
   s.deaths = intIn(s.deaths, 0, 99999, 0); s.lostCount = intIn(s.lostCount, 0, 999999, 0);
-  { const m = s.trainMsg && typeof s.trainMsg === 'object' ? s.trainMsg : {}; s.trainMsg = { help: cleanText(m.help || '', DUEL_MSG_MAX), win: cleanText(m.win || '', DUEL_MSG_MAX), lose: cleanText(m.lose || '', DUEL_MSG_MAX) }; s.duelSeen = (Array.isArray(s.duelSeen) ? s.duelSeen : []).map(x => intIn(x, 1, 9e15, 0)).filter(Boolean).slice(-20); }
+  { const m = s.trainMsg && typeof s.trainMsg === 'object' ? s.trainMsg : {}; s.trainMsg = { help: cleanText(m.help || '', DUEL_MSG_MAX), win: cleanText(m.win || '', DUEL_MSG_MAX), lose: cleanText(m.lose || '', DUEL_MSG_MAX) }; s.duelSeen = (Array.isArray(s.duelSeen) ? s.duelSeen : []).map(x => intIn(x, 1, 9e15, 0)).filter(Boolean).slice(-20); s.duelBets = cleanDuelBets(s.duelBets); }
   s.qact = Object.fromEntries(Object.entries(s.qact && typeof s.qact === 'object' ? s.qact : {}).filter(([k]) => QMARKS[k]).map(([k, v]) => [k, intIn(v, 0, 7, 0)]));
   s.lostBox = (Array.isArray(s.lostBox) ? s.lostBox : []).filter(x => x && ITEMS[legacyName(x.n)]).map(x => { const n = legacyName(x.n), mk = typeof x.mk === 'string' ? cleanText(x.mk, MK_LEN) : ''; return { n, q: intIn(x.q, 1, ITEMS[n].tab === '장비' ? 1 : STACK_MAX, 1), ...(mk ? { mk } : {}) }; }).slice(0, LOSTBOX_SLOTS);
   s.quick = Array.from({ length: QUICK_SLOTS }, (_, i) => { const n = Array.isArray(s.quick) ? s.quick[i] : null; return typeof n === 'string' && ITEMS[n] && ITEMS[n].use ? n : null; }); s.quickOpen = s.quickOpen === true;
@@ -2671,4 +2671,48 @@ function duelText(e, fighters) { // 기록 한 줄 → 묘사 (주 능력·주�
   if (e.endure) out += ` ${T.name}이(가) 이를 악물고 버텨 냈다! (HP 1)`;
   if (e.ko) out += ' ' + f(pk(DUEL_KO));
   return out;
+}
+
+/* ===== 대련 판돈 (10/27) =====
+   방장이 정한 판돈(서버 stake)을 대련이 시작될 때(이 기기에서 처음 볼 때) 낸다. 결과는 시드로 정해져 있으므로 낼 때 승패·인원을 함께 적어 두고,
+   대련 연출이 끝나거나(또는 창을 닫아 못 봤어도 3분 뒤) 이긴 쪽이면 정산한다. 서버는 CR·아이템을 옮기지 않는다(세이브 권한, 거래소와 같음). */
+function cleanDuelStake(st) { // 서버에서 받은 판돈을 다시 거른다
+  if (!st || typeof st !== 'object') return null;
+  if (st.cr != null) { const c = Math.floor(+st.cr); return Number.isFinite(c) && c >= DUEL_BET_CR_MIN && c <= DUEL_BET_CR_MAX ? { cr: c } : null; }
+  const n = typeof st.item === 'string' ? st.item : '', q = Math.floor(+st.qty);
+  return ITEMS[n] && !ITEMS[n].hidden && Number.isFinite(q) && q >= 1 && q <= DUEL_BET_QTY_MAX ? { item: n, qty: q } : null;
+}
+function cleanDuelBets(b) { // 저장 검증 (hardenState에서 쓰므로 function 선언)
+  const out = {}; if (!b || typeof b !== 'object') return out;
+  Object.entries(b).slice(-20).forEach(([k, v]) => {
+    const seed = Math.floor(+k); if (!(seed > 0) || !v || typeof v !== 'object') return; const st = cleanDuelStake(v.st); if (!st) return;
+    out[seed] = { st, paid: !!v.paid, won: !!v.won, w: Math.max(1, Math.min(3, v.w | 0)), l: Math.max(0, Math.min(3, v.l | 0)), at: Number.isFinite(+v.at) ? +v.at : 0, done: !!v.done };
+  });
+  return out;
+}
+const duelStakeText = st => !st ? '' : st.cr ? `${st.cr} CR` : `${st.item} ×${st.qty}`;
+function canPayStake(st) { st = cleanDuelStake(st); if (!st) return true; return st.cr ? state.money >= st.cr : countItem(st.item) >= st.qty; }
+function duelBetGain(b) { // 이긴 사람이 받는 것 (내 판돈 + 진 쪽 판돈을 이긴 인원으로 나눈 몫, 수수료 제외)
+  const share = b.l / b.w; return b.st.cr ? { cr: b.st.cr + Math.floor(b.st.cr * share * (1 - DUEL_BET_FEE)) } : { item: b.st.item, qty: b.st.qty + Math.floor(b.st.qty * share * (1 - DUEL_BET_FEE) + 1e-9) };
+}
+function duelBetPay(seed, stake, fs, sim) { // 대련 시작 때 판돈 내기 (같은 시드는 한 번만). 못 내면 이번 판은 걸지 않은 것으로 한다
+  const st = cleanDuelStake(stake), me = fs.find(f => f.me); if (!st || !me || !(seed > 0)) return null;
+  state.duelBets = state.duelBets || {}; if (state.duelBets[seed]) return state.duelBets[seed];
+  const w = fs.filter(f => f.team === sim.win).length, l = fs.length - w;
+  let paid = false; if (st.cr) { if (state.money >= st.cr) { state.money -= st.cr; paid = true; } } else if (countItem(st.item) >= st.qty) { paid = removeItem(st.item, st.qty) >= st.qty; }
+  const keys = Object.keys(state.duelBets); if (keys.length >= 20) delete state.duelBets[keys[0]];
+  state.duelBets[seed] = { st, paid, won: me.team === sim.win, w: Math.max(1, w), l, at: Date.now(), done: !paid }; save();
+  return state.duelBets[seed];
+}
+function duelBetSettle(seed) { // 정산 (이긴 쪽만 받는다). 결과 문구를 돌려준다
+  const b = state.duelBets && state.duelBets[seed]; if (!b || b.done) return '';
+  b.done = true; let txt = '';
+  if (b.paid && b.won) { const g = duelBetGain(b);
+    if (g.cr) { state.money += g.cr; txt = `판돈 +${g.cr} CR`; }
+    else { const a = addItem(g.item, g.qty), box = a < g.qty ? lostBoxPut(g.item, g.qty - a) : 0; txt = `판돈 ${g.item} +${g.qty}${a < g.qty ? ` (가방이 가득 차 ${box}개는 분실물 보관함으로)` : ''}`; }
+  } else if (b.paid) txt = `판돈 -${duelStakeText(b.st)}`;
+  save(); return txt;
+}
+function duelBetSweep() { // 대련을 끝까지 못 봤어도 3분 지나면 정산
+  const b = state.duelBets || {}; let n = 0; Object.keys(b).forEach(k => { if (!b[k].done && Date.now() - b[k].at > 180000) { duelBetSettle(+k); n++; } }); return n;
 }
