@@ -196,7 +196,7 @@ function hardenState(s) {
   s.logs = (Array.isArray(s.logs) ? s.logs : []).filter(l => l && typeof l.text === 'string').map(l => ({ time: cleanText(l.time, 10), text: cleanText(l.text, 400) })).slice(0, 60);
   if (s.crafting && (!RECIPES[s.crafting.index] || !Number.isFinite(s.crafting.endAt))) s.crafting = null;
   if (s.crafting) { s.crafting.out = RECIPES[s.crafting.index].out; s.crafting.qty = intIn(s.crafting.qty, 1, MAX_BATCH, 1); s.crafting.great = !!s.crafting.great; s.crafting.ready = !!s.crafting.ready; s.crafting.used = (Array.isArray(s.crafting.used) ? s.crafting.used : []).map(u => Array.isArray(u) && LEGACY_ITEMS[u[0]] ? [LEGACY_ITEMS[u[0]], u[1]] : u).filter(u => Array.isArray(u) && ITEMS[u[0]]).map(u => typeof u[2] === 'string' && cleanText(u[2], MK_LEN) ? [u[0], intIn(u[1], 1, 9999, 1), cleanText(u[2], MK_LEN)] : [u[0], intIn(u[1], 1, 9999, 1)]).slice(0, 24); }
-  if (!['장비', '소모품', '약', '기타'].includes(s.craftTab)) s.craftTab = null; if (!(typeof s.craftTag === 'string' && TAG_NAMES.includes(s.craftTag))) s.craftTag = null; // 제작 탭: 분류(craftTab) + 태그(craftTag) 둘 다 맞는 것만
+  if (!['장비', '소모품', '약', '기타'].includes(s.craftTab)) s.craftTab = null; if (!(typeof s.craftTag === 'string' && (TAG_NAMES.includes(s.craftTag) || s.craftTag === '태그 없음'))) s.craftTag = null; // 제작 탭: 분류(craftTab) + 태그(craftTag) 둘 다 맞는 것만
   if (s.active && s.active.id === '구역 이동' && !(LOCATIONS[s.active.to] && LOCATIONS[s.active.to].danger && !s.dungeon && Number.isFinite(s.active.endAt))) s.active = null;
   if (s.active && s.active.id === '타일 이동' && !(s.dungeon && Array.isArray(s.active.path) && s.active.path.length)) s.active = null;
 }

@@ -331,3 +331,6 @@ STUB_ICONS=1 python3 tests/smoke.py   # 아이콘 폰트를 못 받는 환경(�
 - 최소화 중 대련 시작: 3초 카운트다운(토스트·칩) 뒤 대련 창(view.duelCd).
 - 대련 스탯 효과 DUEL_STAT(민첩 선공, 지능 꿰뚫기·강타, 의지 피해감소·버티기 endure, 감각 반격 ctr, 행운 재굴림 lucky). 스냅샷 st(서버 _duel_snap 0~80).
 - 대련 타격음 hitSfx(lv 0 보통·1 강타/반격·2 치명타 d6), 회피는 swishSfx(허공 가르는 소리), 클릭음 설정을 따름. FIGHT! 배너는 Black Ops One(index.html 별도 link, text=FIGHT! KO 글자만). **주의: hardenState(불러오기)에서 core.js 뒤쪽 const(DUEL_STATS 등)를 쓰면 TDZ로 세이브가 초기화된다 — feat_test reload_keeps_save_no_load_error가 잡는다.**
+- 10/27 (10): 제작 탭 craftGroup = 장비(slot 있는 장비)·소모품·약·기타(그 밖 전부, 펫 장신구 등). 태그는 `craftTagsOf`(없으면 `CRAFT_NOTAG` '태그 없음' 칩), 펫 장신구·펫 사료에 분야 태그. 분류 탭(#craftTabs)은 sticky 위, 태그 줄(#craftTagStrip, #craftList 아래)은 sticky 아래.
+- 대련방: X·닫기도 최소화(나가기는 "나가기" 버튼만). 서버 방은 `touched_at`(동작=멤버 변경·상태/시드 변경 트리거만, 보기는 아님) 10분 지나면 닫힘, duel_view도 closed로 보고(friends.sql 재실행). 복원 중 통신 오류는 방을 버리지 않음. 지원 컷인은 서버 방이면 `avatarOf(이름)`(방 열 때 미리 요청). 결과 대사는 참가자 전원(없으면 `DUEL_SAY_WIN/LOSE` 기본 대사). `DUEL_STAT` 근력 외 약 1.5배.
+- 파비콘: 루트 `favicon.ico`·`favicon.svg`·`favicon-32.png`·`apple-touch-icon.png`(index/signup link). 미리보기 빌드는 SVG를 data:로 넣는다.

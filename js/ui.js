@@ -30,7 +30,7 @@ function modal(title, body, actions = [], small = false) {
   $('#modal').classList.toggle('small', small); $('#modal').classList.remove('terminal', 'room', 'solo');
   $('#overlay').classList.add('open');
 }
-const closeModal = () => { view.room = null; if (view.duelRoom) { if (view.duelMinimize) { view.duelMinimize = false; view.duelMin = view.duelRoom; view.duelRoom = null; clearTimeout(view.duelTimer); view.duelTimer = 0; clearInterval(view.duelPoll); view.duelPoll = setInterval(duelPollRoom, 4000); duelChip(view.duelLast); } else { const id = view.duelRoom; view.duelRoom = null; stopDuelTimers(); if (duelOnline()) Cloud.duelLeave(id).catch(() => {}); } } // '최소화'만 방 유지(4초마다 확인), X·닫기는 방에서 나간다(방장이면 방 삭제)
+const closeModal = () => { view.room = null; if (view.duelRoom) { if (true) { view.duelMinimize = false; view.duelMin = view.duelRoom; view.duelRoom = null; clearTimeout(view.duelTimer); view.duelTimer = 0; clearInterval(view.duelPoll); view.duelPoll = setInterval(duelPollRoom, 4000); duelChip(view.duelLast && view.duelLast.id === view.duelMin ? view.duelLast : null); setTimeout(duelPollRoom, 50); } else { const id = view.duelRoom; view.duelRoom = null; stopDuelTimers(); if (duelOnline()) Cloud.duelLeave(id).catch(() => {}); } } // X·닫기·최소화 모두 방을 유지하고 최소화(4초마다 확인). 방에서 나가기는 '나가기' 버튼(duel-leave)만
   { const rf = $('#roomFloat'); if (rf) rf.remove(); } if (view.mockTimer) { clearInterval(view.mockTimer); view.mockTimer = 0; } if (view.rescueTimer) { clearInterval(view.rescueTimer); view.rescueTimer = 0; } view.rescueAnim = false; $('#overlay').classList.remove('open'); applyTheme(); }; // 저장하지 않은 테마 미리보기는 되돌린다
 const btnClose = '<button data-act="close">닫기</button>';
 
@@ -284,11 +284,11 @@ function renderCraft() {
   const tab = state.craftTab, only = !!view.craftOnly;
   $('#craftOnly').classList.toggle('active', only); $('#craftOnly').setAttribute('aria-pressed', only);
   $$('#craftTabs [data-craft]').forEach(b => b.classList.toggle('active', b.dataset.craft === tab));
-  { const tags = TAG_NAMES.filter(t => RECIPES.some(rc => recipeKnown(rc) && (ITEMS[rc.out].tags || []).includes(t))), box = $('#craftTags'); // 만들 수 있는 물건의 태그만
+  { const tags = [...TAG_NAMES, CRAFT_NOTAG].filter(t => RECIPES.some(rc => recipeKnown(rc) && craftTagsOf(rc.out).includes(t))), box = $('#craftTags'); // 만들 수 있는 물건의 태그만
     const html = tags.map(t => `<button data-ctag="${esc(t)}" class="${t === state.craftTag ? 'active' : ''}">${esc(t)}</button>`).join(''); if (box.dataset.h !== html) { box.dataset.h = html; box.innerHTML = html; } tagArrows(); }
   const cq = String(view.craftQ || '').trim().toLowerCase(); // 레시피 검색: 만들 물건 이름이나 재료 이름
-  const shown = RECIPES.map((rc, i) => ({ rc, i })).filter(({ rc }) => recipeKnown(rc) && (!tab || craftGroup(rc.out) === tab) && (!state.craftTag || (ITEMS[rc.out].tags || []).includes(state.craftTag)) && (!only || canCraft(rc)) && (!cq || `${rc.out} ${Object.keys(rc.mats).join(' ')}`.toLowerCase().includes(cq)));
-  $('#craftCount').textContent = `레시피 ${shown.length}종`;
+  const shown = RECIPES.map((rc, i) => ({ rc, i })).filter(({ rc }) => recipeKnown(rc) && (!tab || craftGroup(rc.out) === tab) && (!state.craftTag || craftTagsOf(rc.out).includes(state.craftTag)) && (!only || canCraft(rc)) && (!cq || `${rc.out} ${Object.keys(rc.mats).join(' ')}`.toLowerCase().includes(cq)));
+  $('#craftCount').textContent = `레시피 ${shown.length}종${state.craftTag ? ` · ${state.craftTag}` : ''}`;
   $('#craftList').innerHTML = craftJobHtml() + shown.map(({ rc, i }) => {
     const it = ITEMS[rc.out], ok = canCraft(rc) && !state.crafting;
     const mats = Object.entries(rc.mats).map(([n, q]) => `<span class="${matCount(n) >= q ? '' : 'lack'}">${esc(n)} ${matCount(n)}/${q}</span>`).join(' · ');
@@ -2270,7 +2270,7 @@ const A = {
   'quest-abandon-do': el => { const e = abandonQuest(el.dataset.id); if (e) { toast(e); sfx('error'); return; } closeModal(); renderSide(); toast('임무를 포기했습니다.'); },
   'duel-back': () => openDuel(),
   'duel-min': () => { view.duelMinimize = true; closeModal(); },
-  'duel-restore': async () => { const id = view.duelMin; if (!id) return; try { const v = await Cloud.duelView(id); if (v && v.status !== 'closed') { clearInterval(view.duelPoll); view.duelPoll = 0; openDuelRoom(v); return; } } catch (e) { /* 다시 시도 */ } view.duelMin = null; duelChip(); toast('대련방이 닫혔어요.'); },
+  'duel-restore': async () => { const id = view.duelMin; if (!id) return; try { const v = await Cloud.duelView(id); if (v && v.status !== 'closed') { clearInterval(view.duelPoll); view.duelPoll = 0; openDuelRoom(v); return; } if (!v || v.status === 'closed') { view.duelMin = null; duelChip(); toast('대련방이 닫혔어요.'); } else toast('방을 불러오지 못했어요. 잠시 뒤 다시 눌러 주세요.'); } catch (e) { toast('연결이 불안정해요. 잠시 뒤 다시 눌러 주세요.'); } }, // 일시적인 오류로는 방을 버리지 않는다
   'duel-again': async el => { const id = intIn(el.dataset.id, 1, 9e15, 0); el.disabled = true; try { const r = await Cloud.duelReset(id); if (r && r.ok) { const v = await Cloud.duelView(id); if (v) { clearInterval(view.duelPoll); view.duelPoll = 0; openDuelRoom(v); return; } } toast('다시 열지 못했어요.'); } catch (e) { toast('다시 열지 못했어요. 서버에 supabase/friends.sql 최신본이 필요해요.'); } el.disabled = false; },
   'duel-refresh': () => duelLoadList(),
   'duel-create': async el => { el.disabled = true; try { const r = await Cloud.duelCreate($('#duelTitle') ? $('#duelTitle').value : '', duelSnap(), $('#duelTeam') && $('#duelTeam').value === '2' ? 2 : 1); if (r && r.ok) { const v = await Cloud.duelView(r.id); if (v) { openDuelRoom(v); return; } } toast('방을 만들지 못했어요.'); } catch (e) { toast('방을 만들지 못했어요. 서버에 supabase/friends.sql 최신본이 필요해요.'); } el.disabled = false; },
@@ -2565,7 +2565,9 @@ $$('[data-ltab]').forEach(b => { b.onclick = () => { state.leftTab = b.dataset.l
 $('#craftOnly').onclick = () => { view.craftOnly = !view.craftOnly; renderCraft(); };
 $$('#craftTabs [data-craft]').forEach(b => { b.onclick = () => { state.craftTab = state.craftTab === b.dataset.craft ? null : b.dataset.craft; renderCraft(); save(); }; });
 $('#craftTags').addEventListener('click', e => { const b = e.target.closest('[data-ctag]'); if (!b) return; state.craftTag = state.craftTag === b.dataset.ctag ? null : b.dataset.ctag; renderCraft(); save(); });
-function craftGroup(n) { const c = craftCat(n); return c === '음식' ? '소모품' : c === '재료' ? '기타' : c; } // 장비 · 소모품(음식) · 약 · 기타(재료)
+function craftGroup(n) { const c = craftCat(n), it = ITEMS[n] || {}; return c === '장비' && it.slot ? '장비' : c === '음식' || c === '소모품' ? '소모품' : c === '약' ? '약' : '기타'; } // 장비(착용) · 소모품 · 약 · 기타(그 밖의 제작품 전부: 재료·펫 장신구 등)
+const CRAFT_NOTAG = '태그 없음';
+const craftTagsOf = n => { const t = ((ITEMS[n] || {}).tags || []).filter(x => TAG_NAMES.includes(x)); return t.length ? t : [CRAFT_NOTAG]; }; // 세부 태그가 없는 레시피도 '태그 없음'으로 고를 수 있다
 $('#craftTags').addEventListener('scroll', () => tagArrows(), { passive: true }); addEventListener('resize', () => tagArrows());
 function tagArrows() { const b = $('#craftTags'); if (!b) return; const over = b.scrollWidth > b.clientWidth + 2, [l, r] = $$('#craftTagStrip .ts-arr'); l.classList.toggle('hidden', !over || b.scrollLeft < 2); r.classList.toggle('hidden', !over || b.scrollLeft + b.clientWidth >= b.scrollWidth - 2); }
 $$('[data-inv]').forEach(b => { b.onclick = () => { state.invTab = state.invTab === b.dataset.inv ? null : b.dataset.inv; state.page = 1; renderInventory(); save(); }; });
@@ -2724,9 +2726,10 @@ function duelRoomHtml(v, fs) {
 }
 function openDuelRoom(v) { // 서버 대련방 (v = duel_view 결과)
   const fs = duelFighters(Array.isArray(v.members) ? v.members : []), mine = fs.find(f => f.me), open = v.status === 'open';
+  fs.forEach(f => { if (!f.me) avatarOf(f.name); }); // 지원 컷인에 쓸 프로필 사진을 미리 받아 둔다
   modal(`대련방 · ${cleanText(v.title, 20) || '이름 없는 방'}`, duelRoomHtml(v, fs) + (open ? `<p class="tiny">${v.host ? '양 팀에 한 명 이상 모이면 시작할 수 있어요.' : '방장이 시작하면 대련이 펼쳐져요.'}</p>` : ''),
     [`<button data-act="duel-leave" data-id="${v.id}">나가기</button>`, '<button data-act="duel-min">최소화</button>', v.host && !open ? `<button class="primary hidden" id="duelAgain" data-act="duel-again" data-id="${v.id}">다시 대련</button>` : '', open && mine ? `<button data-act="duel-join" data-id="${v.id}" data-team="${mine.team === 1 ? 2 : 1}">${mine.team === 1 ? 'B팀으로' : 'A팀으로'}</button>` : '', open && v.host ? `<button class="primary" data-act="duel-start" data-id="${v.id}" ${new Set(fs.map(f => f.team)).size < 2 ? 'disabled' : ''}>대련 시작</button>` : ''].filter(Boolean));
-  view.duelRoom = v.id; view.duelMin = null; duelChip(); view.duelSig = JSON.stringify([v.status, v.seed, fs.map(f => [f.name, f.team])]); view.duelNames = fs.map(f => f.name);
+  view.duelRoom = v.id; view.duelMin = null; view.duelLast = v; duelChip(); view.duelSig = JSON.stringify([v.status, v.seed, fs.map(f => [f.name, f.team])]); view.duelNames = fs.map(f => f.name);
   if (v.status === 'started' && Number.isFinite(+v.seed)) duelPlay(fs, +v.seed, v.id);
   if (!view.duelPoll && open) view.duelPoll = setInterval(duelPollRoom, 2500);
 }
@@ -2734,8 +2737,8 @@ async function duelPollRoom() {
   const id = view.duelRoom || view.duelMin, open = !!(view.duelRoom && $('#duelRoot'));
   if (!id || (!open && !view.duelMin)) { stopDuelTimers(); return; }
   let v; try { v = await Cloud.duelView(id); } catch (e) { return; }
-  if (!v || (view.duelRoom || view.duelMin) !== id) return;
-  if (v.status === 'closed') { stopDuelTimers(); view.duelMin = null; duelChip(); toast('대련방이 닫혔어요.'); if (open) openDuel(); return; }
+  if ((view.duelRoom || view.duelMin) !== id) return;
+  if (!v || v.status === 'closed') { stopDuelTimers(); view.duelMin = null; duelChip(); toast('대련방이 닫혔어요.'); if (open) openDuel(); return; }
   const fs = duelFighters(v.members || []), sig = JSON.stringify([v.status, v.seed, fs.map(f => [f.name, f.team])]), names = fs.map(f => f.name);
   const came = names.filter(n => !(view.duelNames || []).includes(n) && n !== state.character.name); view.duelNames = names;
   if (came.length && view.duelSig) { toast(`${came.join(', ')} 대원이 대련방에 들어왔어요.`); sfx('ok'); notifyDone(`${came.join(', ')} 대원이 대련방에 들어왔어요.`); }
@@ -2751,7 +2754,7 @@ function duelChip(v) { // 최소화한 대련방: 오른쪽 아래 작은 버튼
 }
 function duelPop(i, text, cls) { const d = $('#df' + i); if (!d) return; const p = document.createElement('i'); p.className = 'dmg-pop ' + (cls || ''); p.textContent = text; d.appendChild(p); setTimeout(() => p.remove(), 700); }
 function duelShow(e, fs, live = true) { // 한 줄마다: 체력 막대(+잔상) · 피해 숫자 · KO 도장 / 지원이면 사선 띠 컷인
-  if (e.sup !== undefined) { const c = $('#duelCut'), H = fs[e.sup]; if (!c) return; c.innerHTML = `<div class="cut-band"><span class="cut-ava">${H.me ? avatarOf('나') : esc(H.name.slice(0, 1))}</span><span><b>${esc(H.name)}의 지원!</b><small>「${esc(H.help || '힘내!')}」 · ${esc(fs[e.a].name)} 공격력 +${Math.round((DUEL_SUP_MULT - 1) * 100)}%</small></span></div>`; c.classList.remove('play'); void c.offsetWidth; c.classList.add('play'); return; }
+  if (e.sup !== undefined) { const c = $('#duelCut'), H = fs[e.sup]; if (!c) return; c.innerHTML = `<div class="cut-band"><span class="cut-ava">${H.me ? avatarOf('나') : (view.duelRoom || view.duelMin) ? avatarOf(H.name) : esc(H.name.slice(0, 1))}</span><span><b>${esc(H.name)}의 지원!</b><small>「${esc(H.help || '힘내!')}」 · ${esc(fs[e.a].name)} 공격력 +${Math.round((DUEL_SUP_MULT - 1) * 100)}%</small></span></div>`; c.classList.remove('play'); void c.offsetWidth; c.classList.add('play'); return; }
   const f = fs[e.t], w = $('#dh' + e.t), g = $('#dg' + e.t), v = $('#dv' + e.t); if (!f || !w) return;
   const pct = Math.max(0, e.hp / f.hp * 100) + '%'; w.style.width = pct; if (v) v.textContent = e.hp;
   if (g) { if (live) setTimeout(() => { g.style.width = pct; }, 300); else g.style.width = pct; }
@@ -2768,7 +2771,7 @@ function duelPlay(fs, seed, roomId) { // 한 줄씩 보여 주고 끝나면 결�
     clearTimeout(view.duelTimer); view.duelTimer = 0;
     fs.forEach((f, k) => { const d = $('#df' + k); if (d && f.team === sim.win) d.classList.add('win-glow'); });
     const wl = fs.reduce((a, f, k) => a + (f.team === sim.win ? sim.hp[k] : 0), 0) / Math.max(1, fs.reduce((a, f) => a + (f.team === sim.win ? f.hp : 0), 0)), comeback = wl > 0 && wl < .2;
-    const me = fs.find(f => f.me), won = me ? me.team === sim.win : null, lines = fs.map(f => { const t = f.team === sim.win ? f.win : f.lose; return t ? `<p class="duel-say"><b>${esc(f.name)}</b> 「${esc(t)}」</p>` : ''; }).join('');
+    const me = fs.find(f => f.me), won = me ? me.team === sim.win : null, lines = fs.map((f, i) => { const w = f.team === sim.win, pool = w ? DUEL_SAY_WIN : DUEL_SAY_LOSE, t = (w ? f.win : f.lose) || pool[((+seed || 0) + i * 7) % pool.length]; return t ? `<p class="duel-say"><b>${esc(f.name)}</b> 「${esc(t)}」</p>` : ''; }).join('');
     const el = $('#duelEnd'); if (el) el.innerHTML = `<div class="duel-result ${won === true ? 'win' : won === false ? 'lose' : ''}">${sim.win === 1 ? 'A팀' : 'B팀'} 승리!${comeback ? ' <em class="comeback">대역전!</em>' : ''}${won === true ? ' 🎉' : ''} <small>(${sim.rounds}합)</small></div>${lines}`;
     if (roomId && !state.duelSeen.includes(seed)) { state.duelSeen = [...state.duelSeen, seed].slice(-20); }
     if (roomId) { const ab = $('#duelAgain'); if (ab) ab.classList.remove('hidden'); if (!view.duelPoll) view.duelPoll = setInterval(duelPollRoom, 3000); } // 대련이 끝나도 방은 남는다

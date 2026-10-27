@@ -7,7 +7,10 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; media-src 'self' data: blob:; connect-src 'self' https://*.supabase.co; base-uri 'none'; form-action 'none'; object-src 'none'">
 <meta name="referrer" content="no-referrer">
 <title>공중도시 DEEP LAYER</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns=&quot;http://www.w3.org/2000/svg&quot; viewBox=&quot;0 0 64 64&quot;%3E%3Crect width=&quot;64&quot; height=&quot;64&quot; rx=&quot;12&quot; fill=&quot;#161616&quot;/%3E%3Cg transform=&quot;translate%2832 32%29 scale%280.05136 -0.05136%29 translate%28-373.0 -350.0%29&quot;%3E%3Cpath fill=&quot;#ffffff&quot; d=&quot;M446 0H67V10H80Q106 10 124.5 28.5Q143 47 144 73V644Q39 633 -15 585Q-61 544 -89 480L-99 484Q-79 592 4.5 646.0Q88 700 214 700H446Q634 700 739.5 607.5Q845 515 845.0 350.0Q845 185 739.0 92.5Q633 0 446 0ZM349 50H426Q426 50 426 50Q519 50 572.0 129.5Q625 209 625.0 350.0Q625 491 572.0 570.5Q519 650 426 650L349 648Z&quot;/%3E%3C/g%3E%3C/svg%3E">
+<link rel="icon" href="favicon.ico" sizes="any">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,0,0&family=Cinzel+Decorative:wght@700;900&family=Nanum+Myeongjo:wght@700;800&display=block" rel="stylesheet">
@@ -108,8 +111,9 @@
         </div>
         <div class="tab-view hidden" id="viewCraft">
           <div class="subtabs" id="craftTabs"><button data-craft="장비">장비</button><button data-craft="소모품">소모품</button><button data-craft="약">약</button><button data-craft="기타">기타</button><input id="craftQ" class="inv-search" type="search" maxlength="20" placeholder="레시피 검색" aria-label="레시피 검색" autocomplete="off"></div>
-          <div class="tag-strip" id="craftTagStrip"><button class="ts-arr" data-act="tag-scroll" data-d="-1" aria-label="왼쪽">‹</button><div class="tag-scroll" id="craftTags"></div><button class="ts-arr" data-act="tag-scroll" data-d="1" aria-label="오른쪽">›</button></div>
+          
           <div id="craftList"></div>
+          <div class="tag-strip" id="craftTagStrip"><button class="ts-arr" data-act="tag-scroll" data-d="-1" aria-label="왼쪽">‹</button><div class="tag-scroll" id="craftTags"></div><button class="ts-arr" data-act="tag-scroll" data-d="1" aria-label="오른쪽">›</button></div>
         </div>
       </section>
     </aside>

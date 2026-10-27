@@ -1493,3 +1493,14 @@ button>.material-symbols-rounded{vertical-align:middle;position:relative;top:-.0
 /* 10/27 FIGHT! 배너 글꼴 */
 .duel-start{font:400 44px/1 'Black Ops One',var(--mono);letter-spacing:4px;font-style:normal;color:transparent;background:linear-gradient(180deg,#fff2b0 0,#ffb030 45%,#d8321f 55%,#7a1010 100%);-webkit-background-clip:text;background-clip:text;-webkit-text-stroke:1.5px #1a0606;filter:drop-shadow(0 3px 0 rgba(0,0,0,.55)) drop-shadow(0 0 8px rgba(255,120,40,.55));transform-origin:center}
 .duel-start::after{content:'';position:absolute;left:18%;right:18%;top:50%;height:2px;background:linear-gradient(90deg,transparent,#ffd27a,transparent);opacity:.8}
+
+/* 10/27 제작 탭: 분류 탭은 위에, 태그 줄은 아래에 고정 (스크롤해도 보임) */
+#viewCraft{padding-top:0;padding-bottom:0}
+#viewCraft #craftTabs{position:sticky;top:0;z-index:3;background:var(--panel);padding-top:6px;padding-bottom:4px;margin-bottom:4px}
+#viewCraft #craftTagStrip{position:sticky;bottom:0;z-index:3;background:var(--panel);margin:6px 0 0;padding:6px 0 8px;border-top:1px solid var(--line)}
+#viewCraft:not(.hidden){display:flex;flex-direction:column}
+#viewCraft #craftList{flex:1 0 auto}
+
+/* 10/27 제작 태그: 고른 태그가 잘 보이게 */
+#craftTags button.active{background:var(--accent);color:var(--panel);border-color:var(--accent);font-weight:700}
+#craftTags button.active::before{content:'✓ '}

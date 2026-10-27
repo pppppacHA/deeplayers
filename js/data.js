@@ -1198,11 +1198,14 @@ const PET_ACC = {
   '메추리알 방울': { icon: 'circle', desc: '메추리알 껍질에 작은 구멍을 내 실에 꿴 방울이다. 걸을 때마다 또로롱 소리가 난다.', mats: { '메추리알': 3, '생체 섬유': 1 }, sec: 50, find: .015, text: '이동 중 재료 발견 +1.5%' },
   '물고기 비늘 핀': { icon: 'set_meal', desc: '붕어와 잉어의 비늘을 붙여 만든 핀. 물결처럼 반짝여서 보는 사람도 즐겁다.', mats: { '붕어': 2, '잉어': 1 }, sec: 70, spd: .015, text: '이동 시간 -1.5%' }
 };
+const PET_ACC_TAGS = { '석영 방울': '보석공예', '사막 유리 목걸이': '보석공예', '선인장 꽃 리본': '재봉', '대추야자 장식': '목공', '달걀껍질 모자': '재봉', '메추리알 방울': '보석공예', '물고기 비늘 핀': '보석공예' }; // 제작 탭 태그(분야)
 Object.entries(PET_ACC).forEach(([n, a]) => {
   if (!ITEMS[n]) ITEMS[n] = { tab: '장비', icon: a.icon, desc: `${a.desc} 펫에게 달아 줄 수 있다.`, group: '펫 악세서리', petAcc: true, sell: Math.max(4, Math.floor(.8 * Object.entries(a.mats).reduce((s, [m, q]) => s + q * ((ITEMS[m] && ITEMS[m].sell) || 0), 0))) };
   if (!RECIPES.some(r => r.out === n)) RECIPES.push({ out: n, mats: a.mats, sec: a.sec, rank: 'F' });
+  if (ITEMS[n] && !(ITEMS[n].tags || []).length) ITEMS[n].tags = [PET_ACC_TAGS[n]].filter(Boolean);
 });
 /* 더 이상 얻을 수 없는 옛 아이템(어디서도 나오지 않는다)은 목록에서 없앤다. 옛 저장에 남아 있으면 같은 분류의 비슷한 아이템으로 바꿔 준다(core.js sanitize) */
+if (ITEMS['펫 사료'] && !(ITEMS['펫 사료'].tags || []).length) ITEMS['펫 사료'].tags = ['요리'];
 const LEGACY_ITEMS = { '민물고기': '붕어', '바닷물고기': '고등어', '짐승 고기': '', '짐승 가죽': '', '두꺼운 가죽': '' };
 Object.keys(LEGACY_ITEMS).forEach(n => delete ITEMS[n]);
 Object.keys(MAT_GROUPS).forEach(g => { MAT_GROUPS[g] = MAT_GROUPS[g].filter(n => ITEMS[n]); });
@@ -1366,11 +1369,13 @@ const POSTS = {
   '공지': [
     ['업데이트 · 10월 27일', `[신규]
 · 대련: 서로의 체력이 실시간으로 줄어들고, 여럿이 싸우면 같은 팀의 지원(보스전과 같은 연출 · 다음 공격 +30%)이 터져요. 방을 만들 때 팀을 고를 수 있고, 연습은 2:2·3:3도 돼요.
-· 채팅 탭마다 안 읽은 메시지 수가 표시돼요. 제작 탭은 가진 레시피의 태그별로 볼 수 있어요.
+· 채팅 탭마다 안 읽은 메시지 수가 표시돼요. 제작 탭은 위쪽 분류(장비·소모품·약·기타)와 아래쪽 태그 줄로 함께 거를 수 있고, 둘 다 스크롤해도 고정돼요.
+· 희귀 재료를 납품하는 임무는 보수(EXP·CR)가 1.5배예요.
+· 대련방은 X를 눌러도 최소화되어 유지돼요(나가려면 '나가기'). 방은 10분 동안 아무 동작(들어오기·나가기·시작 등)이 없으면 닫혀요.
 · 채집 성공 확률과 희귀 재료 확률이 조금 올랐어요.
 · 받은 임무(승급 시험 포함)를 포기할 수 있어요. 육포가 HP 8 · 기력 42를 회복해요(구운 고기보다 든든하게).
-· 대련에서 모든 스탯이 쓸모 있어요: 근력 공격력 · 민첩 회피·선공 · 지능 회피 꿰뚫기·강타 위력 · 의지 받는 피해 감소·한 번 버티기 · 감각 피한 뒤 반격 · 행운 나쁜 주사위 다시 굴리기.
-· 대련 타격감: 가벼운 타격음(클릭음 설정을 따름), 피해 숫자, 체력 잔상, 결정타·KO 연출과 효과음, 연속타·대역전 표시. 스테이터스 2페이지에서 어디서든 대련장을 열 수 있어요.
+· 대련에서 모든 스탯이 쓸모 있어요(근력 외 효과 강화): 근력 공격력 · 민첩 회피·선공 · 지능 회피 꿰뚫기·강타 위력 · 의지 받는 피해 감소·한 번 버티기 · 감각 피한 뒤 반격 · 행운 나쁜 주사위 다시 굴리기.
+· 대련 타격감: 타격음(치명타는 더 크게, 빗나가면 허공 가르는 소리 · 클릭음 설정을 따름), 피해 숫자, 체력 잔상, 결정타·KO 연출과 효과음, 연속타·대역전 표시. 스테이터스 2페이지에서 어디서든 대련장을 열 수 있어요.
 · 종합 상가 장비: 메이드 상의·메이드 하의(함께 입으면 메이드 세트: 감각·행운 +1), 카고바지, 초커.
 · 임무가 매일 바뀝니다: 캠프 게시판은 그 구역 몬스터 '사냥' 2개와 납품 2개, 본부에는 '수배 · ○○ 사냥' 2개가 매일 오전 4시에 새로 걸려요.
 · 제작 탭·도감 레시피에 분야(요리·목공·재봉·대장·가죽공예·보석공예·약학)가 표시됩니다.
@@ -1883,9 +1888,10 @@ PET_WILD.forEach(([zid, tn, id, name, ic]) => {
 ACTIONS['대련장'] = { kind: 'duel', icon: 'sports_kabaddi', label: '대련장', title: '대련장', action: '방을 만들거나 들어가 다른 대원과 대련합니다. 최대 3:3 팀전, D6 주사위로 유불리가 갈립니다. 보상은 없고 기록만 남아요.' };
 ACTIONS['보스전 안내'] = { kind: 'bossinfo', icon: 'skull', label: '보스전 안내', title: '보스전 안내', action: '앞으로 열릴 보스전의 진행 방식을 알아봅니다.' };
 ACTIONS['훈련 메시지'] = { kind: 'tmsg', icon: 'edit_note', label: '훈련 메시지', title: '훈련 메시지', action: '보스전 도움 메시지와 대련 승리·패배 대사를 정합니다.' };
+const DUEL_SAY_WIN = ['좋은 승부였어!', '이번엔 내가 이겼다!', '다음에도 잘 부탁해.', '후, 아슬아슬했다.'], DUEL_SAY_LOSE = ['다음엔 안 질 거야.', '분하다… 한 판 더!', '많이 배웠어.', '아직 끝난 게 아니야.']; // 대사를 정하지 않은 참가자의 기본 대사
 const DUEL_SUP_P = .08, DUEL_SUP_MULT = 1.3; // 다수 대련: 공격 전 이 확률로 같은 팀 대원의 지원(보스전과 같은 연출, 다음 공격 ×1.3)
 /* 대련 스탯 효과 (2026-10-27): 근력=공격력(atk) · 민첩=회피(ev)+선공 · 지능=회피 꿰뚫기+강타 위력 · 의지=받는 피해↓+한 번 버티기 · 감각=피한 뒤 반격 · 행운=나쁜 주사위(1·2) 다시 굴리기 */
-const DUEL_STAT = { agiFirst: .02, intPierce: .004, intCrit: .012, intCritMax: .5, wil: .006, wilMax: .25, endure: .012, endureMax: .4, sen: .012, senMax: .45, ctrMult: .6, luk: .015, lukMax: .5 };
+const DUEL_STAT = { agiFirst: .03, intPierce: .007, intCrit: .018, intCritMax: .6, wil: .009, wilMax: .35, endure: .017, endureMax: .5, sen: .018, senMax: .55, ctrMult: .75, luk: .022, lukMax: .6 }; // 10/27 근력 외 능력 상향(약 1.5배)
 const DUEL_TEAM_MAX = 3, DUEL_MSG_MAX = 40, DUEL_ROUND_MAX = 30, DUEL_LINE_MS = 900;
 const DUEL_D6 = [0, .6, 1, 1.25, 1.5, 1.9];
 const DUEL_DUMMY = ['훈련용 허수아비', '낡은 교관 로봇', '모래주머니 골렘'];
@@ -2501,3 +2507,10 @@ defItems('장비', [
 ]);
 ITEM_SETS.push({ name: '메이드 세트', need: ['메이드 상의', '메이드 하의'], mods: { sen: 1, luk: 1 } });
 SHOPS['종합 상가'].sections['장비'].push(['메이드 상의', 280], ['메이드 하의', 260], ['카고바지', 220], ['초커', 180]);
+/* 10/27 희귀 재료를 납품하는 임무는 보수가 더 좋다 (EXP·CR ×RARE_QUEST_MULT, 승급 시험 제외) */
+const RARE_MATS = new Set(DANGER_ZONES.flatMap(z => (z.terrains || []).map(t => t.rare)).filter(Boolean));
+const RARE_QUEST_MULT = 1.5;
+QUESTS.forEach(q => {
+  const n = q.need || {}; if (q.promo || q.cap || n.type !== 'item' || !RARE_MATS.has(n.name) || !q.reward || q.rareBoost) return;
+  q.rareBoost = true; ['exp', 'money'].forEach(k => { if (q.reward[k] > 0) q.reward[k] = Math.round(q.reward[k] * RARE_QUEST_MULT); });
+});
