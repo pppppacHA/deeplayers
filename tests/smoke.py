@@ -1633,7 +1633,7 @@ with sync_playwright() as p:
     pg.click('#resetMap'); check('dungeon_reset_pan', ev(pg, "view.dpan.x")== 0 and ev(pg, "view.dzoom")== 1 and ev(pg, "document.querySelector('#mapWorld').style.transform")== 'none')
     # ---------- 스테이터스 2페이지 / 모의 전투 / 재료 검색 ----------
     pg.click('#statusPager [data-p="1"]'); pg.wait_for_timeout(60)
-    check('status_page2_combat', '공격력' in text(pg, '#statusBody') and '방어력' in text(pg, '#statusBody') and '모의전투' in text(pg, '#statusBody') and pg.locator('#statusBody .stat').count() == 5)
+    check('status_page2_combat', '공격력' in text(pg, '#statusBody') and '방어력' in text(pg, '#statusBody') and '모의전투' in text(pg, '#statusBody') and pg.locator('#statusBody .stat').count() == 6)
     pg.click('[data-act="extras-open"]'); pg.wait_for_timeout(80)
     check('extras_opens_mock_overlay', '모의 전투' in text(pg, '#modalTitle') and pg.locator('#mockMon option').count() >= 10)
     hp_b, sp_b, money_b = ev(pg, "state.vitals.hp"), ev(pg, "state.vitals.sp"), ev(pg, "state.money")
@@ -1875,7 +1875,7 @@ with sync_playwright() as p:
         const {m,runs}=battleRuns(act,a),line=battleSlotLine(m,runs,0,5,act).text,res=resolveAction(id,1,0,act).text;
         if(runs[0].win){wins++;ok=ok&&line.includes('쓰러뜨렸다')&&res.includes('1승');}else ok=ok&&!line.includes('쓰러뜨렸다')&&res.includes('1패');}
       Object.assign(state,JSON.parse(bak));return ok&&wins>0&&wins<60})()"""))
-    ev(pg, "view.statusPage=1;renderStatus()"); pg.click('#statusBody .mock-card'); pg.wait_for_timeout(100)
+    ev(pg, "view.statusPage=1;renderStatus()"); pg.click('#statusBody [data-act="extras-open"]'); pg.wait_for_timeout(100)
     check('mock_card_whole_box_is_button', pg.locator('#mockMon').count() == 1); ev(pg, "closeModal();view.statusPage=0;renderStatus()")
     check('weather_rules', ev(pg, """(()=>{const kinds=new Set();let okRule=true;for(let d=0;d<60;d++){const w=todayWeather(1.8e12+d*86400000);kinds.add(w.name);const bak=nowMs;okRule=okRule&&(w.wet===(w.name==='비'||w.name==='눈'));}
       const w0=todayWeather(1.8e12),w1=todayWeather(1.8e12+3600000);return okRule&&kinds.size>=3&&w0.name===todayWeather(1.8e12+1000).name&&typeof weatherFx().gather==='number'&&(weatherFx().gather>0)!==(weatherFx().atk>0)})()"""))
@@ -2245,7 +2245,7 @@ with sync_playwright() as p:
     ev(pg, "(()=>{delete state.nicks['훈련용 검'];delete state.reinforce['훈련용 검'];state.equipment['무기']=null;renderEquip()})()")
     # 스테이터스 2페이지
     ev(pg, "(()=>{view.statusPage=1;renderStatus()})()")
-    check('status_p2_rows', ev(pg, "[...document.querySelectorAll('#statusBody .stat .stat-head b')].map(b=>b.textContent).join()") == '공격력,방어력,이동속도,모의전투,대련' and pg.locator('#statusBody .stat.span2').count() == 1)
+    check('status_p2_rows', ev(pg, "[...document.querySelectorAll('#statusBody .stat .stat-head b')].map(b=>b.textContent).join()") == '공격력,방어력,이동속도,카드놀이,모의전투,대련' and pg.locator('#statusBody .stat.span2').count() == 0)
     check('status_p2_speed_value', '초' in text(pg, '#statusBody') and ev(pg, "document.querySelectorAll('#statusBody .stat')[2].textContent.includes(String(round1(stepSec())))") is True)
     ev(pg, "(()=>{view.statusPage=0;renderStatus()})()")
     # 버프 개수 점 숨김

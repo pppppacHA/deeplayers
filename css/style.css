@@ -1513,3 +1513,75 @@ button>.material-symbols-rounded{vertical-align:middle;position:relative;top:-.0
 .duel-inv{margin-top:6px}
 .duel-bet{margin:6px 0;font-weight:700;color:var(--accent-2)}
 .duel-chip.inv{bottom:62px}
+
+/* 10/27 아이템 잠금 */
+.slot .lock-ic{position:absolute;left:2px;top:1px;font-size:calc(9px*var(--fs));line-height:1;pointer-events:none;filter:grayscale(1)}
+.bet-chip{display:inline-block;padding:1px 6px;margin:0 2px;border:1px solid var(--line);font-size:calc(11.5px*var(--fs))}.bet-chip.none{color:var(--muted);border-style:dashed}
+
+/* 10/27 카드놀이 */
+.card-seats{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.card-seat{display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 4px;border:1px solid var(--line);background:var(--panel-hi);min-width:0}
+.card-seat b{font-size:calc(12px*var(--fs));max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.card-seat small{color:var(--muted)}
+.card-seat.me{border-color:var(--accent)}
+.card-seat.bot{opacity:.8}
+.card-seat.turn{box-shadow:0 0 0 2px var(--accent) inset}
+.card-seat .round-avatar{width:30px;height:30px}
+.card-center{min-height:44px;display:flex;align-items:center;justify-content:center;gap:8px;margin:6px 0}
+.card-hand{display:flex;flex-wrap:wrap;align-items:center;gap:3px;min-height:30px;margin-bottom:6px}
+.pcard{display:inline-grid;place-items:center;min-width:28px;height:38px;padding:0 3px;border:1px solid var(--line);background:var(--panel);font-weight:700;font-size:calc(12px*var(--fs))}
+.pcard.red{color:var(--bad,#c0392b)}
+.pcard.jk{font-size:20px}
+.card-rank{margin:6px 0 0;padding-left:20px}
+.card-rank li.me{font-weight:700}
+@media (max-width:600px){.card-seats{grid-template-columns:repeat(2,1fr)}}
+
+.card-wait{margin:6px 0;text-align:center;font-size:calc(12.5px*var(--fs))}
+.card-wait.mine{font-weight:700;color:var(--accent-2)}
+#cardTimer.low{color:var(--bad)}
+.card-backs{display:flex;flex-wrap:wrap;gap:3px;justify-content:center;margin-top:4px}
+.pcard.back{background:repeating-linear-gradient(45deg,var(--panel-hi) 0 4px,var(--line) 4px 6px);color:var(--muted);cursor:pointer}
+button.pcard{cursor:pointer}button.pcard.off{opacity:.45;cursor:default}
+button.pcard:not(.off):hover{transform:translateY(-2px)}
+.card-suits{display:flex;align-items:center;gap:4px;margin-top:4px;width:100%}
+.card-suits .red{color:var(--bad)}
+.card-seat.win{border-color:var(--good,#3a8)}
+
+.table-chat{margin-top:8px;border-top:1px solid var(--line);padding-top:6px}
+.tc-log{max-height:110px;overflow:auto;font-size:calc(12.5px*var(--fs));display:flex;flex-direction:column;gap:2px;margin-bottom:4px}
+.tc-row b{margin-right:4px}
+
+/* 10/27 카드놀이 창 (떠 있는 창: 끌기·크기 조절·최소화/복원/닫기) */
+.cw{position:fixed;z-index:45;display:flex;flex-direction:column;min-width:340px;min-height:300px;max-width:calc(100vw - 8px);max-height:calc(100vh - 8px);background:var(--panel);border:1px solid var(--line);box-shadow:var(--shadow);resize:both;overflow:hidden}
+.cw.min{height:auto!important;min-height:0;resize:none}
+.cw.min .cw-body,.cw.min .cw-foot{display:none}
+.cw-head{display:flex;align-items:center;gap:8px;padding:6px 8px;background:var(--panel-hi);border-bottom:1px solid var(--line);cursor:move;user-select:none;touch-action:none}
+.cw-title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:calc(13px*var(--fs))}
+.cw-btns{display:flex;gap:4px}
+.cw-btns button{min-width:26px;height:24px;padding:0 6px;min-height:0;line-height:1}
+.cw-help{font-weight:700;cursor:help}
+.cw-body{flex:1;min-height:0;overflow:auto;padding:8px}
+.cw-foot{display:flex;justify-content:flex-end;gap:6px;padding:6px 8px;border-top:1px solid var(--line)}
+.cw-foot:empty{display:none}
+.ct-table{display:grid;grid-template-columns:1fr 1.4fr 1fr;grid-template-rows:auto 1fr auto;grid-template-areas:". n ." "w c e" "s s s";gap:6px;min-height:240px}
+.ct-seat{display:flex;flex-direction:column;align-items:center;gap:3px;padding:4px;border:1px solid var(--line-soft,var(--line));min-width:0}
+.ct-seat.pos-N{grid-area:n}.ct-seat.pos-W{grid-area:w}.ct-seat.pos-E{grid-area:e}.ct-seat.pos-S{grid-area:s}
+.ct-seat.turn{box-shadow:0 0 0 2px var(--accent) inset}
+.ct-seat.pickable{box-shadow:0 0 0 2px var(--warn,#c98a1a) inset}
+.ct-seat.bot{opacity:.85}
+.ct-name{display:flex;align-items:center;gap:4px;font-size:calc(12px*var(--fs));max-width:100%}
+.ct-name b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ct-name small{color:var(--muted);white-space:nowrap}
+.ct-name .round-avatar{width:22px;height:22px;flex:none}
+.ct-hand{display:flex;flex-wrap:wrap;justify-content:center;gap:2px;max-width:100%}
+.ct-hand:not(.face){gap:0}
+.ct-hand:not(.face) .pcard.sm{margin-left:-11px}.ct-hand:not(.face) .pcard.sm:first-child{margin-left:0}
+.pcard.sm{min-width:20px;width:20px;height:28px;padding:0;font-size:10px}
+.ct-center{grid-area:c;display:flex;align-items:center;justify-content:center;gap:10px;min-height:80px;border:1px dashed var(--line)}
+.ct-deck{width:34px;height:46px;font-size:11px}
+.ct-pile .pcard{min-width:34px;height:46px;font-size:14px}
+.ct-info{font-size:calc(11.5px*var(--fs));text-align:center}
+.ct-end{margin:6px 0}
+.ct-log{max-height:90px;margin-top:6px}
+.fly-card{position:fixed;z-index:95;width:30px;height:40px;pointer-events:none;transition:transform var(--fly,360ms) cubic-bezier(.2,.8,.2,1);box-shadow:var(--shadow)}
+@media (max-width:600px){.cw{left:4px!important;right:4px;width:auto!important}.ct-table{grid-template-columns:1fr 1.2fr 1fr}}

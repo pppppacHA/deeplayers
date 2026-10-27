@@ -99,7 +99,7 @@ function hardenState(s) {
   s.rescueAt = Object.fromEntries(Object.entries(s.rescueAt && typeof s.rescueAt === 'object' ? s.rescueAt : {}).filter(([k, v]) => DANGER_ZONES.some(z => z.id === k) && Number.isFinite(v)));
   if (s.dungeon) s.dungeon.rs = Object.fromEntries(Object.entries(s.dungeon.rs && typeof s.dungeon.rs === 'object' ? s.dungeon.rs : {}).filter(([k]) => /^-?\d{1,3},-?\d{1,3}$/.test(k)).map(([k]) => [k, 1]));
   s.deaths = intIn(s.deaths, 0, 99999, 0); s.lostCount = intIn(s.lostCount, 0, 999999, 0);
-  { const m = s.trainMsg && typeof s.trainMsg === 'object' ? s.trainMsg : {}; s.trainMsg = { help: cleanText(m.help || '', DUEL_MSG_MAX), win: cleanText(m.win || '', DUEL_MSG_MAX), lose: cleanText(m.lose || '', DUEL_MSG_MAX) }; s.duelSeen = (Array.isArray(s.duelSeen) ? s.duelSeen : []).map(x => intIn(x, 1, 9e15, 0)).filter(Boolean).slice(-20); s.duelBets = cleanDuelBets(s.duelBets); }
+  { const m = s.trainMsg && typeof s.trainMsg === 'object' ? s.trainMsg : {}; s.trainMsg = { help: cleanText(m.help || '', DUEL_MSG_MAX), win: cleanText(m.win || '', DUEL_MSG_MAX), lose: cleanText(m.lose || '', DUEL_MSG_MAX) }; s.duelSeen = (Array.isArray(s.duelSeen) ? s.duelSeen : []).map(x => intIn(x, 1, 9e15, 0)).filter(Boolean).slice(-20); s.duelBets = cleanDuelBets(s.duelBets); s.duelEscrow = cleanEscrow(s.duelEscrow); s.locks = (Array.isArray(s.locks) ? s.locks : []).filter(n => typeof n === 'string' && ITEMS[n]).slice(-200); }
   s.qact = Object.fromEntries(Object.entries(s.qact && typeof s.qact === 'object' ? s.qact : {}).filter(([k]) => QMARKS[k]).map(([k, v]) => [k, intIn(v, 0, 7, 0)]));
   s.lostBox = (Array.isArray(s.lostBox) ? s.lostBox : []).filter(x => x && ITEMS[legacyName(x.n)]).map(x => { const n = legacyName(x.n), mk = typeof x.mk === 'string' ? cleanText(x.mk, MK_LEN) : ''; return { n, q: intIn(x.q, 1, ITEMS[n].tab === '장비' ? 1 : STACK_MAX, 1), ...(mk ? { mk } : {}) }; }).slice(0, LOSTBOX_SLOTS);
   s.quick = Array.from({ length: QUICK_SLOTS }, (_, i) => { const n = Array.isArray(s.quick) ? s.quick[i] : null; return typeof n === 'string' && ITEMS[n] && ITEMS[n].use ? n : null; }); s.quickOpen = s.quickOpen === true;
@@ -385,7 +385,7 @@ function dismantleYield(name) { // { mats:[[이름,수량]], cr } 또는 null(�
   return { mats: Object.entries(bag).filter(([n]) => ITEMS[n]), cr: Math.max(2, Math.round((it.sell || 10) * DISMANTLE_CR)) };
 }
 function discardItem(name, qty = 1, mk) { // 소지품 버리기: 성공하면 { qty }, 실패하면 사유 문자열 (착용 중인 장비는 소지품이 아니라서 버려지지 않는다)
-  if (!state.created) return '먼저 캐릭터를 만드세요.';
+  if (!state.created) return '먼저 캐릭터를 만드세요.'; if (isLocked(name)) return LOCK_MSG; 
   if (!ITEMS[name]) return '알 수 없는 아이템입니다.';
   const have = countItem(name, mk); if (have < 1) return '소지품에 그 물건이 없습니다.';
   qty = Math.min(intIn(qty, 1, 9999, 1), have);
@@ -398,7 +398,7 @@ function discardItem(name, qty = 1, mk) { // 소지품 버리기: 성공하면 {
 }
 const dismantlable = () => { const seen = {}; state.inventory['장비'].forEach(s => { if (dismantleYield(s.n)) seen[s.n] = (seen[s.n] || 0) + 1; }); return Object.entries(seen); };
 function dismantleItem(name, qty = 1) { // 성공하면 { mats, cr, qty }, 실패하면 사유 문자열
-  if (!state.created) return '먼저 캐릭터를 만드세요.';
+  if (!state.created) return '먼저 캐릭터를 만드세요.'; if (isLocked(name)) return LOCK_MSG; 
   if (placeKey() !== '본부') return '분해는 본부에서만 할 수 있습니다.';
   const y = dismantleYield(name);
   if (!y) return '분해할 수 없는 장비입니다.';
@@ -451,7 +451,7 @@ function masteryText(tag) { // 마우스를 올렸을 때 보이는 보너스 �
    어느 순간에도 서버 목록 ⊆ 내 기록이 되어 물건이 복사되거나 사라지지 않는다. 마감(성사/취소) 때 settleLive 가 한 번에 정리한다. */
 const benchList = () => (state.bench ? state.bench.items : []);
 const benchQty = (n, mk = '') => (benchList().find(r => ilKey(r) === ilKey([n, 0, mk])) || [0, 0])[1];
-function benchNext(name, delta, mk = '') { // (이름, 제작자) 줄의 수량을 delta 만큼 바꾼 새 목록 (불가능하면 null)
+function benchNext(name, delta, mk = '') { if (delta > 0 && isLocked(name)) return null; // (이름, 제작자) 줄의 수량을 delta 만큼 바꾼 새 목록 (불가능하면 null)
   const k = ilKey([name, 0, mk]), cur = benchList().map(r => r.slice()), r = cur.find(x => ilKey(x) === k), q = (r ? r[1] : 0) + delta;
   if (q < 0 || q > 99 || !ITEMS[name] || name === MAIL_SHIP_ITEM) return null;
   if (!r) { if (cur.length >= 5) return null; if (q > 0) cur.push(ilRow(name, q, mk)); return cur; }
@@ -485,7 +485,7 @@ function tradeValue(name) {
 const marketUnitMax = n => Math.max(2, Math.ceil(tradeValue(n) * MARKET_UNIT_RATIO));
 const marketNet = price => Math.floor(price * (1 - MARKET_FEE));
 const marketKey = () => 'k' + Math.floor(Math.random() * 1e9).toString(36) + nowMs().toString(36);
-function marketListCheck(name, qty, unit, mk) { // 올려도 되는가 (되면 null). unit = 개당 가격, mk = 올릴 제작자 것('' = 이름 없는 것)
+function marketListCheck(name, qty, unit, mk) { if (isLocked(name)) return LOCK_MSG; // 올려도 되는가 (되면 null). unit = 개당 가격, mk = 올릴 제작자 것('' = 이름 없는 것)
   if (!ITEMS[name] || ITEMS[name].hidden || name === MAIL_SHIP_ITEM) return '거래할 수 없는 물건이에요.';
   if (!Number.isInteger(qty) || qty < 1 || qty > 99) return '수량은 1~99개예요.';
   if (!Number.isInteger(unit) || unit < 1) return '가격을 확인하세요.';
@@ -1994,6 +1994,7 @@ function questOverflow(q, drop = {}) {
 }
 /* 소지품 한 칸(스택)을 통째로 버린다. 성공하면 { name, q }, 실패하면 사유 */
 function discardStack(tab, idx, name) {
+  if (isLocked(name)) return LOCK_MSG; 
   const l = state.inventory[tab], st = l && l[idx];
   if (!st || st.n !== name) return '그 칸이 바뀌었습니다.';
   l.splice(idx, 1);
@@ -2086,6 +2087,7 @@ function drawGacha(roll = Math.random()) {
 const sellPrice = name => (ITEMS[name] && ITEMS[name].sell) || 0;
 const sellable = () => Object.values(state.inventory).flat().filter(s => sellPrice(s.n) > 0);
 function sellItem(place, name, qty = 1, mk) {
+  if (isLocked(name)) return LOCK_MSG; 
   if (!SHOPS[place] || placeKey() !== shopAt(place)) return '지금 있는 장소의 상점이 아닙니다.';
   if (!state.created) return '먼저 캐릭터를 만드세요.';
   if (!sellPrice(name)) return '상점에서 사지 않는 물건입니다.';
@@ -2520,7 +2522,7 @@ function claimMail(id) {
 /* 메일 보내기. items = [[이름, 수량]]. 첨부가 있으면 운송장치 1개가 든다. 받는 사람은 반드시 친구. 성공하면 null, 아니면 사유 */
 function sendMail(to, subject, body, items = []) {
   to = cleanText(to, 12); subject = cleanText(subject, 30); body = cleanText(body, 300);
-  if (!state.created) return '먼저 캐릭터를 만드세요.';
+  if (!state.created) return '먼저 캐릭터를 만드세요.'; if ((items || []).some(r => r && isLocked(Array.isArray(r) ? r[0] : r.name || r.n))) return LOCK_MSG;
   if (!state.friends.includes(to)) return '받는 사람은 친구 목록에서 골라야 합니다.';
   if (!subject) return '제목을 입력하세요.';
   const list = [], seen = new Set(); sendMail.sent = [];
@@ -2673,46 +2675,177 @@ function duelText(e, fighters) { // 기록 한 줄 → 묘사 (주 능력·주�
   return out;
 }
 
-/* ===== 대련 판돈 (10/27) =====
-   방장이 정한 판돈(서버 stake)을 대련이 시작될 때(이 기기에서 처음 볼 때) 낸다. 결과는 시드로 정해져 있으므로 낼 때 승패·인원을 함께 적어 두고,
-   대련 연출이 끝나거나(또는 창을 닫아 못 봤어도 3분 뒤) 이긴 쪽이면 정산한다. 서버는 CR·아이템을 옮기지 않는다(세이브 권한, 거래소와 같음). */
-function cleanDuelStake(st) { // 서버에서 받은 판돈을 다시 거른다
-  if (!st || typeof st !== 'object') return null;
-  if (st.cr != null) { const c = Math.floor(+st.cr); return Number.isFinite(c) && c >= DUEL_BET_CR_MIN && c <= DUEL_BET_CR_MAX ? { cr: c } : null; }
-  const n = typeof st.item === 'string' ? st.item : '', q = Math.floor(+st.qty);
+/* ===== 대련 판돈 (10/27 · 각자 건다) =====
+   참가자마다 판돈(50~1000 CR 또는 아이템 1~10개)을 건다. 걸 때 이 기기에서 바로 맡겨 두고(state.duelEscrow, 모자라면 못 건다),
+   한 명이라도 걸면 모두 최소 50 CR 또는 아이템 (상대 팀 인원)개 이상 걸어야 시작된다(서버 duel_start 도 확인).
+   시작되면 결과(시드)로 정산: 이긴 사람 = 내 판돈 + 진 쪽 CR 합 ÷ 이긴 인원 × 0.9 + 진 쪽 아이템 각각 ÷ 이긴 인원(내림). 진 사람은 맡긴 것을 잃는다.
+   서버는 CR·아이템을 옮기지 않는다(세이브 권한, 거래소와 같음). */
+function cleanBet(b) { // 판돈 하나를 거른다 (hardenState에서도 쓰므로 function 선언)
+  if (!b || typeof b !== 'object') return null;
+  if (b.cr != null) { const c = Math.floor(+b.cr); return Number.isFinite(c) && c >= DUEL_BET_CR_MIN && c <= DUEL_BET_CR_MAX ? { cr: c } : null; }
+  const n = typeof b.item === 'string' ? b.item : '', q = Math.floor(+b.qty);
   return ITEMS[n] && !ITEMS[n].hidden && Number.isFinite(q) && q >= 1 && q <= DUEL_BET_QTY_MAX ? { item: n, qty: q } : null;
 }
-function cleanDuelBets(b) { // 저장 검증 (hardenState에서 쓰므로 function 선언)
+const cleanDuelStake = cleanBet;
+function cleanDuelBets(b) { // 정산 기록 검증 {시드: {won, cr, items:[[이름,수]], lost, at, done}}
   const out = {}; if (!b || typeof b !== 'object') return out;
   Object.entries(b).slice(-20).forEach(([k, v]) => {
-    const seed = Math.floor(+k); if (!(seed > 0) || !v || typeof v !== 'object') return; const st = cleanDuelStake(v.st); if (!st) return;
-    out[seed] = { st, paid: !!v.paid, won: !!v.won, w: Math.max(1, Math.min(3, v.w | 0)), l: Math.max(0, Math.min(3, v.l | 0)), at: Number.isFinite(+v.at) ? +v.at : 0, done: !!v.done };
+    const seed = Math.floor(+k); if (!(seed > 0) || !v || typeof v !== 'object') return;
+    out[seed] = { won: !!v.won, cr: Math.max(0, Math.min(20000, Math.floor(+v.cr) || 0)), items: (Array.isArray(v.items) ? v.items : []).filter(r => Array.isArray(r) && ITEMS[r[0]] && r[1] >= 1).slice(0, 8).map(r => [r[0], Math.min(999, Math.floor(r[1]))]), lost: typeof v.lost === 'string' ? v.lost.slice(0, 40) : '', at: Number.isFinite(+v.at) ? +v.at : 0, done: !!v.done };
   });
   return out;
 }
-const duelStakeText = st => !st ? '' : st.cr ? `${st.cr} CR` : `${st.item} ×${st.qty}`;
-function canPayStake(st) { st = cleanDuelStake(st); if (!st) return true; return st.cr ? state.money >= st.cr : countItem(st.item) >= st.qty; }
-function duelBetGain(b) { // 이긴 사람이 받는 것 (내 판돈 + 진 쪽 판돈을 이긴 인원으로 나눈 몫, 수수료 제외)
-  const share = b.l / b.w; return b.st.cr ? { cr: b.st.cr + Math.floor(b.st.cr * share * (1 - DUEL_BET_FEE)) } : { item: b.st.item, qty: b.st.qty + Math.floor(b.st.qty * share * (1 - DUEL_BET_FEE) + 1e-9) };
+function cleanEscrow(e) { if (!e || typeof e !== 'object') return null; const room = Math.floor(+e.room), bet = cleanBet(e.bet); return room > 0 && bet ? { room, bet, at: Number.isFinite(+e.at) ? +e.at : Date.now() } : null; }
+const betText = b => !b ? '' : b.cr ? `${b.cr} CR` : `${b.item} ×${b.qty}`;
+const duelStakeText = betText;
+function canPayBet(b) { b = cleanBet(b); if (!b) return false; const back = state.duelEscrow ? state.duelEscrow.bet : null; // 이미 맡긴 것은 돌려받고 다시 건다고 본다
+  return b.cr ? state.money + (back && back.cr ? back.cr : 0) >= b.cr : !isLocked(b.item) && countItem(b.item) + (back && back.item === b.item ? back.qty : 0) >= b.qty; }
+const canPayStake = b => !b || canPayBet(b);
+function escrowRefund() { // 맡긴 판돈을 돌려받는다
+  const e = state.duelEscrow; if (!e) return ''; state.duelEscrow = null;
+  if (e.bet.cr) state.money += e.bet.cr; else { const a = addItem(e.bet.item, e.bet.qty); if (a < e.bet.qty) lostBoxPut(e.bet.item, e.bet.qty - a); }
+  save(); return betText(e.bet);
 }
-function duelBetPay(seed, stake, fs, sim) { // 대련 시작 때 판돈 내기 (같은 시드는 한 번만). 못 내면 이번 판은 걸지 않은 것으로 한다
-  const st = cleanDuelStake(stake), me = fs.find(f => f.me); if (!st || !me || !(seed > 0)) return null;
+function escrowSet(room, bet) { // 판돈 걸기(맡기기). 성공하면 null, 실패하면 사유. bet=null 이면 판돈 취소
+  room = Math.floor(+room); if (!(room > 0)) return '방이 없어요.';
+  if (bet == null) { escrowRefund(); return null; }
+  const b = cleanBet(bet); if (!b) return `판돈은 ${DUEL_BET_CR_MIN}~${DUEL_BET_CR_MAX} CR 또는 아이템 1~${DUEL_BET_QTY_MAX}개예요.`;
+  if (b.item && isLocked(b.item)) return LOCK_MSG;
+  if (!canPayBet(b)) return b.cr ? 'CR이 모자라요.' : '그 아이템이 모자라요.';
+  escrowRefund();
+  if (b.cr) state.money -= b.cr; else if (removeItem(b.item, b.qty) < b.qty) return '그 아이템이 모자라요.';
+  state.duelEscrow = { room, bet: b, at: Date.now() }; save(); return null;
+}
+function betRuleError(fs) { // 시작해도 되는가 (되면 null)
+  if (!fs.some(f => f.bet)) return null;
+  for (const f of fs) { const opp = fs.filter(o => o.team !== f.team).length;
+    if (!f.bet) return `${f.name} 대원이 아직 판돈을 걸지 않았어요. (한 명이라도 걸면 모두 걸어야 해요)`;
+    if (f.bet.item && f.bet.qty < opp) return `${f.name} 대원: 아이템은 상대 팀 인원(${opp})개 이상 걸어야 해요.`; }
+  return null;
+}
+function duelBetGains(fs, sim) { // 이긴 사람 한 명이 받는 것 (내 판돈 제외)
+  const W = Math.max(1, fs.filter(f => f.team === sim.win).length), losers = fs.filter(f => f.team !== sim.win && f.bet);
+  const cr = Math.floor(losers.reduce((a, f) => a + (f.bet.cr || 0), 0) / W * (1 - DUEL_BET_FEE)), items = {};
+  losers.forEach(f => { if (f.bet.item) { const q = Math.floor(f.bet.qty / W); if (q > 0) items[f.bet.item] = (items[f.bet.item] || 0) + q; } });
+  return { cr, items: Object.entries(items) };
+}
+function duelBetResolve(seed, fs, sim, room) { // 시작된 판을 처음 볼 때 한 번: 맡긴 판돈을 결과에 묶는다
   state.duelBets = state.duelBets || {}; if (state.duelBets[seed]) return state.duelBets[seed];
-  const w = fs.filter(f => f.team === sim.win).length, l = fs.length - w;
-  let paid = false; if (st.cr) { if (state.money >= st.cr) { state.money -= st.cr; paid = true; } } else if (countItem(st.item) >= st.qty) { paid = removeItem(st.item, st.qty) >= st.qty; }
+  const me = fs.find(f => f.me), e = state.duelEscrow && state.duelEscrow.room === room ? state.duelEscrow : null;
+  if (!me || !fs.some(f => f.bet)) { if (e) escrowRefund(); return null; }
+  if (!me.bet || !e) { if (e) escrowRefund(); return null; } // 서버에 걸린 판돈과 맡긴 것이 다르면 이 판은 걸지 않은 것으로
+  state.duelEscrow = null;
+  const won = me.team === sim.win, g = won ? duelBetGains(fs, sim) : { cr: 0, items: [] };
+  const cr = won ? g.cr + (e.bet.cr || 0) : 0, items = won ? [...(e.bet.item ? [[e.bet.item, e.bet.qty]] : []), ...g.items] : [];
   const keys = Object.keys(state.duelBets); if (keys.length >= 20) delete state.duelBets[keys[0]];
-  state.duelBets[seed] = { st, paid, won: me.team === sim.win, w: Math.max(1, w), l, at: Date.now(), done: !paid }; save();
+  state.duelBets[seed] = { won, cr, items, lost: won ? '' : betText(e.bet), at: Date.now(), done: false }; save();
   return state.duelBets[seed];
 }
-function duelBetSettle(seed) { // 정산 (이긴 쪽만 받는다). 결과 문구를 돌려준다
-  const b = state.duelBets && state.duelBets[seed]; if (!b || b.done) return '';
-  b.done = true; let txt = '';
-  if (b.paid && b.won) { const g = duelBetGain(b);
-    if (g.cr) { state.money += g.cr; txt = `판돈 +${g.cr} CR`; }
-    else { const a = addItem(g.item, g.qty), box = a < g.qty ? lostBoxPut(g.item, g.qty - a) : 0; txt = `판돈 ${g.item} +${g.qty}${a < g.qty ? ` (가방이 가득 차 ${box}개는 분실물 보관함으로)` : ''}`; }
-  } else if (b.paid) txt = `판돈 -${duelStakeText(b.st)}`;
-  save(); return txt;
+function duelBetText(b) { return !b ? '' : b.won ? `판돈 획득: ${[b.cr ? `${b.cr} CR` : '', ...b.items.map(([n, q]) => `${n} ×${q}`)].filter(Boolean).join(', ')}` : `판돈 잃음: ${b.lost}`; }
+function duelBetSettle(seed) { // 받기 (이긴 사람만). 결과 문구를 돌려준다
+  const b = state.duelBets && state.duelBets[seed]; if (!b) return ''; if (b.done) return duelBetText(b);
+  b.done = true; let boxed = 0;
+  if (b.won) { state.money += b.cr; b.items.forEach(([n, q]) => { const a = addItem(n, q); if (a < q) boxed += lostBoxPut(n, q - a); }); }
+  save(); return duelBetText(b) + (boxed ? ` (가방이 가득 차 ${boxed}개는 분실물 보관함으로)` : '');
 }
-function duelBetSweep() { // 대련을 끝까지 못 봤어도 3분 지나면 정산
+function duelBetSweep() { // 대련 연출을 끝까지 못 봤어도 3분 지나면 받는다
   const b = state.duelBets || {}; let n = 0; Object.keys(b).forEach(k => { if (!b[k].done && Date.now() - b[k].at > 180000) { duelBetSettle(+k); n++; } }); return n;
 }
+/* ===== 아이템 잠금 (10/27): 소지품 칸 우클릭. 잠긴 아이템은 팔기·버리기·분해·메일·교환·거래소·판돈에 쓰이지 않는다 (사용·장착·제작·창고는 된다) ===== */
+const LOCK_MSG = '잠긴 아이템이에요. 소지품에서 우클릭하면 잠금을 풀 수 있어요.';
+function isLocked(name) { return Array.isArray(state.locks) && state.locks.includes(name); }
+function toggleLock(name) { if (!ITEMS[name]) return null; state.locks = Array.isArray(state.locks) ? state.locks : []; const on = !state.locks.includes(name); state.locks = on ? [...state.locks, name].slice(-200) : state.locks.filter(n => n !== name); save(); return on; }
+
+/* ===== 카드놀이 (10/27, 가볍게): 조커 뽑기 · 원카드 — 4자리, 빈자리는 자동 대원. 대련처럼 방·시드만 서버가 정하고 모든 기기가 같은 계산을 본다 ===== */
+const CARD_SUITS = ['♠', '♥', '♦', '♣'], CARD_RANKS = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
+const cardName = c => c === 'JK' ? '조커' : c;
+const cardSuit = c => c === 'JK' ? '' : c.slice(0, 1), cardRank = c => c === 'JK' ? 'JK' : c.slice(1);
+function cardDeck(joker) { const d = []; CARD_SUITS.forEach(s => CARD_RANKS.forEach(r => d.push(s + r))); if (joker) d.push('JK'); return d; }
+function cardShuffle(d, rnd) { for (let i = d.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [d[i], d[j]] = [d[j], d[i]]; } return d; }
+function cardSeats(fs) { // 참가자(최대 4) + 빈자리 자동 대원
+  const seats = fs.slice(0, 4).map(f => ({ name: f.name, me: !!f.me, bot: false }));
+  for (let i = 1; seats.length < 4; i++) seats.push({ name: `자동 대원 ${i}`, me: false, bot: true });
+  return seats;
+}
+/* 판 진행 엔진: cardInit → (cardTurn 이 사람 차례면 선택을 기다림, 자동 대원이면 cardAuto) → cardApply. 같은 시드 + 같은 선택 순서면 모든 기기에서 같은 판.
+   선택이 잘못됐거나 없으면(시간 초과) 그 자리를 자동으로 둔다(결정적). */
+function cardLog(G, e) { e.s = { h: G.hands.map(h => h.slice()), top: G.pile ? G.pile[G.pile.length - 1] : '', suit: G.suit || '', atk: G.atk || 0, deck: G.deck ? G.deck.length : 0, cur: G.cur, out: (G.out || []).slice() }; G.log.push(e); }
+function cardInit(game, seats, seed) {
+  const G = { game, seats, rng: seededRng((seed >>> 0) || 1), hands: seats.map(() => []), log: [], out: [], cur: 0, done: false, rank: [], winner: -1, loser: -1, turns: 0 };
+  const N = seats.length;
+  if (game === 'onecard') {
+    G.deck = cardShuffle(cardDeck(false), G.rng); for (let k = 0; k < 5; k++) for (let i = 0; i < N; i++) G.hands[i].push(G.deck.pop());
+    G.pile = [G.deck.pop()]; G.suit = cardSuit(G.pile[0]); G.dir = 1; G.atk = 0;
+    cardLog(G, { t: `카드를 5장씩 나눴다. 첫 카드는 ${G.pile[0]}.`, k: 'deal' });
+  } else {
+    cardShuffle(cardDeck(true), G.rng).forEach((c, i) => G.hands[i % N].push(c));
+    G.hands = G.hands.map(h => jokerDrop(G, h));
+    cardLog(G, { t: '카드를 나누고 같은 숫자 짝을 모두 버렸다.', k: 'deal' });
+    seats.forEach((_, i) => jokerOut(G, i)); jokerNext(G, 0); jokerEnd(G);
+  }
+  return G;
+}
+function jokerDrop(G, h) { const by = {}; h.forEach(c => { const r = cardRank(c); (by[r] = by[r] || []).push(c); }); const keep = []; Object.values(by).forEach(l => { while (l.length >= 2) { l.pop(); l.pop(); } keep.push(...l); }); return cardShuffle(keep, G.rng); }
+const jokerActive = G => G.seats.map((_, i) => i).filter(i => G.hands[i].length && !G.out.includes(i));
+function jokerOut(G, i) { if (!G.hands[i].length && !G.out.includes(i)) { G.out.push(i); cardLog(G, { t: `${G.seats[i].name} 대원이 카드를 모두 털었다! (${G.out.length}등)`, good: true }); } }
+function jokerNext(G, from) { const a = jokerActive(G); if (!a.length) return; G.cur = a.includes(from) ? from : (a.find(i => i > from) ?? a[0]); }
+function jokerFrom(G) { const a = jokerActive(G); return a[(a.indexOf(G.cur) + 1) % a.length]; }
+function jokerEnd(G) { const a = jokerActive(G); if (a.length > 1 && G.turns < 400) return; G.done = true; G.loser = a[0] ?? G.hands.findIndex(h => h.includes('JK'));
+  G.rank = [...G.out, ...G.seats.map((_, i) => i).filter(i => !G.out.includes(i) && i !== G.loser), G.loser].filter((v, i, x) => v >= 0 && x.indexOf(v) === i); G.winner = G.rank[0];
+  cardLog(G, { t: `${G.seats[G.loser].name} 대원의 손에 조커가 남았다. 조커 당첨!`, end: true }); }
+const cardTurn = G => G.done ? -1 : G.cur;
+function cardOptions(G) { // 지금 차례인 사람이 고를 수 있는 것
+  if (G.done) return null;
+  if (G.game !== 'onecard') { const f = jokerFrom(G); return { from: f, n: G.hands[f].length }; }
+  const top = G.pile[G.pile.length - 1];
+  const legal = c => G.atk ? ['2', 'A'].includes(cardRank(c)) && (cardRank(c) === cardRank(top) || cardSuit(c) === G.suit || cardRank(c) === 'A') : cardSuit(c) === G.suit || cardRank(c) === cardRank(top) || cardRank(c) === '7';
+  return { cards: G.hands[G.cur].filter(legal), atk: G.atk, top, suit: G.suit };
+}
+function cardAuto(G) { // 자동 대원(또는 시간 초과)의 선택
+  const o = cardOptions(G); if (!o) return null;
+  if (G.game !== 'onecard') return { i: Math.floor(G.rng() * o.n) };
+  if (!o.cards.length) return { draw: true };
+  const h = G.hands[G.cur], next = (G.cur + G.dir + G.seats.length) % G.seats.length;
+  const pref = c => (['2', 'A'].includes(cardRank(c)) && G.hands[next].length <= 3 ? 30 : 0) + (['J', 'Q', 'K'].includes(cardRank(c)) ? 8 : 0) + (cardRank(c) === '7' ? -5 : 0) + h.filter(x => cardSuit(x) === cardSuit(c)).length * 2 + G.rng();
+  return { c: o.cards.reduce((b, x) => pref(x) > pref(b) ? x : b, o.cards[0]) };
+}
+function cardApply(G, mv) { // 한 수를 둔다. 잘못된 수·빈 수는 자동으로
+  if (G.done) return; G.turns++;
+  const o = cardOptions(G), who = G.seats[G.cur].name;
+  if (G.game !== 'onecard') {
+    let i = mv && Number.isInteger(mv.i) && mv.i >= 0 && mv.i < o.n ? mv.i : null; if (i === null) i = cardAuto(G).i;
+    const from = o.from, c = G.hands[from].splice(i, 1)[0], same = G.hands[G.cur].findIndex(x => cardRank(x) === cardRank(c) && c !== 'JK');
+    let t = `${who} → ${G.seats[from].name}의 카드를 한 장 뽑았다`;
+    if (same >= 0) { const p = G.hands[G.cur].splice(same, 1)[0]; t += ` · ${p}·${c} 짝!`; } else { G.hands[G.cur].push(c); cardShuffle(G.hands[G.cur], G.rng); t += c === 'JK' ? ' · …조커다!' : ' · 짝이 없다.'; }
+    cardLog(G, { t, a: G.cur, f: from, c, k: 'pick', pair: same >= 0, joker: c === 'JK' }); const me = G.cur; jokerOut(G, from); jokerOut(G, me); jokerNext(G, from); jokerEnd(G); return;
+  }
+  const N = G.seats.length, h = G.hands[G.cur], next = (G.cur + G.dir + N) % N;
+  let c = mv && typeof mv.c === 'string' && o.cards.includes(mv.c) ? mv.c : null;
+  if (!c && !(mv && mv.draw && true)) { const a = cardAuto(G); c = a.c || null; }
+  if (mv && mv.draw && !G.atk && o.cards.length && !c) c = null; // 낼 수 있어도 스스로 뽑을 수 있다
+  if (!c) { const n = cardDraw(G, G.cur, G.atk || 1); cardLog(G, { t: G.atk ? `${who} 대원이 공격을 맞아 ${n}장을 먹었다!` : `${who} 대원이 한 장 뽑았다.`, a: G.cur, k: 'draw', n }); G.atk = 0; G.cur = next; return cardOneEnd(G); }
+  h.splice(h.indexOf(c), 1); G.pile.push(c); G.suit = cardSuit(c);
+  const r = cardRank(c); let t = `${who}: ${c}`, again = false, skip = false;
+  if (r === '2') { G.atk += 2; t += ` · 공격 +2 (누적 ${G.atk})`; } else if (r === 'A') { G.atk += 3; t += ` · 공격 +3 (누적 ${G.atk})`; }
+  else if (r === 'J') { skip = true; t += ' · 다음 사람 건너뛰기'; } else if (r === 'Q') { G.dir = -G.dir; t += ' · 방향 바꾸기'; } else if (r === 'K') { again = true; t += ' · 한 번 더!'; }
+  else if (r === '7') { const want = mv && CARD_SUITS.includes(mv.s) ? mv.s : null, cnt = {}; h.forEach(x => { cnt[cardSuit(x)] = (cnt[cardSuit(x)] || 0) + 1; }); G.suit = want || Object.keys(cnt).sort((a, b) => cnt[b] - cnt[a])[0] || G.suit; t += ` · 무늬를 ${G.suit}(으)로`; }
+  if (h.length === 1) t += ' · 원카드!';
+  cardLog(G, { t, a: G.cur, c, k: 'play' });
+  if (!h.length) { G.winner = G.cur; return cardOneEnd(G, true); }
+  if (!again) G.cur = (G.cur + G.dir * (skip ? 2 : 1) + N * 2) % N;
+  cardOneEnd(G);
+}
+function cardDraw(G, i, n) { let got = 0; for (let k = 0; k < n; k++) { if (!G.deck.length) { const top = G.pile.pop(); G.deck = cardShuffle(G.pile.splice(0), G.rng); G.pile.push(top); } if (!G.deck.length) break; G.hands[i].push(G.deck.pop()); got++; } return got; }
+function cardOneEnd(G, won) {
+  if (!won && G.turns < 300) return;
+  if (G.winner < 0) G.winner = G.hands.reduce((b, h, i) => h.length < G.hands[b].length ? i : b, 0);
+  G.done = true; G.rank = [G.winner, ...G.seats.map((_, i) => i).filter(i => i !== G.winner).sort((a, b) => G.hands[a].length - G.hands[b].length || a - b)]; G.loser = G.rank[G.rank.length - 1];
+  cardLog(G, { t: `${G.seats[G.winner].name} 대원이 마지막 카드를 냈다! 1등!`, end: true });
+}
+function cardReplay(game, seats, seed, moves) { // 시드 + 사람들의 선택(순서대로)으로 지금 판을 만든다. 다음 선택이 필요하면 G.wait = 자리 번호
+  const G = cardInit(game, seats, seed); let k = 0; G.wait = -1; G.used = 0;
+  while (!G.done && G.turns < 420) { const t = cardTurn(G); if (seats[t].bot) { cardApply(G, cardAuto(G)); continue; }
+    const m = moves[k]; if (!m) { G.wait = t; break; } k++; cardApply(G, m.timeout || m.seat !== t ? null : m.move); }
+  G.used = k; return G;
+}
+function cardSim(game, seats, seed) { const G = cardInit(game, seats, seed); while (!G.done && G.turns < 420) cardApply(G, cardAuto(G)); return G; }
