@@ -1480,3 +1480,6 @@ button>.material-symbols-rounded{vertical-align:middle;position:relative;top:-.0
 @keyframes dhit{0%{transform:translateX(0);background:color-mix(in srgb,var(--bad,#d33) 22%,var(--panel-2))}30%{transform:translateX(-3px)}60%{transform:translateX(3px)}100%{transform:none}}
 #duelRoot.shake{animation-duration:.22s}
 .dmg-pop{animation-duration:.7s}
+/* 대련장: 방 이름 입력칸을 넓게, 팀 고르기는 좁게 */
+#duelTitle{flex:1 1 auto;min-width:0}
+#duelTeam{flex:0 0 auto;width:auto;max-width:96px}
