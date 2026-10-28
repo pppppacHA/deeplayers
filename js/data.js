@@ -880,7 +880,7 @@ DANGER_ZONES.forEach(z => {
     if (t.monster.kind === '짐승') { // 짐승이 있는 지형에서는 길들이기를 시도할 수 있다 (지상 펫 획득)
       t.tameId = `${z.id} ${t.name} 길들이기`;
       PET_SPECIES[t.monster.name] = { zone: z.id, level: z.level, base: PET_SPEED[z.level], name: `새끼 ${t.monster.name}`, icon: t.icon };
-      ACTIONS[t.tameId] = { kind: 'tame', icon: 'pets', label: `${t.monster.name}에게 먹이를 건넨다`, title: `${t.name} 길들이기`, terrain: t, zoneId: z.id, action: `먹이가 될 작물이나 펫 사료 1개로 ${t.monster.name}을(를) 길들입니다. (10분 · 기력 ${TAME_SP})`, cost: { sp: TAME_SP }, hazard: z.hazard };
+      ACTIONS[t.tameId] = { kind: 'tame', icon: 'pets', label: `${t.monster.name}에게 먹이를 건넨다`, title: `${t.monster.name} 길들이기`, terrain: t, zoneId: z.id, action: `먹이가 될 작물이나 펫 사료 1개로 ${t.monster.name}을(를) 길들입니다. (10분 · 기력 ${TAME_SP})`, cost: { sp: TAME_SP }, hazard: z.hazard };
     }
     t.actions = [inv, b]; // 채집 행동은 칸마다 일부만 나타난다 (core.js tileActionIds)
   });
@@ -1076,7 +1076,14 @@ QUESTS.push(
   { id: 'promo_a', promo: 'A', lv: 20, kind: '메인', title: '승급 시험 · A등급', desc: '제6구역(정글)의 정글 재규어 10마리·덩굴 괴수 8마리·아나콘다 8마리·맹독 두꺼비 8마리와 제7구역(사막)의 황금 전갈 6마리·모래 지네 6마리를 처치하고, 코코넛 12개·아로와나 10마리·파인애플 15개를 납품하고, 레시피 50개를 익힌다.',
     need: { type: 'multi', parts: [{ type: 'kill', monster: '정글 재규어', qty: 10 }, { type: 'kill', monster: '덩굴 괴수', qty: 8 }, { type: 'kill', monster: '아나콘다', qty: 8 }, { type: 'kill', monster: '맹독 두꺼비', qty: 8 }, { type: 'kill', monster: '황금 전갈', qty: 6 }, { type: 'kill', monster: '모래 지네', qty: 6 }, { type: 'item', name: '코코넛', qty: 12, consume: true }, { type: 'item', name: '아로와나', qty: 10, consume: true }, { type: 'item', name: '파인애플', qty: 15, consume: true }, { type: 'recipe', qty: 50 }] }, reward: { exp: 2600, money: 8000, items: [['고급 응급 키트', 5], ['에너지 젤', 5], ['선봉 배낭', 1]] } }
 );
-const PROMO_ORDER = ['F', 'E', 'D', 'C', 'B', 'A']; // 지금은 A등급까지 승급할 수 있다
+const PROMO_ORDER = ['F', 'E', 'D', 'C', 'B', 'A', 'S']; // S등급까지 승급할 수 있다 (10/28)
+{ /* S등급 승급 시험: 제1~7구역 전부를 아우른다. 구역마다 첫 지형의 몬스터 8마리 + 희귀 재료 3개, 레시피 60개 */
+  const parts = []; DANGER_ZONES.slice(0, 7).forEach(z => { const t = z.terrains[0]; if (t && t.monster) parts.push({ type: 'kill', monster: t.monster.name, qty: 8 }); });
+  DANGER_ZONES.slice(0, 7).forEach(z => { const t = z.terrains.find(x => x.rare && !parts.some(p => p.name === x.rare)); if (t) parts.push({ type: 'item', name: t.rare, qty: 3, consume: true }); });
+  parts.push({ type: 'recipe', qty: 60 });
+  const kills = parts.filter(p => p.type === 'kill').map(p => `${p.monster} ${p.qty}마리`).join('·'), items = parts.filter(p => p.type === 'item').map(p => `${p.name} ${p.qty}개`).join('·');
+  QUESTS.push({ id: 'promo_s', promo: 'S', lv: 28, kind: '메인', title: '승급 시험 · S등급', desc: `제1구역부터 제7구역까지 모든 위험구역을 누비는 최종 승급 시험. ${kills}를 처치하고, ${items}를 납품하고, 레시피 60개를 익힌다.`, need: { type: 'multi', parts }, reward: { exp: 4000, money: 12000, items: [['고급 응급 키트', 8], ['에너지 젤', 8]] } });
+}
 /* 한계 돌파(2026-10-26): A등급 + Lv.30 이 되면 본부 '승급'에서 받는다. 마치면 최고 레벨이 30 → 35 (state.flags.cap35) */
 QUESTS.push({ id: 'limit_35', cap: MAX_LEVEL, lv: LEVEL_CAP_BASE, kind: '메인', title: '한계 돌파 · 레벨 제한 해제', desc: '능력의 한계를 넘기 위한 최종 시험. 제7구역의 붉은 바위 거인·걸어 다니는 선인장·모래 폭풍 정령 각 12마리, 제5구역의 서리 정령·동결 경비병 각 10마리, 제4구역의 결정 파수꾼 10마리, 제3구역의 용암 거북 10마리를 처치하고, 사막 유리 15개·광물 코어 20개·화염 결정 15개·서리 결정 20개를 납품하고, 레시피 65개를 익힌다.',
   need: { type: 'multi', parts: [{ type: 'kill', monster: '붉은 바위 거인', qty: 12 }, { type: 'kill', monster: '걸어 다니는 선인장', qty: 12 }, { type: 'kill', monster: '모래 폭풍 정령', qty: 12 }, { type: 'kill', monster: '서리 정령', qty: 10 }, { type: 'kill', monster: '동결 경비병', qty: 10 }, { type: 'kill', monster: '결정 파수꾼', qty: 10 }, { type: 'kill', monster: '용암 거북', qty: 10 }, { type: 'item', name: '사막 유리', qty: 15, consume: true }, { type: 'item', name: '광물 코어', qty: 20, consume: true }, { type: 'item', name: '화염 결정', qty: 15, consume: true }, { type: 'item', name: '서리 결정', qty: 20, consume: true }, { type: 'recipe', qty: 65 }] },
@@ -1282,7 +1289,7 @@ const MAIL_DELIVERY_NEED = 20; // 아이템을 담은 메일을 이만큼 보내
 const LOST_REWARD_TICKETS = 1;
 /* 위험에 처한 대원 구하기: 지형 칸에 가끔(입장할 때마다 칸 시드로) 나타난다. 즉시 전투(모의 전투처럼 한 줄씩 보여 줌).
    이기면 그 칸의 희귀 재료나 CR + 감사 인사, 지면 깊이(난이도)에 비례해 HP -1~14 (죽지는 않는다). 한 구역에서 구하면 RESCUE_COOLDOWN_MS 동안 그 구역엔 다시 안 나온다 */
-const RESCUE_APPEAR = .03, RESCUE_SP = 3, RESCUE_COOLDOWN_MS = 2 * 3600 * 1000, RESCUE_HP = [1, 14], RESCUE_RARE = .55;
+const RESCUE_APPEAR = .06, RESCUE_SP = 3, RESCUE_COOLDOWN_MS = 2 * 3600 * 1000, RESCUE_HP = [1, 14], RESCUE_RARE = .55;
 const RESCUE_NAMES = ['하진', '도윤', '세라', '무겸', '유나', '태오', '이솔', '로한', '미르', '가온', '다현', '노을', '시아', '한결'];
 const RESCUE_SCENES = [
   m => `${m}에게 몰린 대원 하나가 바위 틈에 몸을 숨긴 채 구조 신호를 보내고 있다.`,
@@ -1343,6 +1350,8 @@ const TITLE_DEFS = [
   ['걸음을 따라서', '지상 일곱 구역의 저널을 모두 발견한다', () => Object.keys(QMARKS).length > 0 && Object.keys(QMARKS).every(id => (state.journals || {})[id])],
   ['정점에 다다른', `레벨 ${LEVEL_CAP_BASE}에 도달한다`, () => state.character.level >= LEVEL_CAP_BASE],
   ['한계를 넘어선', `한계 돌파 임무를 마치고 레벨 ${MAX_LEVEL}에 도달한다`, () => state.character.level >= MAX_LEVEL],
+  ['죽음을 두려워하지 않는', 'S등급으로 승급한다', () => state.character.rank === 'S'],
+  ['인간성 그 너머로', `레벨 ${MAX_LEVEL}과 S등급을 모두 달성한다`, () => state.character.level >= MAX_LEVEL && state.character.rank === 'S'],
   ['새싹 농부', '농장에서 작물을 수확해 도감에 등록한다', () => Object.keys(CROPS).some(n => state.codex.items[n])],
   ['길들이는 자', '지상에서 펫을 길들인다', () => state.pets.length > 0],
   ['동물 친구', '펫을 3종 이상 모은다', () => state.pets.length >= 3],
@@ -1369,6 +1378,15 @@ const NEARBY_PLAYERS = []; // 같은 장소의 다른 대원 [이름, 상태, �
 
 const POSTS = {
   '공지': [
+    ['업데이트 · 10월 28일', `[신규]
+· 균열(랜덤 던전): 지상 칸에 가끔 일렁이는 균열이 열려요. 들어가면 8칸짜리 짧은 미궁이 이어지고(이동은 공짜, 가 본 칸은 눌러서 바로), 칸마다 한 번 조사할 수 있어요. 좋은 일이면 균열이 열린 칸 지형의 희귀 재료(코코넛 등)·CR·EXP·가호를 얻고, 나쁜 일도 생겨요. 가장 깊은 곳의 보스는 대련처럼 싸우고 내 레벨에 맞춰 강해져요. 져도 보스가 잃은 체력은 남아 있고(내 HP -4~6), 이기면 희귀 재료나 CR을 얻어요. 가끔 그 구역의 특징을 담은 무기(분화구 열검·서리 장궁·신기루 권총 등)가 나와요. 조사·보스전은 합쳐서 5번까지. 균열 안의 '?'에 규칙이 있어요.
+· 새 장비 레시피: 도끼·카타나·쌍절곤·반바지·트레이너 상의·트레이너 하의(함께 입으면 트레이너 세트: 근력·의지 +1).
+· 손질한 가죽: 두꺼운 가죽 2개로 평범한 가죽 2개를 만들어요.
+· 펫 장신구 2종(마석 펜던트·조개 방울), 공방 의뢰에 그동안 쓸 데가 적던 재료(사막 수박·화산 고추·정글 카사바·슬라임·마석·사암 등) 납품이 섞여 나와요.
+· 위험에 처한 대원(SOS)이 조금 더 자주 나타나요.
+· S등급 승급 시험(Lv.28): 제1~7구역 모든 위험구역의 몬스터 처치와 희귀 재료 납품. 새 칭호 '죽음을 두려워하지 않는'(S등급), '인간성 그 너머로'(Lv.35 + S등급).
+[수정]
+· 길들이기 중 진행 표시가 지형 이름('산 길들이기')으로 나오던 문제를 몬스터 이름으로 고쳤어요.`],
     ['업데이트 · 10월 27일', `[신규]
 · 대련: 서로의 체력이 실시간으로 줄어들고, 여럿이 싸우면 같은 팀의 지원(보스전과 같은 연출 · 다음 공격 +30%)이 터져요. 방을 만들 때 팀을 고를 수 있고, 연습은 2:2·3:3도 돼요.
 · 채팅 탭마다 안 읽은 메시지 수가 표시돼요. 제작 탭은 위쪽 분류(장비·소모품·약·기타)와 아래쪽 태그 줄로 함께 거를 수 있고, 둘 다 스크롤해도 고정돼요.
@@ -1680,6 +1698,7 @@ function createDefaultState() {
     guild: null,        // 길드 { name, master: 길드장인가, members: [이름...](나 제외) }
     invAt: {},
     rescueAt: {},       // 대원 구조: 구역마다 마지막 구조 시각 { 구역: ms }
+    riftAt: {}, rift: null, // 균열(랜덤 던전): 구역마다 마지막 진입 시각 / 지금 들어가 있는 균열
     gambleAt: {},       // 도박성 선택지 마지막 시각 { 이름: ms } — 1시간에 한 번
               // 조사한 칸 { '구역,x,y': 시각(ms) } — 12시간 뒤 다시 조사 가능
     repeats: {},        // 반복 횟수 { "행동 id@구역,x,y": { n, at } } (같은 장소의 같은 행동만 누적) — 4번째부터 아이템 확률 저하, 12시간 뒤 초기화
@@ -1884,7 +1903,7 @@ PET_WILD.forEach(([zid, tn, id, name, ic]) => {
   const z = DANGER_ZONES.find(d => d.id === zid), t = z && z.terrains.find(x => x.name === tn); if (!t || PET_SPECIES[id]) return;
   PET_SPECIES[id] = { zone: z.id, level: z.level, base: PET_SPEED[z.level], name, icon: ic, wild: true };
   t.tameId2 = `${z.id} ${t.name} ${id} 길들이기`;
-  ACTIONS[t.tameId2] = { kind: 'tame', pet: id, icon: 'pets', label: `${id}에게 먹이를 건넨다`, title: `${t.name} 길들이기`, terrain: t, zoneId: z.id, action: `풀숲 사이로 ${id}이(가) 고개를 내밀었다. 먹이가 될 작물이나 펫 사료 1개로 길들입니다. (10분 · 기력 ${TAME_SP})`, cost: { sp: TAME_SP }, hazard: z.hazard };
+  ACTIONS[t.tameId2] = { kind: 'tame', pet: id, icon: 'pets', label: `${id}에게 먹이를 건넨다`, title: `${id} 길들이기`, terrain: t, zoneId: z.id, action: `풀숲 사이로 ${id}이(가) 고개를 내밀었다. 먹이가 될 작물이나 펫 사료 1개로 길들입니다. (10분 · 기력 ${TAME_SP})`, cost: { sp: TAME_SP }, hazard: z.hazard };
 });
 
 /* ---------- 2026-10-27 2차: 훈련장 (대련 · 보스전 안내 · 훈련 메시지) ----------
@@ -2522,3 +2541,64 @@ QUESTS.forEach(q => {
   const n = q.need || {}; if (q.promo || q.cap || n.type !== 'item' || !RARE_MATS.has(n.name) || !q.reward || q.rareBoost) return;
   q.rareBoost = true; ['exp', 'money'].forEach(k => { if (q.reward[k] > 0) q.reward[k] = Math.round(q.reward[k] * RARE_QUEST_MULT); });
 });
+/* 2026-10-28 새 장비·레시피 (레시피는 RECIPES 맨 뒤에만 붙인다: 제작 중 저장이 번호로 가리킨다) */
+defItems('재료', [['손질한 가죽', 'layers', '두꺼운 가죽을 얇게 저며 손질한 평범한 가죽이다. 가죽이 필요한 곳 어디에나 쓴다.', { tags: ['가죽공예'], sell: 6 }]]);
+if (MAT_GROUPS['가죽'] && !MAT_GROUPS['가죽'].includes('손질한 가죽')) MAT_GROUPS['가죽'].push('손질한 가죽');
+defItems('장비', [
+  ['도끼', 'carpenter', '등급 F · 공격력 +5. 나무도 적도 한 번에 쪼개는 묵직한 도끼다.', { slot: '무기', atk: 5, mods: { str: 1 }, tags: ['대장'], sell: 60 }],
+  ['카타나', 'swords', '등급 E · 공격력 +6. 휘어진 외날 칼이다. 빠르게 뽑아 베면 바람 소리가 난다.', { slot: '무기', atk: 6, mods: { agi: 1 }, tags: ['대장'], sell: 80 }],
+  ['쌍절곤', 'link', '등급 F · 공격력 +4. 사슬로 이은 두 막대다. 손에 익으면 어디서 날아올지 모른다.', { slot: '무기', atk: 4, mods: { luk: 1 }, tags: ['목공'], sell: 55 }],
+  ['반바지', 'checkroom', '무릎 위로 오는 가벼운 반바지다. 다리가 가벼워진다.', { slot: '하의', mods: { agi: 1 }, tags: ['재봉'], sell: 30 }],
+  ['트레이너 상의', 'checkroom', '땀을 잘 말리는 훈련용 상의다. 하의와 함께 입으면 세트 효과가 있다.', { slot: '상의', mods: { str: 1 }, tags: ['재봉'], sell: 45 }],
+  ['트레이너 하의', 'checkroom', '무릎이 잘 굽혀지는 훈련용 하의다. 상의와 함께 입으면 세트 효과가 있다.', { slot: '하의', mods: { agi: 1 }, tags: ['재봉'], sell: 45 }]
+]);
+ITEM_SETS.push({ name: '트레이너 세트', need: ['트레이너 상의', '트레이너 하의'], mods: { str: 1, wil: 1 } });
+RECIPES.push(
+  { out: '손질한 가죽', mats: { '두꺼운 가죽': 2 }, sec: 40, rank: 'F', yield: 2 },
+  { out: '도끼', mats: { '목재': 2, '철광석': 2, '돌 망치': 1 }, sec: 120, rank: 'F' },
+  { out: '카타나', mats: { '철광석': 3, '합금 파편': 2, '가죽 끈': 1 }, sec: 150, rank: 'E' },
+  { out: '쌍절곤', mats: { '목재': 2, '섬유 실타래': 1, '가죽 끈': 1 }, sec: 100, rank: 'F' },
+  { out: '반바지', mats: { '섬유 실타래': 2, '가죽': 1 }, sec: 80, rank: 'F' },
+  { out: '트레이너 상의', mats: { '섬유 실타래': 2, '생체 섬유': 1, '슬라임': 1 }, sec: 110, rank: 'F' },
+  { out: '트레이너 하의', mats: { '섬유 실타래': 2, '생체 섬유': 1, '이능 조직': 1 }, sec: 110, rank: 'F' }
+);
+{ const cost = rc => Object.entries(rc.mats).reduce((a, [n, q]) => a + q * ((ITEMS[n] ? ITEMS[n].sell : Math.min(...(MAT_GROUPS[n] || []).map(m => ITEMS[m].sell || 0))) || 0), 0); // 재료값보다 비싸게 팔리지 않게
+  ['손질한 가죽', '도끼', '카타나', '쌍절곤', '반바지', '트레이너 상의', '트레이너 하의'].forEach(n => { const rc = RECIPES.find(r => r.out === n); if (rc && ITEMS[n]) ITEMS[n].sell = Math.max(1, Math.min(ITEMS[n].sell || 1, Math.floor(cost(rc) / (rc.yield || 1)))); }); }
+/* 잘 안 쓰이던 아이템 쓰임새: 펫 장신구 2종 + 공방 의뢰(하루 2개 순환에 합류) */
+Object.assign(PET_ACC, {
+  '마석 펜던트': { icon: 'diamond', desc: '작은 마석을 가죽 끈에 매단 펜던트. 은은한 빛이 펫을 들뜨게 한다.', mats: { '마석': 2, '가죽 끈': 1 }, sec: 70, pxp: .1, text: '펫 경험치 +10%' },
+  '조개 방울': { icon: 'notifications', desc: '조개 장신구를 실타래에 꿰어 만든 방울. 걸을 때마다 파도 소리가 난다.', mats: { '조개 장신구': 1, '섬유 실타래': 1 }, sec: 60, spd: .02, text: '이동 시간 -2%' }
+});
+Object.assign(PET_ACC_TAGS, { '마석 펜던트': '보석공예', '조개 방울': '재봉' });
+['마석 펜던트', '조개 방울'].forEach(n => { const a = PET_ACC[n];
+  if (!ITEMS[n]) ITEMS[n] = { tab: '장비', icon: a.icon, desc: `${a.desc} 펫에게 달아 줄 수 있다.`, group: '펫 악세서리', petAcc: true, sell: 25, tags: [PET_ACC_TAGS[n]] };
+  if (!RECIPES.some(r => r.out === n)) RECIPES.push({ out: n, mats: a.mats, sec: a.sec, rank: 'F' });
+  const rc = RECIPES.find(r => r.out === n), c = Object.entries(rc.mats).reduce((x, [m, q]) => x + q * ((ITEMS[m] && ITEMS[m].sell) || 0), 0); ITEMS[n].sell = Math.max(1, Math.min(ITEMS[n].sell, c)); });
+[['사막 수박', 2], ['화산 고추', 3], ['정글 카사바', 3], ['슬라임', 3], ['마석', 2], ['사암', 4], ['야생 열매', 4], ['해풍 콩', 3]].forEach(([n, q]) => {
+  if (!ITEMS[n]) return; const id = `ws_m_${n}`; if (QUESTS.some(x => x.id === id)) return;
+  const qq = { id, board: '본부', kind: '서브', daily: 'ws', title: `공방 의뢰 · ${n}`, desc: `본부 공방에서 ${n} ${q}개가 필요하다고 한다. 납품하면 보수를 준다.`, need: { type: 'item', name: n, qty: q, consume: true }, reward: { exp: 40, money: 120, items: [['응급 키트', 1]] } };
+  WORKSHOP_QUESTS.push(qq); QUESTS.push(qq);
+});
+
+/* 2026-10-28 랜덤 던전 '균열': 지형 칸에 가끔(구조 대원과 비슷한 확률) 나타난다. 들어가면 8칸짜리 작은 미궁(이동 무료),
+   칸마다 조사(좋은 일 / 나쁜 일), 가장 깊은 칸에 보스(대련과 같은 방식, 내 레벨에 맞춰 강해짐). 행동 기회 5번(조사·전투), 다 쓰거나 보스를 쓰러뜨리면 원래 칸으로 */
+const RIFT_APPEAR = .07, RIFT_COST = 5, RIFT_CELLS = 8, RIFT_COOLDOWN_MS = 2 * 3600 * 1000, RIFT_GOOD = .6, RIFT_RARE_P = .45; // 좋은 일 중 45%는 원래 칸 지형의 희귀 재료, 보스를 이기면 그 희귀 재료 2~3개
+const RIFT_BOSSES = ['균열의 파수꾼', '뒤틀린 그림자', '공허의 사냥개', '부서진 기계병', '잿빛 거인', '심연의 눈'];
+Object.assign(BUFFS, {
+  '균열의 가호': { type: 'buff', icon: 'auto_awesome', desc: '균열의 기운이 몸을 감싼다. 모든 능력치 +1', mods: { str: 1, agi: 1, int: 1, wil: 1, sen: 1, luk: 1 }, ms: 3600 * 1000 },
+  '균열 멀미': { type: 'debuff', icon: 'sick', desc: '뒤틀린 공간에 속이 울렁거린다. 민첩 -1 · 감각 -1', mods: { agi: -1, sen: -1 }, ms: 3600 * 1000 }
+});
+DANGER_ZONES.forEach(z => { ACTIONS[`${z.id} 균열 진입`] = { kind: 'rift', zone: z.id, icon: 'blur_on', label: '일렁이는 균열 속으로 들어간다', title: '균열', action: '공간이 일렁이며 작은 균열이 열려 있다. 들어가면 8칸짜리 짧은 미궁이 이어지고, 가장 깊은 곳에 보스가 있다. 이동은 공짜, 조사·전투는 5번까지. (즉시)' }; });
+/* 균열 전리품 무기 (10/28): 그 구역의 특징을 담은 E등급 무기. 균열 보스(25%)·조사(5%)에서 가끔 나온다. 상점·제작 없음 */
+const RIFT_WEAPONS = {
+  '제1구역': [['고목의 장궁', 'target', '활', 'luk', '숲 깊은 곳 고목의 가지를 깎아 만든 장궁이다. 시위를 당기면 잎사귀 냄새가 난다.'], ['이끼 칼날 단검', 'content_cut', '단검', 'luk', '칼날에 이끼 무늬가 번진 단검이다. 숲의 그림자처럼 소리 없이 벤다.']],
+  '제2구역': [['조류의 작살창', 'north_east', '창', 'sen', '밀물과 썰물을 닮은 작살창이다. 찌를 때마다 파도 소리가 난다.'], ['산호 권총', 'pistol', '권총', 'sen', '산호 껍데기를 덧댄 권총이다. 총구에서 소금기 어린 바람이 분다.']],
+  '제3구역': [['분화구 열검', 'swords', '검', 'str', '분화구 깊은 곳의 열기를 품은 검이다. 휘두를 때마다 칼날에서 불씨가 흩날린다.'], ['용암 너클', 'sports_mma', '너클', 'str', '식은 용암을 두드려 만든 너클이다. 주먹을 쥐면 붉게 달아오른다.']],
+  '제4구역': [['적암 대검', 'swords', '검', 'agi', '붉은 협곡 바위를 갈아 만든 대검이다. 무게에 비해 놀랍도록 빠르다.'], ['협곡풍 장궁', 'target', '활', 'agi', '협곡을 휘도는 바람을 실어 쏘는 장궁이다. 화살이 바람을 탄다.']],
+  '제5구역': [['빙결 장검', 'swords', '검', 'wil', '눈보라 속에서 벼려 낸 장검이다. 칼날에 서리가 앉아 녹지 않는다.'], ['서리 장궁', 'target', '활', 'wil', '얼음 결정을 박은 장궁이다. 맞은 자리에 하얀 서리가 핀다.'], ['눈보라 권총', 'pistol', '권총', 'wil', '총열이 늘 차갑게 식어 있는 권총이다. 쏠 때마다 눈송이가 흩어진다.']],
+  '제6구역': [['맹수 송곳니 단검', 'content_cut', '단검', 'agi', '정글 맹수의 송곳니를 깎아 만든 단검이다. 손에 쥐면 사냥 본능이 깨어난다.'], ['독덩굴 창', 'north_east', '창', 'agi', '독덩굴을 감아 엮은 창이다. 창끝에 푸른 이슬이 맺혀 있다.']],
+  '제7구역': [['신기루 권총', 'pistol', '권총', 'int', '뜨거운 공기에 총신이 일렁여 보이는 권총이다. 어디서 쏘는지 알 수 없다.'], ['모래폭풍 너클', 'sports_mma', '너클', 'int', '사막 유리를 박아 넣은 너클이다. 내지를 때마다 모래바람이 인다.']]
+};
+Object.values(RIFT_WEAPONS).forEach(l => l.forEach(([n, ic, kind, st, d]) => defItems('장비', [[n, ic, `등급 E · 공격력 +7. ${d} (균열 전리품)`, { slot: '무기', atk: 7, weapon: kind, mods: { [st]: 1 }, tags: ['균열'], sell: 90 }]])));
+const RIFT_WEAPON_P = { boss: .25, inv: .05 };
+LEGACY_ITEMS['화염장검'] = '분화구 열검'; // 기존 '화염 장검'과 이름이 겹쳐 바꿨다 (미리보기에서 얻은 것은 새 이름으로)

@@ -41,11 +41,12 @@ function applyTheme(st = state.settings) {
   body.dataset.theme = base === 'dark' ? 'dark' : 'light';
   body.classList.toggle('custom-cursor', st.cursor !== false);
   body.style.setProperty('--fs', FONT_SCALES[st.fontSize] || 1);
-  const vars = ['--accent', '--accent-2', '--accent-soft', '--accent-line', '--primary', '--primary-line', '--primary-text'];
+  const vars = ['--accent-ink', '--accent', '--accent-2', '--accent-soft', '--accent-line', '--primary', '--primary-line', '--primary-text'];
   vars.forEach(v => body.style.removeProperty(v));
   if (st.theme !== 'custom') return;
   const c = st.customAccent, dark = '#000', light = '#fff';
   body.style.setProperty('--accent', c);
+  { const m = /^#?([0-9a-f]{6})$/i.exec(String(c || '')); if (m) { const n = parseInt(m[1], 16), L = (.2126 * ((n >> 16) & 255) + .7152 * ((n >> 8) & 255) + .0722 * (n & 255)) / 255; body.style.setProperty('--accent-ink', L < .55 ? '#fff' : '#111'); } } // 포인트 색이 진하면 그 위 글자·아이콘은 희게
   body.style.setProperty('--accent-2', `color-mix(in srgb, ${c} 80%, ${base === 'dark' ? light : dark})`);
   body.style.setProperty('--accent-soft', `color-mix(in srgb, ${c} 14%, var(--panel))`);
   body.style.setProperty('--accent-line', `color-mix(in srgb, ${c} 45%, var(--panel))`);
@@ -293,7 +294,7 @@ function renderCraft() {
   $('#craftList').innerHTML = craftJobHtml() + shown.map(({ rc, i }) => {
     const it = ITEMS[rc.out], ok = canCraft(rc) && !state.crafting;
     const mats = Object.entries(rc.mats).map(([n, q]) => `<span class="${matCount(n) >= q ? '' : 'lack'}">${esc(n)} ${matCount(n)}/${q}</span>`).join(' · ');
-    return `<div class="recipe"><div class="round-avatar">${icon(it.icon)}</div><div class="grow"><strong>${esc(rc.out)} <em class="tag">${esc(craftCat(rc.out))}</em>${craftField(rc.out) ? ` <em class="tag field">${esc(craftField(rc.out))}</em>` : ''}</strong><small class="effect">${esc(itemEffect(rc.out))}</small><small>제작 시간 ${fmtTime(craftSec(rc) * 1000)} · ${mats}</small></div><button class="primary" data-act="craft" data-index="${i}" ${ok ? '' : 'disabled'}>제작</button></div>`;
+    return `<div class="recipe"><div class="round-avatar">${icon(it.icon)}</div><div class="grow"><strong>${esc(rc.out)}${rc.yield > 1 ? ` ×${rc.yield}` : ''} <em class="tag">${esc(craftCat(rc.out))}</em>${craftField(rc.out) ? ` <em class="tag field">${esc(craftField(rc.out))}</em>` : ''}</strong><small class="effect">${esc(itemEffect(rc.out))}</small><small>제작 시간 ${fmtTime(craftSec(rc) * 1000)} · ${mats}</small></div><button class="primary" data-act="craft" data-index="${i}" ${ok ? '' : 'disabled'}>제작</button></div>`;
   }).join('') + (() => { const n = RECIPES.filter(rc => !recipeKnown(rc)).length; return n ? `<div class="empty">개인실의 '속성학습'(25분)으로 새 레시피를 배울 수 있어요. (남은 ${n}종 · 승급하면 후보가 늘어납니다)</div>` : ''; })() || '<div class="empty">레시피가 없습니다.</div>';
 }
 const renderBag = () => { renderEquip(); renderInventory(); renderCraft(); renderStatus(); renderLeftTab(); renderQuick(); };
@@ -319,7 +320,7 @@ function renderMapSearch(hits) { // 검색 결과 안내
   } else box.textContent = hits ? `${hits}곳 표시됨` : '표시할 구역이 없어요';
 }
 function renderMap() {
-  $('#mapStage').classList.toggle('dungeon', !!state.dungeon); // 타일 지도에서는 지도 이동·확대 버튼을 숨긴다
+  $('#mapStage').classList.toggle('dungeon', !!state.dungeon); $('#mapStage').classList.toggle('rift', !!state.rift); if (!state.rift && $('#riftLeft')) $('#riftLeft').remove(); // 타일 지도에서는 지도 이동·확대 버튼을 숨긴다
   applyMapTransform();
   if (state.dungeon) { renderDungeon(); return; }
   const mq = (view.mapQ || '').trim().toLowerCase(); let hlN = 0;
@@ -332,7 +333,41 @@ function renderMap() {
 }
 
 /* 미궁: 보이는 칸만 그린다. 아무 칸이나 누르면 이동 확인창이 뜬다 (멀면 칸 수만큼 시간·기력이 든다) */
+const RIFT_GUIDE = `균열은 짧은 랜덤 미궁이에요. 옆 칸이나 이미 가 본 칸을 눌러 바로 이동하고(시간·기력 없음), 칸마다 한 번 '조사'할 수 있어요. 조사하면 좋은 일(균열이 열린 칸 지형의 희귀 재료·CR·EXP·균열의 가호) 또는 나쁜 일(HP·기력 감소·균열 멀미)이 생겨요.  가장 깊은 칸(💀)에는 보스가 있고 대련처럼 싸워요(내 레벨에 맞춰 강해짐). 져도 보스가 잃은 체력은 그대로 남고 내 HP가 4~6 줄어요. 이기면 희귀 재료나 CR을 얻고, 가끔 그 구역의 특별한 무기가 나와요. 행동 기회 ${RIFT_COST}번은 조사·보스전에만 들고, 다 쓰거나 보스를 쓰러뜨리면 원래 칸으로 돌아가요.`;
+function riftBg() { // 균열 배경: 출렁이는 점 그물(도트 웨이브). 캔버스로 한 번 그려 두고 쓴다 (색 없음, 회색)
+  if (view.riftBg) return view.riftBg;
+  try { const W = 900, H = 520, c = document.createElement('canvas'); c.width = W; c.height = H; const g = c.getContext('2d'); g.fillStyle = 'rgba(128,128,128,1)';
+    const NU = 150, NV = 46;
+    for (let j = 0; j <= NV; j++) { const v = j / NV;
+      for (let i = 0; i <= NU; i++) { const u = i / NU;
+        const wave = 46 * Math.sin(Math.PI * 2 * (u * 1.25 + v * .35)) * (.55 + .45 * v) + 30 * Math.sin(Math.PI * 2 * (u * .55 - v * .6) + 1.2) + 16 * Math.sin(Math.PI * 2 * (u * 2.4 + v * 1.1) + .4) * v;
+        const y = H * .34 + H * .5 * Math.pow(v, 1.25) + wave, x = u * W + 14 * Math.sin(Math.PI * 2 * (v * .8 + u * .3));
+        const dy = 46 * Math.cos(Math.PI * 2 * (u * 1.25 + v * .35)) * 2 * Math.PI * 1.25 / NU; // 접힌 곳일수록 진하게
+        const edge = Math.min(1, u * 6, (1 - u) * 6) * Math.min(1, v * 3.5, (1 - v) * 4), r = (.45 + .75 * v) * (.65 + .55 * Math.min(1, Math.abs(dy) * 1.2));
+        if (edge <= .02 || r < .25) continue;
+        g.globalAlpha = .7 * edge; g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill(); } }
+    view.riftBg = `url("${c.toDataURL('image/png')}")`; } catch (e) { view.riftBg = 'none'; }
+  return view.riftBg;
+}
+function renderRift() {
+  const r = state.rift, W = 5, H = 4, at = (x, y) => r.cells.findIndex(c => c.x === x && c.y === y), cur = r.cells[r.pos];
+  let cells = '';
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const i = at(x, y), c = r.cells[i];
+    if (i < 0) { cells += '<div class="tile void"></div>'; continue; }
+    if (!c.seen) { cells += '<div class="tile unseen"></div>'; continue; }
+    const me = i === r.pos, adj = !me && (Math.abs(c.x - cur.x) + Math.abs(c.y - cur.y) === 1 || c.seen === true); // 옆 칸 + 가 본 칸은 바로 이동
+    const glyph = me ? '<i class="pawn"></i>' : c.k === 'start' ? icon('login') : c.k === 'boss' ? icon(r.boss ? 'check' : 'skull') : icon(c.done ? 'check' : 'search');
+    const name = c.k === 'start' ? '균열 입구' : c.k === 'boss' ? '균열 최심부' : c.done ? '조사한 칸' : '일렁이는 칸', desc = c.k === 'boss' ? '보스가 기다리고 있다.' : c.k === 'room' ? (c.done ? '이미 조사했다.' : '무언가 숨어 있을 것 같다. (조사 1회)') : '들어온 곳이다.';
+    const cls = `tile floor rift-cell ${c.k} ${c.done ? 'done' : ''} ${c.seen === true ? 'visited' : 'unvisited'}`;
+    cells += adj ? `<button class="${cls} adj" data-act="rift-cell" data-i="${i}" data-tip-title="${esc(name)}" data-tip-desc="${esc(desc)}">${glyph}</button>` : `<div class="${cls}" data-tip-title="${esc(name)}" data-tip-desc="${esc(desc)}">${glyph}</div>`; }
+  const st = $('.map-stage'), gap = 3, sw = st ? st.clientWidth : 0, sh = st ? st.clientHeight : 0, tile = sw && sh ? Math.max(28, Math.min(64, Math.floor((sw - 16 - gap * (W - 1)) / W), Math.floor((sh - 16 - gap * (H - 1)) / H))) : 56;
+  $('#mapStage').style.setProperty('--rift-bg', riftBg());
+  { let b = $('#riftLeft'); if (!b) { b = document.createElement('div'); b.id = 'riftLeft'; b.className = 'rift-left'; $('#mapStage').appendChild(b); } b.innerHTML = `남은 행동 <b>${r.left}</b><small>/${RIFT_COST}</small>`; b.classList.toggle('low', r.left <= 1); }
+  $('#mapWorld').innerHTML = `<div class="tile-board rift-board" style="--tile:${tile}px;grid-template-columns:repeat(${W},var(--tile))">${cells}</div>`;
+}
+function riftDone(msg, later) { riftExit(); if (msg) setTimeout(() => toast(msg), later ? 400 : 0); renderMapHead(); renderMap(); renderAction(); renderSide(); }
 function renderDungeon() {
+  if (state.rift) { renderRift(); return; }
   refreshEvents(state.dungeon);
   if (view.dpanSeed !== state.dungeon.seed) { view.dpanSeed = state.dungeon.seed; view.dpan = { x: 0, y: 0 }; view.dzoom = 1; applyMapTransform(); } // 새 던전에 들어가면 이동 초기화
   const d = state.dungeon, z = zoneOf(d.zone), dest = state.active && state.active.path ? state.active.path[state.active.path.length - 1] : null;
@@ -359,7 +394,8 @@ function renderDungeon() {
 function renderMapHead() {
   const loc = LOCATIONS[state.location], d = state.dungeon;
   let desc = loc.desc, meta = loc.meta.join(' / ');
-  if (d) {
+  if (d && state.rift) { const r = state.rift, c = r.cells[r.pos]; desc = `${c.k === 'boss' ? '균열 최심부' : c.k === 'start' ? '균열 입구' : '균열 속'} — 남은 행동 ${r.left}/${RIFT_COST}`; meta = `균열 · 랜덤 던전 · 남은 행동 ${r.left}`; }
+  else if (d) {
     const z = zoneOf(d.zone), info = tileInfo(z, tileOf(z, d.x, d.y), d.x, d.y);
     desc = `${info.name} — ${info.desc}`;
     const ch = tileOf(z, d.x, d.y), safe = ch === 'S' || ch === 'C' || ch === '?', dd = tileDifficulty(z, d.x, d.y);
@@ -458,6 +494,13 @@ function renderAction() {
       `<h3 class="cost-title">${icon('heart_broken')} 소모 · 손실</h3><div class="reward-list">${chipList(costChips(r), 'bad')}</div>` +
       `<div class="reward-actions"><button class="primary" data-act="claim">${icon('check')} 결과 확인</button></div>`;
     return;
+  }
+  if (state.rift && !state.active) { // 균열 안: 이동은 지도에서, 조사·보스전·나가기는 여기서
+    const r = state.rift, c = r.cells[r.pos];
+    main.innerHTML = `<h3>${icon('blur_on')} 균열 · 남은 행동 ${r.left}/${RIFT_COST} <button class="rift-help" data-tip-title="균열 가이드" data-tip-desc="${esc(RIFT_GUIDE)}" aria-label="균열 가이드">?</button></h3><p class="tiny">${c.k === 'boss' ? (r.boss ? '보스를 쓰러뜨렸다.' : '가장 깊은 곳. 무언가가 이쪽을 노려본다.') : c.k === 'start' ? '균열 입구. 옆 칸을 눌러 들어가 보세요.' : c.done ? '이미 조사한 칸이에요. 다른 칸으로 가 보세요.' : '무언가 숨어 있을 것 같다.'}</p>`
+      + `<div class="battle-log rift-log">${r.log.slice(-6).map(t => `<div class="bl note">${esc(t)}</div>`).join('')}</div>`
+      + `<div class="row-btns">${c.k === 'room' && !c.done ? `<button class="primary" data-act="rift-inv" ${r.left <= 0 ? 'disabled' : ''}>${icon('search')} 조사한다 (행동 1)</button>` : ''}${c.k === 'boss' && !r.boss ? `<button class="primary" data-act="rift-boss" ${r.left <= 0 ? 'disabled' : ''}>${icon('swords')} 보스와 싸운다 (행동 1)</button>` : ''}<button data-act="rift-exit">${icon('logout')} 균열에서 나간다</button></div>`;
+    $('#choices').innerHTML = ''; return;
   }
   if (state.active) { // 진행 중
     const act = state.active, a = ACTIONS[act.id], rep = act.cycles > 1 ? ` · ${act.cycles}회 반복` : '';
@@ -1790,6 +1833,15 @@ const A = {
   'card-bet': async el => { const id = intIn(el.dataset.id, 1, 9e15, 0), c = intIn(el.dataset.cr, CARD_BET_MIN, CARD_BET_MAX, CARD_BET_MIN), err = escrowSet(id, { cr: c }, true); if (err) { toast(err); sfx('error'); return; }
     el.disabled = true; try { const rr = await Cloud.duelSetBet(id, { cr: c }); if (!rr || !rr.ok) throw new Error(rr && rr.msg || 'fail'); toast(`판돈 ${c} CR을 걸었어요. (맡겨 둠)`); } catch (e) { escrowRefund(); toast('판돈을 걸지 못했어요. 방장이 금액을 바꿨을 수 있어요.'); }
     renderProfile(); try { const v = await Cloud.duelView(id); if (v) { view.duelSig = ''; openCardRoom(v); } } catch (e) { /* 다음 확인 때 */ } },
+  'rift-cell': el => { const e = riftMove(intIn(el.dataset.i, 0, 20, 0)); if (e) { toast(e); return; } sfx('click'); renderMapHead(); renderMap(); renderAction(); },
+  'rift-inv': () => { const r = riftInvestigate(); if (r.err) { toast(r.err); return; } toast(r.text); sfx(r.good ? 'ok' : 'error'); renderProfile(); renderBars(); renderBuffs && renderBuffs(); if (r.out) riftDone('행동 기회를 모두 썼어요. 균열이 닫히며 원래 자리로 돌아왔어요.'); else { renderMapHead(); renderMap(); renderAction(); } },
+  'rift-boss': () => { const r = riftBoss(); if (r.err) { toast(r.err); return; }
+    modal('균열 보스전', duelRoomHtml({ id: 0 }, r.fs), [btnClose]); duelPlay(r.fs, r.seed, 0); addLog(`균열 보스전: ${r.text}`);
+    { const show = () => { const end = $('#duelEnd'); if (!end) return; if (!end.querySelector('.duel-result')) { setTimeout(show, 300); return; } // 연출이 끝나면 얻은 것을 보여 준다
+        end.insertAdjacentHTML('afterbegin', `<div class="rift-reward ${r.win ? 'win' : 'lose'}"><b>${r.win ? '🎁 획득' : '패배'}</b> ${(r.reward || []).map(x => `<span class="chip">${esc(x)}</span>`).join(' ')}</div>`); toast(r.win ? `획득: ${(r.reward || []).join(', ')}` : r.text); }; show(); }
+    const out = r.win || !state.rift || state.rift.left <= 0; renderProfile(); renderBars();
+    if (out) riftDone(r.win ? '보스를 쓰러뜨렸어요! 균열이 닫히며 원래 자리로 돌아왔어요.' : '행동 기회를 모두 썼어요. 균열이 닫히며 원래 자리로 돌아왔어요.', true); else { renderMapHead(); renderMap(); renderAction(); } },
+  'rift-exit': () => riftDone('균열에서 나왔어요.'),
   'cw-min': () => { const w = $('#cardWin'); if (w) { cwSave(); w.classList.add('min'); } },
   'cw-restore': () => { const w = $('#cardWin'); if (w) w.classList.remove('min'); },
   'cw-close': async () => { const id = view.cwRoom, watching = view.duelWatch; if (id && state.duelEscrow && state.duelEscrow.room === id && !(view.cg && view.cg.room === id && !(view.cg.G && view.cg.G.done))) { const t = escrowRefund(); if (t) toast(`판돈 ${t}을 돌려받았어요.`); renderProfile(); } cwClose(); if (id && !watching) { try { await Cloud.duelLeave(id); } catch (e) { /* 이미 닫힘 */ } toast('카드방에서 나왔어요.'); } },
@@ -1887,6 +1939,7 @@ const A = {
     if (a.kind === 'step') { doMove(); return; }
     if (a.kind === 'enter') { enterDungeon(a.zone); resetPhase(); renderMapHead(); renderMap(); renderAction(); renderSide(); return; }
     if (a.kind === 'leave') { leaveDungeon(); resetPhase(); renderMapHead(); renderMap(); renderAction(); return; }
+    if (a.kind === 'rift') { const msg = startAction(view.id); if (msg) { toast(msg); sfx('error'); return; } resetPhase(); sfx('ok'); toast('균열 속으로 들어왔어요.'); renderMapHead(); renderMap(); renderAction(); return; }
     if (a.kind === 'rescue') { const msg = startAction(view.id); if (msg) { toast(msg); sfx('error'); return; } resetPhase(); renderBars(); renderAction(); openRescueFight(); return; }
     if (a.kind === 'leisure') { const msg = startAction(view.id); if (msg) { toast(msg); sfx('error'); return; } resetPhase(); renderBars(); renderAction(); sfx('ok'); if (state.pending) A.claim(); return; }
     { const ce = $('#customMin'); if (ce && MULTI_OPTIONS[view.mult].custom) setCustomMin(ce.value); }
@@ -2205,7 +2258,7 @@ const A = {
   'ftrade-open': el => {
     const pm = PARTY.members.find(m => m.name === el.dataset.name);
     if (pm && !pm.online) { toast(`${pm.name} 대원이 접속 중이 아니라 교환할 수 없어요. 교환은 상대가 접속해 있을 때만 가능해요.`); sfx('error'); return; }
-    if (!pm && !(view.nearby || []).some(p => p.name === el.dataset.name)) { toast('교환은 파티원이나 같은 칸에 있는 대원과만 할 수 있어요.'); sfx('error'); return; }
+    if (!pm && !(view.nearby || []).some(p => p.name === el.dataset.name)) { toast('교환은 파티원이나 같은 맵에 있는 대원과만 할 수 있어요.'); sfx('error'); return; }
     liveTradeStart(el.dataset.name);
   },
   'lt-plus': el => ltEdit(el.dataset.name, intIn(el.dataset.qty, 1, 99, 1), el.dataset.mk || ''),
@@ -2699,7 +2752,7 @@ function openShop(keepScroll) {
     const list = recipesForSale();
     body = list.length ? '<p class="tiny">레시피를 사면 바로 제작할 수 있어요. 등급이 모자라면 살 수 없습니다. 이미 아는 레시피는 나오지 않아요.</p>' + list.map(rc => {
       const it = ITEMS[rc.out], pr = recipePrice(rc), lock = !rankAtLeast(rc.rank), mats = Object.entries(rc.mats).map(([n, q]) => `${n} ×${q}`).join(' + ');
-      return `<div class="shop-row"><span class="shop-ic">${icon(it.icon)}</span><div class="grow"><strong>${esc(rc.out)} <em class="tag">${esc(craftCat(rc.out))}</em>${craftField(rc.out) ? ` <em class="tag field">${esc(craftField(rc.out))}</em>` : ''}</strong><small class="item-info">${itemInfoHtml(rc.out)}</small><small>재료 ${esc(mats)}${lock ? ` · ${rc.rank}등급부터` : ''}</small></div><span class="price">${pr} CR</span>` +
+      return `<div class="shop-row"><span class="shop-ic">${icon(it.icon)}</span><div class="grow"><strong>${esc(rc.out)}${rc.yield > 1 ? ` ×${rc.yield}` : ''} <em class="tag">${esc(craftCat(rc.out))}</em>${craftField(rc.out) ? ` <em class="tag field">${esc(craftField(rc.out))}</em>` : ''}</strong><small class="item-info">${itemInfoHtml(rc.out)}</small><small>재료 ${esc(mats)}${lock ? ` · ${rc.rank}등급부터` : ''}</small></div><span class="price">${pr} CR</span>` +
         `<button data-act="recipe-buy" data-out="${esc(rc.out)}" ${lock || state.money < pr ? 'disabled' : ''}>배우기</button></div>`;
     }).join('') : '<div class="empty">살 수 있는 레시피가 없습니다. 모든 레시피를 알고 있어요.</div>';
   } else {
@@ -2766,7 +2819,7 @@ async function duelLoadList() {
 }
 function stopDuelTimers() { clearInterval(view.duelPoll); clearTimeout(view.duelTimer); view.duelPoll = view.duelTimer = 0; }
 function duelRoomHtml(v, fs) {
-  const col = t => `<div class="duel-team t${t}"><div class="choice-label">${t === 1 ? 'A팀' : 'B팀'} ${fs.filter(f => f.team === t).length}/${DUEL_TEAM_MAX}</div>${fs.map((f, i) => [f, i]).filter(([f]) => f.team === t).map(([f, i]) => `<div class="duel-f ${f.me ? 'me' : ''}" id="df${i}"><div class="bars"><div class="bar-row"><b>HP</b><div class="bar hp"><i class="ghost" id="dg${i}" style="width:100%"></i><span id="dh${i}" style="width:100%"></span></div><span class="val" id="dv${i}">${f.hp}</span></div></div><strong>${esc(f.name)}${f.host ? ' 👑' : ''}</strong><small>Lv.${f.lv} · HP ${f.hp} · 주 ${esc(STAT_DEFS.find(d => d.key === f.main).name)}${f.sub ? ` · 부 ${esc(STAT_DEFS.find(d => d.key === f.sub).name)}` : ''}</small></div>`).join('') || '<div class="empty">비어 있음</div>'}</div>`;
+  const col = t => `<div class="duel-team t${t}"><div class="choice-label">${t === 1 ? 'A팀' : 'B팀'} ${fs.filter(f => f.team === t).length}/${DUEL_TEAM_MAX}</div>${fs.map((f, i) => [f, i]).filter(([f]) => f.team === t).map(([f, i]) => `<div class="duel-f ${f.me ? 'me' : ''}" id="df${i}"><div class="bars"><div class="bar-row"><b>HP</b><div class="bar hp"><i class="ghost" id="dg${i}" style="width:${f.hpMax ? Math.round(f.hp / f.hpMax * 100) : 100}%"></i><span id="dh${i}" style="width:${f.hpMax ? Math.round(f.hp / f.hpMax * 100) : 100}%"></span></div><span class="val" id="dv${i}">${f.hp}</span></div></div><strong>${esc(f.name)}${f.host ? ' 👑' : ''}</strong><small>Lv.${f.lv} · HP ${f.hp} · 주 ${esc(STAT_DEFS.find(d => d.key === f.main).name)}${f.sub ? ` · 부 ${esc(STAT_DEFS.find(d => d.key === f.sub).name)}` : ''}</small></div>`).join('') || '<div class="empty">비어 있음</div>'}</div>`;
   return `<div id="duelRoot" data-id="${v.id}"><div class="duel-teams">${col(1)}<div class="duel-vs">VS</div>${col(2)}</div><div class="battle-log duel-log" id="duelLog"></div><div id="duelEnd"></div><div class="duel-cut" id="duelCut"></div></div>`;
 }
 function openDuelRoom(v) { // 서버 대련방 (v = duel_view 결과)
@@ -2979,7 +3032,7 @@ function duelPop(i, text, cls) { const d = $('#df' + i); if (!d) return; const p
 function duelShow(e, fs, live = true) { // 한 줄마다: 체력 막대(+잔상) · 피해 숫자 · KO 도장 / 지원이면 사선 띠 컷인
   if (e.sup !== undefined) { const c = $('#duelCut'), H = fs[e.sup]; if (!c) return; c.innerHTML = `<div class="cut-band"><span class="cut-ava">${H.me ? avatarOf('나') : (view.duelRoom || view.duelMin) ? avatarOf(H.name) : esc(H.name.slice(0, 1))}</span><span><b>${esc(H.name)}의 지원!</b><small>「${esc(H.help || '힘내!')}」 · ${esc(fs[e.a].name)} 공격력 +${Math.round((DUEL_SUP_MULT - 1) * 100)}%</small></span></div>`; c.classList.remove('play'); void c.offsetWidth; c.classList.add('play'); return; }
   const f = fs[e.t], w = $('#dh' + e.t), g = $('#dg' + e.t), v = $('#dv' + e.t); if (!f || !w) return;
-  const pct = Math.max(0, e.hp / f.hp * 100) + '%'; w.style.width = pct; if (v) v.textContent = e.hp;
+  const pct = Math.max(0, e.hp / (f.hpMax || f.hp) * 100) + '%'; w.style.width = pct; if (v) v.textContent = e.hp;
   if (g) { if (live) setTimeout(() => { g.style.width = pct; }, 300); else g.style.width = pct; }
   if (live && e.dmg > 0 && state.settings.duelFx !== false) { const d = $('#df' + e.t); if (d) { d.classList.remove('hit'); void d.offsetWidth; d.classList.add('hit'); } if (e.d === 6) { const r = $('#duelRoot'); if (r) { r.classList.remove('shake'); void r.offsetWidth; r.classList.add('shake'); } } } // 피격 흔들림 (설정에서 끌 수 있음) // 줄어든 만큼 흰 잔상이 잠깐 남는다
   if (live) { if (e.dodge || !e.dmg) duelPop(e.t, 'MISS', 'miss'); else duelPop(e.t, `-${e.dmg}`, e.d === 6 ? 'crit' : e.bo ? 'boost' : ''); }
@@ -3237,7 +3290,7 @@ let _ltBusy = false;
 const isLtOpen = () => $('#overlay').classList.contains('open') && !!$('#ltRoot'); // 닫힌 창의 내용이 남아 있어도 열린 것으로 보지 않는다
 const sameList = (a, b) => a.length === b.length && a.every(([n, q]) => (b.find(r => r[0] === n) || [0, 0])[1] === q);
 let _nbBusy = false;
-async function nearbyPoll() { // 같은 칸에 접속 중인 대원. 내 위치도 서버에 알린다 (위치가 바뀌면 바로, 아니면 pollTick 주기)
+async function nearbyPoll() { // 같은 맵(구역 지도·안전지대 장소)에 접속 중인 대원. 내 위치도 서버에 알린다 (위치가 바뀌면 바로, 아니면 pollTick 주기)
   if (!Cloud.enabled || !Cloud.user() || !state.created || _nbBusy) return;
   _nbBusy = true;
   try {
@@ -3303,7 +3356,7 @@ async function liveTradeStart(name) {
     const r = await Cloud.liveTradeInvite(uid); if (!r || !r.ok) throw new Error(r && r.msg);
     toast(`${name} 대원에게 교환을 신청했어요.`); sfx('ok'); await ltPoll(); if (view.lt && !isLtOpen()) openLive();
   } catch (e) {
-    sfx('error'); toast({ not_near: '상대가 같은 칸에 없어요. 교환은 파티원이나 같은 칸의 대원과만 할 수 있어요.', offline: '상대가 접속 중이 아니에요. 교환은 상대가 접속해 있을 때만 할 수 있어요.', busy: '상대가 다른 교환 중이에요.', busy_me: '아직 끝나지 않은 교환이 있어요. 잠시 뒤 다시 시도해 주세요.', bad: '교환을 신청할 수 없는 상대예요.' }[e && e.message] || '교환을 신청하지 못했어요.');
+    sfx('error'); toast({ not_near: '상대가 같은 맵에 없어요. 교환은 파티원이나 같은 맵의 대원과만 할 수 있어요.', offline: '상대가 접속 중이 아니에요. 교환은 상대가 접속해 있을 때만 할 수 있어요.', busy: '상대가 다른 교환 중이에요.', busy_me: '아직 끝나지 않은 교환이 있어요. 잠시 뒤 다시 시도해 주세요.', bad: '교환을 신청할 수 없는 상대예요.' }[e && e.message] || '교환을 신청하지 못했어요.');
   }
 }
 async function ltEdit(name, delta, mk = '') { // 교환대에 올리기(+) / 내리기(−). mk = 제작자('' = 이름 없는 것)

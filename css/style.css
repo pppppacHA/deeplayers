@@ -1592,3 +1592,15 @@ button.pcard:not(.off):hover{transform:translateY(-2px)}
 .fx-root.shake{animation:dshake .22s}
 .fx-root .mock-bars > div.hit{animation:dhit .22s ease-out}
 @media (prefers-reduced-motion:reduce){.fx-root.shake,.fx-root .mock-bars > div.hit{animation-duration:.01s}}
+
+/* 10/28 균열(랜덤 던전): 도트 웨이브 배경(색 없음), 가 본 칸은 포인트 색 · 아이콘은 대비되는 색(--accent-ink) */
+.map-stage.rift{background:var(--rift-bg, none) center/cover no-repeat, var(--panel)}
+.rift-board .tile.floor{background:var(--panel-hi);border-style:dashed}
+.rift-board .tile.visited{background:var(--accent);border-color:var(--accent);border-style:solid;color:var(--accent-ink)}
+.rift-board .tile.visited .material-symbols-rounded,.rift-board .tile.visited .pawn{color:var(--accent-ink)}
+.rift-board .tile.visited .pawn{background:var(--accent-ink);box-shadow:0 0 0 3px var(--accent)}
+.rift-board .tile.boss{border-width:2px}
+.rift-help{min-width:22px;height:22px;padding:0;min-height:0;margin-left:6px;font-weight:700;cursor:help;vertical-align:middle}
+.rift-log{max-height:120px;margin:6px 0}
+.rift-left{position:absolute;left:12px;top:46px;z-index:4;padding:4px 10px;background:var(--panel);border:1px solid var(--line);font-size:calc(13px*var(--fs));pointer-events:none}.rift-left b{font-size:calc(22px*var(--fs));margin:0 2px}.rift-left small{color:var(--muted)}.rift-left.low b{color:var(--bad)}
+.rift-reward{margin:8px 0;padding:8px 10px;border:1px solid var(--accent-line);background:var(--accent-soft);display:flex;flex-wrap:wrap;gap:6px;align-items:center}.rift-reward.lose{border-color:var(--line);background:var(--panel-hi)}

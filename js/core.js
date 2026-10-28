@@ -100,7 +100,7 @@ function hardenState(s) {
   s.rescueAt = Object.fromEntries(Object.entries(s.rescueAt && typeof s.rescueAt === 'object' ? s.rescueAt : {}).filter(([k, v]) => DANGER_ZONES.some(z => z.id === k) && Number.isFinite(v)));
   if (s.dungeon) s.dungeon.rs = Object.fromEntries(Object.entries(s.dungeon.rs && typeof s.dungeon.rs === 'object' ? s.dungeon.rs : {}).filter(([k]) => /^-?\d{1,3},-?\d{1,3}$/.test(k)).map(([k]) => [k, 1]));
   s.deaths = intIn(s.deaths, 0, 99999, 0); s.lostCount = intIn(s.lostCount, 0, 999999, 0);
-  { const m = s.trainMsg && typeof s.trainMsg === 'object' ? s.trainMsg : {}; s.trainMsg = { help: cleanText(m.help || '', DUEL_MSG_MAX), win: cleanText(m.win || '', DUEL_MSG_MAX), lose: cleanText(m.lose || '', DUEL_MSG_MAX) }; s.duelSeen = (Array.isArray(s.duelSeen) ? s.duelSeen : []).map(x => intIn(x, 1, 9e15, 0)).filter(Boolean).slice(-20); s.duelBets = cleanDuelBets(s.duelBets); s.duelEscrow = cleanEscrow(s.duelEscrow); s.locks = (Array.isArray(s.locks) ? s.locks : []).filter(n => typeof n === 'string' && ITEMS[n]).slice(-200); }
+  { const m = s.trainMsg && typeof s.trainMsg === 'object' ? s.trainMsg : {}; s.trainMsg = { help: cleanText(m.help || '', DUEL_MSG_MAX), win: cleanText(m.win || '', DUEL_MSG_MAX), lose: cleanText(m.lose || '', DUEL_MSG_MAX) }; s.duelSeen = (Array.isArray(s.duelSeen) ? s.duelSeen : []).map(x => intIn(x, 1, 9e15, 0)).filter(Boolean).slice(-20); s.duelBets = cleanDuelBets(s.duelBets); s.duelEscrow = cleanEscrow(s.duelEscrow); s.locks = (Array.isArray(s.locks) ? s.locks : []).filter(n => typeof n === 'string' && ITEMS[n]).slice(-200); s.rift = cleanRift(s.rift); if (s.rift && !(s.dungeon && s.dungeon.zone === s.rift.zone)) s.rift = null; s.riftAt = s.riftAt && typeof s.riftAt === 'object' ? s.riftAt : {}; }
   s.qact = Object.fromEntries(Object.entries(s.qact && typeof s.qact === 'object' ? s.qact : {}).filter(([k]) => QMARKS[k]).map(([k, v]) => [k, intIn(v, 0, 7, 0)]));
   s.lostBox = (Array.isArray(s.lostBox) ? s.lostBox : []).filter(x => x && ITEMS[legacyName(x.n)]).map(x => { const n = legacyName(x.n), mk = typeof x.mk === 'string' ? cleanText(x.mk, MK_LEN) : ''; return { n, q: intIn(x.q, 1, ITEMS[n].tab === '장비' ? 1 : STACK_MAX, 1), ...(mk ? { mk } : {}) }; }).slice(0, LOSTBOX_SLOTS);
   s.quick = Array.from({ length: QUICK_SLOTS }, (_, i) => { const n = Array.isArray(s.quick) ? s.quick[i] : null; return typeof n === 'string' && ITEMS[n] && ITEMS[n].use ? n : null; }); s.quickOpen = s.quickOpen === true;
@@ -942,6 +942,7 @@ function syncArrive(eta) { // 동행: 방금 시작한 이동을 파티장 도�
 }
 function followStep(raw, eta) { // 파티장 위치(raw)에 한 걸음 다가간다. { moved, what } / { err } / { wait } / {}
   if (!state.created) return {};
+  if (state.rift) return { wait: '균열 안' }; // 균열 안에서는 따라가지 않는다
   const t = parsePlace(raw); if (!t || t.air === '개인실') return {};
   const d = state.dungeon;
   if (d && !(t.zone && d.zone === t.zone)) { // 다른 곳으로 가려면 먼저 입구로 돌아가 퇴장한다
@@ -1005,6 +1006,7 @@ function actionPreview(id, mi = 0) {
     const odds = `승리 약 ${bo.win}% · 다칠 확률 약 ${bo.hurt}% (1회 최대 HP -${m.hpCap || BATTLE_HP_CAP}) · 재료 ${pct(BATTLE_MAT * rep)} · ${m.drops.map(([n, p]) => `${n} ${pct(p * rep)}`).join(' · ')}`;
     return { time, gain: `승리 시 EXP +${m.exp} · CR +${m.cr} · 재료 (회당)`, cost: costs.join(' · '), note, odds };
   }
+  if (a.kind === 'rift') return { time: '즉시 (안에서 이동도 공짜)', gain: `조사하면 이 칸의 희귀 재료${(() => { const z = state.dungeon && zoneOf(state.dungeon.zone), t = z && z.terrains[terrainIndex(tileOf(z, state.dungeon.x, state.dungeon.y))]; return t && t.rare ? `(${t.rare})` : ''; })()}·CR·EXP·가호 중 하나(가끔 나쁜 일), 보스를 쓰러뜨리면 그 희귀 재료 2~3개`, cost: `행동 기회 ${RIFT_COST}번 (조사·보스전에 1번씩)` };
   if (a.kind === 'rescue') { const m = state.dungeon ? rescueFoe() : null; return { time: '즉시', gain: m ? `이기면 감사의 보수: ${m.rare ? `희귀 재료(${m.rare}) 또는 ` : ''}CR 약 ${Math.round(m.cr * (3 + 4 * m.d))} · EXP +${15 + Math.round(25 * m.d)}` : '이기면 감사의 보수', cost: `기력 -${sp} · 지면 HP -${RESCUE_HP[0]}~${RESCUE_HP[1]} (깊은 곳일수록 크게, 죽지는 않음)`, note: m ? `상대: ${m.name} (체력 ${m.hp} · 공격 ${m.atk})` : '' }; }
   if (a.kind === 'tame') return { time: '10분', gain: `성공하면 펫을 얻음 (성공 확률 약 ${Math.round(tameChance() * 100)}% · 감각이 높을수록 유리 · 펫 사료를 먹이면 +${Math.round(TAME_FOOD_BONUS * 100)}%p) · EXP +12`, cost: `기력 -${sp} · 먹이 1개(직접 고른 작물/펫 사료) 소모 · 실패하면 HP 손실 가능` };
   if (a.kind === 'train') { const n = learnableRecipes().length; return { time: '25분', gain: `새 제작 레시피 1종을 무작위로 습득 · EXP +${TRAIN_EXP}`, cost: `기력 -${sp}`, note: n ? `지금 배울 수 있는 레시피 ${n}종 (승급하면 후보가 늘어납니다)` : '지금은 더 배울 수 있는 레시피가 없습니다.' }; }
@@ -1083,7 +1085,7 @@ function tileGatherIds(z, x, y, seed) {
 function startAction(id, mi = 0, baitName = null) {
   const a = ACTIONS[id];
   if (a.kind === 'todo') return '아직 구현되지 않은 기능입니다.';
-  if (!['gather', 'battle', 'rest', 'investigate', 'gamble', 'tame', 'train', 'leisure', 'lounge', 'rescue'].includes(a.kind)) return '시작할 수 없는 행동입니다.';
+  if (!['gather', 'battle', 'rest', 'investigate', 'gamble', 'tame', 'train', 'leisure', 'lounge', 'rescue', 'rift'].includes(a.kind)) return '시작할 수 없는 행동입니다.';
   if (!state.created) return '먼저 캐릭터를 만드세요.';
   if (state.active || state.pending) return '이미 진행 중이거나 결과 확인이 필요한 행동이 있습니다.';
   if (['gather', 'battle', 'investigate', 'tame', 'rescue'].includes(a.kind) && bagFull()) return BAG_FULL_MSG; // 가방이 가득 차면 탐색 전에 정리부터
@@ -1121,6 +1123,7 @@ function startAction(id, mi = 0, baitName = null) {
     save();
     return null;
   }
+  if (a.kind === 'rift') return riftEnter(a.zone);
   if (a.kind === 'rescue') { // 대원 구조: 바로 싸운다. 결과는 지금 정해지고, 화면은 로그를 한 줄씩 보여 준다
     const d = state.dungeon, z = d && zoneOf(d.zone);
     if (!d || d.zone !== a.zone || !rescueShown(z, d.x, d.y, d.seed)) return '이 칸에는 도움이 필요한 대원이 보이지 않습니다.';
@@ -1722,7 +1725,8 @@ function craftTick() {
 function collectCraft() {
   const c = state.crafting;
   if (!c || !c.ready) return null;
-  const want = (c.qty || 1) + (c.great ? 1 : 0), got = addItem(c.out, want);
+  const rc0 = RECIPES[c.index], yl = rc0 && rc0.out === c.out && rc0.yield > 1 ? Math.min(5, rc0.yield | 0) : 1; // 한 번에 여러 개 나오는 레시피
+  const want = (c.qty || 1) * yl + (c.great ? 1 : 0), got = addItem(c.out, want);
   if (!got) return { got: 0, lost: want, great: c.great, out: c.out, full: true };
   discover('recipes', c.out);
   state.crafting = null;
@@ -1779,7 +1783,7 @@ function leaveDungeon() { state.dungeon = null; state.location = '이동장치';
 function currentGroups() {
   if (!state.dungeon) return LOCATIONS[state.location].groups;
   const z = zoneOf(state.dungeon.zone), ch = tileOf(z, state.dungeon.x, state.dungeon.y), ti = terrainIndex(ch);
-  if (ti >= 0) { const t = z.terrains[ti]; const sp = spotAt(z, state.dungeon.x, state.dungeon.y); return [{ label: sp ? sp.name : t.name, items: [t.actions[0], ...(sp ? sp.ids : []), ...(rescueShown(z, state.dungeon.x, state.dungeon.y, state.dungeon.seed) ? [`${z.id} 대원 구조`] : []), ...tileGatherIds(z, state.dungeon.x, state.dungeon.y, state.dungeon.seed).filter(id => !(sp && ACTIONS[id] && ACTIONS[id].method === '낚시' && sp.fish.includes(ACTIONS[id].items[0]))), tileBattleId(z, t, state.dungeon.x, state.dungeon.y, state.dungeon.seed), ...(tameShown(z, state.dungeon.x, state.dungeon.y, state.dungeon.seed) ? [t.tameId] : []), ...(tameShown2(z, state.dungeon.x, state.dungeon.y, state.dungeon.seed) ? [t.tameId2] : [])] }]; }
+  if (ti >= 0) { const t = z.terrains[ti]; const sp = spotAt(z, state.dungeon.x, state.dungeon.y); return [{ label: sp ? sp.name : t.name, items: [t.actions[0], ...(sp ? sp.ids : []), ...(rescueShown(z, state.dungeon.x, state.dungeon.y, state.dungeon.seed) ? [`${z.id} 대원 구조`] : []), ...(riftShown(z, state.dungeon.x, state.dungeon.y, state.dungeon.seed) ? [`${z.id} 균열 진입`] : []), ...tileGatherIds(z, state.dungeon.x, state.dungeon.y, state.dungeon.seed).filter(id => !(sp && ACTIONS[id] && ACTIONS[id].method === '낚시' && sp.fish.includes(ACTIONS[id].items[0]))), tileBattleId(z, t, state.dungeon.x, state.dungeon.y, state.dungeon.seed), ...(tameShown(z, state.dungeon.x, state.dungeon.y, state.dungeon.seed) ? [t.tameId] : []), ...(tameShown2(z, state.dungeon.x, state.dungeon.y, state.dungeon.seed) ? [t.tameId2] : [])] }]; }
   if (ch === 'C') return [{ label: '안전 캠프', items: ['캠프 휴식', '임무 수주', '상점', '모닥불 주사위', ...(lostHeld().length ? ['분실물 전달'] : [])] }];
   if (ch === 'S') return [{ label: '입구', items: ['퇴장'] }];
   if (ch === '?' && QMARKS[z.id]) return [{ label: QMARKS[z.id].name, items: [`${z.id} 시간을 보낸다`, ...(allJournals() && QMARK_ACTS[z.id] ? QMARK_ACTS[z.id].map(q => q.id) : [])] }];
@@ -1896,8 +1900,8 @@ function chooseWeapon(name) {
 
 /* ---------- 임무 ---------- */
 /* 지금 있는 장소: 지상 구역의 안전 캠프(타일 C)면 구역 이름, 공중이면 그 장소 이름. 아니면 null */
-function locKey() { // 서버에 알리는 '내 위치': 같은 값이면 같은 칸. 개인실은 비공개('')
-  if (state.dungeon) return `${state.dungeon.zone}:${state.dungeon.x},${state.dungeon.y}`.slice(0, 40);
+function locKey() { // 서버에 알리는 '내 위치': 같은 값이면 같은 맵(10/28: 칸이 아니라 같은 구역 지도 전체). 개인실은 비공개('')
+  if (state.dungeon) return String(state.dungeon.zone).slice(0, 40);
   return state.location === '개인실' ? '' : String(state.location || '').slice(0, 40);
 }
 function placeKey() {
@@ -2860,4 +2864,86 @@ function cardBetResolve(seed, room, G, myseat) { // 카드놀이 판돈: 판이 
   else { const lo = G.loser; if (lo < 0 || G.seats[lo].bot) { won = true; cr = S; } else if (lo === myseat) { won = false; } else { won = true; cr = S + Math.floor(S / Math.max(1, H - 1) * (1 - DUEL_BET_FEE)); } }
   const keys = Object.keys(state.duelBets); if (keys.length >= 20) delete state.duelBets[keys[0]];
   state.duelBets[seed] = { won, cr, items: [], lost: won ? '' : `${S} CR`, at: Date.now(), done: false }; save(); return state.duelBets[seed];
+}
+
+/* ===== 균열 (랜덤 던전, 10/28) ===== */
+function riftShown(z, x, y, seed) { // 이 칸에 균열이 열려 있다 (구조 대원과 다른 시드)
+  const t = z.terrains[terrainIndex(tileOf(z, x, y))], d = state.dungeon;
+  if (!t || !state.created || state.rift) return false;
+  if (((state.riftAt || {})[z.id] || 0) + RIFT_COOLDOWN_MS > nowMs()) return false;
+  if (d && d.zone === z.id && (d.rf || {})[`${x},${y}`]) return false;
+  return seededRng((seed || 1) * 131 + x * 6007 + y * 9241 + z.n * 50023)() < RIFT_APPEAR;
+}
+function riftMap(seed) { // 5×4 격자 위에 이어진 8칸. 0번이 입구, 입구에서 가장 먼 칸이 보스
+  const rnd = seededRng(seed), W = 5, H = 4, cells = [{ x: 0, y: rnd() * H | 0 }], has = (x, y) => cells.some(c => c.x === x && c.y === y);
+  for (let guard = 0; cells.length < RIFT_CELLS && guard < 500; guard++) { const b = cells[rnd() * cells.length | 0], [dx, dy] = [[1, 0], [1, 0], [0, 1], [0, -1], [-1, 0]][rnd() * 5 | 0], x = b.x + dx, y = b.y + dy;
+    if (x >= 0 && x < W && y >= 0 && y < H && !has(x, y)) cells.push({ x, y }); }
+  const dist = cells.map(() => -1); dist[0] = 0; const q = [0];
+  while (q.length) { const i = q.shift(); cells.forEach((c, j) => { if (dist[j] < 0 && Math.abs(c.x - cells[i].x) + Math.abs(c.y - cells[i].y) === 1) { dist[j] = dist[i] + 1; q.push(j); } }); }
+  const boss = dist.indexOf(Math.max(...dist));
+  return cells.map((c, i) => ({ x: c.x, y: c.y, k: i === 0 ? 'start' : i === boss ? 'boss' : 'room', done: false, seen: i === 0 }));
+}
+function riftEnter(zoneId) {
+  const d = state.dungeon, z = d && zoneOf(d.zone); if (!d || d.zone !== zoneId || !riftShown(z, d.x, d.y, d.seed)) return '이 칸에는 균열이 보이지 않습니다.';
+  const seed = (Math.floor(nowMs() / 1000) ^ (d.x * 977 + d.y * 131)) >>> 0 || 1;
+  d.rf = d.rf || {}; d.rf[`${d.x},${d.y}`] = 1; state.riftAt = state.riftAt || {}; state.riftAt[z.id] = nowMs();
+  state.rift = { zone: z.id, ox: d.x, oy: d.y, seed, cells: riftMap(seed), pos: 0, left: RIFT_COST, lv: state.character.level, boss: false, log: ['균열 속으로 들어섰다. 공기가 묵직하게 일렁인다.'] };
+  riftReveal(); save(); return null;
+}
+function riftAdj(a, b) { return Math.abs(a.x - b.x) + Math.abs(a.y - b.y) === 1; }
+function riftReveal() { const r = state.rift; if (!r) return; const p = r.cells[r.pos]; p.seen = true; r.cells.forEach(c => { if (riftAdj(c, p)) c.seen = c.seen || 'near'; }); }
+function riftMove(i) { const r = state.rift; if (!r) return '균열 안이 아닙니다.'; const c = r.cells[i]; if (!c || i === r.pos || !(riftAdj(c, r.cells[r.pos]) || c.seen === true)) return '옆 칸이나 가 본 칸으로만 갈 수 있어요.'; r.pos = i; riftReveal(); save(); return null; }
+function riftLog(t) { const r = state.rift; if (r) { r.log.push(t); r.log = r.log.slice(-30); } }
+function riftInvestigate() { // 조사: 행동 1번. 좋은 일(CR·EXP·가호) 또는 나쁜 일(HP·기력·멀미)
+  const r = state.rift; if (!r) return { err: '균열 안이 아닙니다.' }; const c = r.cells[r.pos];
+  if (c.k !== 'room') return { err: '여기는 조사할 것이 없어요.' }; if (c.done) return { err: '이미 조사한 칸이에요.' }; if (r.left <= 0) return { err: '행동 기회를 모두 썼어요.' };
+  r.left--; c.done = true; const lv = r.lv, v = state.vitals, luk = totalStats().luk || 0, good = Math.random() < RIFT_GOOD + Math.min(.15, luk * .005);
+  let t;
+  const rare = riftRare();
+  if (good) { const k = Math.random();
+    if (rare && k < RIFT_RARE_P) { const q = Math.random() < .3 ? 2 : 1, got = addItem(rare, q), box = got < q ? lostBoxPut(rare, q - got) : 0; discover('items', rare); t = `틈새에 낀 ${rare}을(를) 찾았다! (${rare} ×${q}${box ? ', 가방이 가득 차 분실물 보관함으로' : ''})`; }
+    else if (k < RIFT_RARE_P + (1 - RIFT_RARE_P) * .35) { const n = Math.round(30 + lv * 8 + Math.random() * (20 + lv * 4)); state.money += n; t = `반짝이는 잔해 속에서 크레딧 칩을 찾았다. (+${n} CR)`; }
+    else if (k < RIFT_RARE_P + (1 - RIFT_RARE_P) * .75) { const n = Math.round(25 + lv * 6); gainExp(n); t = `벽에 새겨진 낯선 문양을 읽어 냈다. (EXP +${n})`; }
+    else { addBuff('균열의 가호'); t = '푸른 빛이 몸에 스며든다. (균열의 가호: 모든 능력치 +1, 1시간)'; } }
+  else { const k = Math.random();
+    if (k < .4) { const n = Math.min(Math.max(0, v.hp - 1), Math.round(6 + lv * .6)); v.hp -= n; t = `발밑이 꺼지며 날카로운 파편에 베였다. (HP -${n})`; }
+    else if (k < .8) { const n = Math.min(v.sp, Math.round(5 + lv * .4)); v.sp -= n; t = `일렁이는 공기에 기운이 빠져나간다. (기력 -${n})`; }
+    else { addBuff('균열 멀미'); t = '뒤틀린 공간에 속이 울렁거린다. (균열 멀미: 민첩·감각 -1, 1시간)'; } }
+  if (good) { const wp = riftWeapon(RIFT_WEAPON_P.inv); if (wp) t += ` 그리고… 바닥에 박힌 ${wp}을(를) 뽑아 들었다!`; }
+  riftLog(t); save(); return { text: t, good, out: r.left <= 0 };
+}
+function riftBossFighters() { // 보스: 내 능력치를 바탕으로 레벨에 맞춰 강해진다 (대련 duelSim 형식)
+  const r = state.rift, me = { team: 1, me: true, ...duelClean(duelSnap(), state.character.name) }, rnd = seededRng(r.seed * 7 + 3), lv = r.lv;
+  const name = RIFT_BOSSES[r.seed % RIFT_BOSSES.length], main = DUEL_STATS[rnd() * DUEL_STATS.length | 0];
+  const st = {}; DUEL_STATS.forEach(k => { st[k] = Math.max(0, Math.round((me.st && me.st[k] || 0) * .8 + lv * .25)); });
+  const bmax = Math.round(Math.max(60, me.hp * (1 + lv * .015))), bhp = r.bossHp > 0 ? Math.min(bmax, r.bossHp) : bmax;
+  const boss = { team: 2, hpMax: bmax, ...duelClean({ name, lv, hp: bhp, atk: Math.round(Math.max(3, me.atk * (.8 + lv * .008)) * 10) / 10, ev: Math.min(.3, .05 + lv * .004), main, sub: '', st, win: '균열은… 닫히지 않는다…', lose: '돌아가라. 여기는 네 자리가 아니다.' }, name) };
+  boss.hp = bhp; // duelClean의 최소 체력(20)보다 적게 남았어도 그대로
+  return [me, boss];
+}
+function riftBoss() { // 보스전: 행동 1번. 결과는 시드로 지금 정해지고 보상도 바로 받는다 (화면은 대련처럼 보여 줌)
+  const r = state.rift; if (!r) return { err: '균열 안이 아닙니다.' }; const c = r.cells[r.pos];
+  if (c.k !== 'boss') return { err: '보스는 가장 깊은 칸에 있어요.' }; if (r.boss) return { err: '이미 쓰러뜨렸어요.' }; if (r.left <= 0) return { err: '행동 기회를 모두 썼어요.' };
+  r.left--; const fs = riftBossFighters(), seed = ((r.seed * 31 + 17) ^ (r.left * 7919)) >>> 0 || 1, sim = duelSim(fs, seed), win = sim.win === 1, lv = r.lv;
+  let t;
+  if (win) { r.boss = true; r.bossHp = 0; const exp = Math.round(50 + lv * 10); gainExp(exp); const rare = riftRare(); let got = '';
+    if (rare && Math.random() < .6) { const q = 2 + (Math.random() < .4 ? 1 : 0), a = addItem(rare, q), box = a < q ? lostBoxPut(rare, q - a) : 0; discover('items', rare); got = `${rare} ×${q}${box ? ' (일부는 분실물 보관함으로)' : ''}`; }
+    else { const cr = Math.round(80 + lv * 15); state.money += cr; got = `+${cr} CR`; }
+    const wp = riftWeapon(RIFT_WEAPON_P.boss); var reward = [got, `EXP +${exp}`, ...(wp ? [`전리품 무기 ${wp}`] : [])]; t = `${fs[1].name}을(를) 쓰러뜨렸다! (${reward.join(', ')})`; }
+  else { const v = state.vitals, n = Math.min(Math.max(0, v.hp - 1), 4 + Math.floor(Math.random() * 3)); v.hp -= n;
+    r.bossHp = Math.max(1, Math.round(Array.isArray(sim.hp) ? sim.hp[1] : fs[1].hp)); var reward = [`HP -${n}`, `보스 남은 체력 ${r.bossHp}/${fs[1].hpMax}`]; t = `${fs[1].name}에게 밀려났다… (HP -${n}) 보스의 남은 체력 ${r.bossHp}/${fs[1].hpMax}`; }
+  riftLog(t); save(); return { text: t, win, fs, seed, reward };
+}
+function riftRare() { // 균열이 열린 원래 칸 지형의 희귀 재료 (예: 코코넛)
+  const r = state.rift, z = r && zoneOf(r.zone); if (!z) return null; const t = z.terrains[terrainIndex(tileOf(z, r.ox, r.oy))]; return t && t.rare && ITEMS[t.rare] ? t.rare : null;
+}
+function riftWeapon(p) { // 그 구역 특징을 담은 무기를 확률로 (가방이 차면 분실물 보관함)
+  const r = state.rift, l = r && RIFT_WEAPONS[r.zone]; if (!l || Math.random() >= p) return ''; const n = l[Math.floor(Math.random() * l.length)][0];
+  if (!addItem(n, 1)) lostBoxPut(n, 1); discover('items', n); return n;
+}
+function riftExit() { const r = state.rift; if (!r) return; state.rift = null; save(); }
+function cleanRift(r) { // 저장 검증 (hardenState에서 쓰므로 function 선언)
+  if (!r || typeof r !== 'object' || !Array.isArray(r.cells) || r.cells.length < 2 || r.cells.length > 12) return null;
+  const cells = r.cells.map(c => ({ x: Math.max(0, Math.min(6, c.x | 0)), y: Math.max(0, Math.min(6, c.y | 0)), k: ['start', 'room', 'boss'].includes(c.k) ? c.k : 'room', done: !!c.done, seen: c.seen === 'near' ? 'near' : !!c.seen }));
+  return { zone: typeof r.zone === 'string' ? r.zone : '', ox: r.ox | 0, oy: r.oy | 0, seed: (r.seed >>> 0) || 1, cells, pos: Math.max(0, Math.min(cells.length - 1, r.pos | 0)), left: Math.max(0, Math.min(RIFT_COST, r.left | 0)), lv: Math.max(1, Math.min(99, r.lv | 0)), boss: !!r.boss, bossHp: Math.max(0, Math.min(99999, r.bossHp | 0)), log: (Array.isArray(r.log) ? r.log : []).filter(x => typeof x === 'string').slice(-30).map(x => x.slice(0, 200)) };
 }
