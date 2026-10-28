@@ -309,6 +309,10 @@ function tileMats(z, t, x, y, seed) {
   const bm = ACTIONS[tileBattleId(z, t, x, y, seed)];
   return `[채집] ${gids.length ? gids.join(' · ') : '없음'}${t.rare ? ` [희귀] ${t.rare}` : ''} [출몰] ${bm && bm.monster ? bm.monster.name : t.monster.name}`;
 }
+function tileNames(z, t, x, y, seed) { // 그 칸에 실제로 나오는 재료·희귀·몬스터 이름 (지도 검색용)
+  const sp = spotAt(z, x, y), bm = ACTIONS[tileBattleId(z, t, x, y, seed)];
+  return [...(sp ? sp.fish : []), ...tileGatherIds(z, x, y, seed).map(id => ACTIONS[id] && ACTIONS[id].items && ACTIONS[id].items[0]).filter(Boolean), t.rare, bm && bm.monster ? bm.monster.name : t.monster.name].filter(Boolean);
+}
 const terrainMats = t => `[채집] ${t.gather.join(' · ')}${t.rare ? ` [희귀] ${t.rare}` : ''} [출몰] ${[...new Set(t.monsters.map(m => m.name))].join(' · ')}`;
 const zoneMats = zid => { const z = DANGER_ZONES.find(x => x.id === zid); return z ? [...new Set(z.terrains.flatMap(t => [...t.gather, t.rare, ...t.monsters.map(m => m.name)].filter(Boolean)))] : []; };
 function renderMapSearch(hits) { // 검색 결과 안내
@@ -379,7 +383,7 @@ function renderDungeon() {
     const ti = terrainIndex(ch), info = tileInfo(z, ch, x, y, true), me = d.x === x && d.y === y;
     const evDone = ch === 'E' && d.done.includes(eventIndex(z, x, y)), going = dest && dest[0] === x && dest[1] === y;
     const glyph = me ? '<i class="pawn"></i>' : ch === 'S' ? icon('logout') : ch === 'C' ? icon('camping') : ch === 'E' ? icon(evDone ? 'check' : 'priority_high') : ch === '?' ? icon('question_mark') : info.spot ? icon('phishing') : ti >= 0 ? icon(z.terrains[ti].icon) : '';
-    const hl = ti >= 0 && mq && matTerrains(z, mq).includes(ti); if (hl) hlCount++;
+    const hl = ti >= 0 && mq && tileNames(z, z.terrains[ti], x, y, d.seed).some(n => n.toLowerCase().includes(mq)); if (hl) hlCount++; // 지형 전체가 아니라 그 칸에 실제로 나오는 것만
     const unv = !me && !(state.visited[d.zone] || {})[`${x},${y}`]; // 보이기만 하고 밟아 본 적 없는 칸은 흑백
     const cls = `tile floor ${unv ? 'unvisited' : ''} ${hl ? 'hl' : ''} ${ti >= 0 ? 't' + ti : ''} ${ch === 'C' ? 'camp' : ''} ${info.spot ? 'spot' : ''} ${ch === 'E' ? 'ev' : ''} ${ch === '?' ? 'qm' : ''} ${evDone ? 'done' : ''} ${ch === 'S' ? 'start' : ''} ${me ? 'me' : ''} ${going ? 'going' : ''}`;
     const tip = `data-tip-title="${esc(info.name)}" data-tip-desc="${esc(info.desc + (info.terrain ? ' ' + tileMats(z, info.terrain, x, y, d.seed) : ''))}"`;
@@ -690,9 +694,9 @@ function renderSituation() { // '상황' 탭: 접을 수 있는 두 칸 — 주�
   const box = $('#sideView'), old = box.querySelector('#todoIn'), keep = old ? { v: old.value, f: document.activeElement === old } : null, so = state.sitOpen || { near: true, todo: true, party: true };
   const head = (k, title, extra) => `<button class="sit-head" data-act="sit-toggle" data-k="${k}" aria-expanded="${!!so[k]}">${icon(so[k] ? 'expand_more' : 'chevron_right')}<b>${title}</b>${extra ? `<small>${extra}</small>` : ''}</button>`;
   const pm = PARTY.members.filter(m => m.name !== state.character.name);
-  const nearP = pm.map(m => `<div class="nearby-row"><div class="round-avatar" data-user="${esc(m.name)}">${avatarOf(m.name)}</div><div class="grow"><strong data-user="${esc(m.name)}">${esc(m.name)}</strong><small>파티${m.leader ? ' · 파티장' : ''} · 주위 대원 · ${m.online ? '접속 중' : '오프라인'}</small></div><button data-act="ftrade-open" data-name="${esc(m.name)}">교환</button></div>`).join('');
+  const nearP = pm.map(m => `<div class="nearby-row"><div class="round-avatar" ${userAttr(m.name, m.uid)}>${avatarOf(m.name, m.uid)}</div><div class="grow"><strong ${userAttr(m.name, m.uid)}>${esc(m.name)}</strong><small>파티${m.leader ? ' · 파티장' : ''} · 주위 대원 · ${m.online ? '접속 중' : '오프라인'}</small></div><button data-act="ftrade-open" data-name="${esc(m.name)}">교환</button></div>`).join('');
   const pn = new Set(pm.map(m => m.name)), np = (view.nearby || []).filter(p => !pn.has(p.name));
-  const nearSrv = np.map(p => `<div class="nearby-row"><div class="round-avatar" data-user="${esc(p.name)}">${avatarOf(p.name)}</div><div class="grow"><strong data-user="${esc(p.name)}">${esc(p.name)}</strong><small>같은 칸 · 접속 중</small></div><button data-act="ftrade-open" data-name="${esc(p.name)}">교환</button></div>`).join('');
+  const nearSrv = np.map(p => `<div class="nearby-row"><div class="round-avatar" ${userAttr(p.name, p.uid)}>${avatarOf(p.name, p.uid)}</div><div class="grow"><strong ${userAttr(p.name, p.uid)}>${esc(p.name)}</strong><small>같은 칸 · 접속 중</small></div><button data-act="ftrade-open" data-name="${esc(p.name)}">교환</button></div>`).join('');
   const nearAll = NEARBY_PLAYERS.length + pm.length + np.length;
   const partyBody = partyOn() ? (PARTY.id ? `<div class="party-list">${PARTY.members.map(m => `<div class="party-row"><span>${icon(m.leader ? 'workspace_premium' : 'person')}</span><b data-user="${esc(m.name)}">${esc(m.name)}</b>${m.leader ? '<em class="tag">파티장</em>' : ''}<small class="party-st">${esc(partyStatus(m))}</small>${partyLeader() && m.uid !== Cloud.userUid ? `<button data-act="party-kick" data-uid="${esc(m.uid)}" data-name="${esc(m.name)}" title="파티에서 내보냅니다">내보내기</button>` : ''}</div>`).join('')}</div>${partyLeader() ? `<div class="party-follow"><button class="${state.partyMove ? 'primary' : ''}" data-act="partymove-toggle" aria-pressed="${state.partyMove}">${icon('groups')} 파티 이동 ${state.partyMove ? '켜짐' : '꺼짐'}</button><small>${esc(state.partyMove ? '동행 모드를 켠 파티원이 내가 움직이면 따라와요.' : '켜야 동행 모드를 켠 파티원이 함께 움직여요.')}${paceSec() < stepSec() - .5 ? esc(` · 이동 속도를 파티에서 가장 빠른 사람에 맞춰 한 칸 ${Math.round(paceSec())}초`) : ''}</small></div>` : `<div class="party-follow"><button class="${state.follow ? 'primary' : ''}" data-act="follow-toggle" aria-pressed="${state.follow}">${icon('directions_walk')} 동행 모드 ${state.follow ? '켜짐' : '꺼짐'}</button><small>${esc(state.follow ? (view.followMsg || '파티장을 기다리는 중이에요.') : '켜 두면 파티장이 파티 이동을 켰을 때 따라가요.')}${paceSec() < stepSec() - .5 ? esc(` · 이동 속도를 파티에서 가장 빠른 사람에 맞춰 한 칸 ${Math.round(paceSec())}초`) : ''}</small></div>`}<div class="party-foot"><small>${PARTY.members.length}/4명 · 파티원은 항상 주위 대원이에요</small><button data-act="party-leave">나가기</button></div>` : '<div class="empty">파티가 없습니다. 친구 창이나 대원 프로필에서 초대해 보세요. (2~4명)</div>')
     + (PARTY.invites.length ? `<div class="party-inv">${PARTY.invites.map(r => `<div class="party-row"><span>${icon('mail')}</span><b>${esc(r.name)}</b><small>의 파티 초대</small><button class="primary" data-act="party-answer" data-id="${r.id}" data-ok="1">수락</button><button data-act="party-answer" data-id="${r.id}" data-ok="0">거절</button></div>`).join('')}</div>` : '') : '<div class="empty">파티는 서버에 로그인하면 쓸 수 있어요.</div>';
@@ -712,7 +716,7 @@ const SYSTEM_SPEAKERS = { '관제 시스템': 'smart_toy', '시스템': 'smart_t
 const FACE_ICONS = ['face', 'face_2', 'face_3', 'face_4', 'face_5', 'face_6'];
 const speakerIcon = n => SYSTEM_SPEAKERS[n] || 'person'; // 프로필 이미지가 없는 유저는 모두 같은 사람 모양 아이콘(성별 구분 없음)
 /* ---- 대원 아이콘: 각자 설정한 프로필 이미지(서버에 64px로 올려 둔 것)를 보여 주고, 없으면 기본 얼굴 아이콘 ---- */
-view.unread = {}; view.avatars = {};
+view.unread = {}; view.avatars = {}; view.avatarsU = {}; view.avWantU = new Set();
 /* 안 읽은 채팅: 탭마다 마지막으로 본 메시지 번호(이 기기에 저장). 그보다 새 남의 메시지 수가 배지. 탭을 보면 그 탭은 0 (다시 받아 와도 다시 뜨지 않는다) */
 const CHAT_SEEN = 'deeplayer-chatseen';
 view.chatSeen = (() => { try { const o = JSON.parse(localStorage.getItem(CHAT_SEEN)); return o && typeof o === 'object' ? o : {}; } catch (e) { return {}; } })();
@@ -731,15 +735,20 @@ const CHAT_CH = { '월드': 'world', '길드': 'guild', '파티': 'party', 'RP':
 })();
 function saveChatCache() { try { localStorage.setItem(CHAT_CACHE, JSON.stringify({ u: Cloud.user(), '월드': { rows: view.chatSrv['월드'].slice(-CHAT_KEEP) }, '길드': { rows: view.chatSrv['길드'].slice(-CHAT_KEEP) }, 'RP': { rows: view.chatSrv['RP'].slice(-CHAT_KEEP) } })); } catch (e) { /* 저장 불가 */ } }
 const chatOnline = () => Cloud.enabled && !!Cloud.user();
-function avatarOf(name) {
-  const n = String(name || ''), mine = n === '나' || (state.character.name && n === state.character.name);
+const UID_RE = /^[0-9a-f-]{36}$/i;
+function avatarOf(name, uid) { // uid가 있으면 계정 기준(같은 이름의 다른 대원과 섞이지 않게), 없으면 이름 기준
+  const n = String(name || ''), u = !view._noAvU && UID_RE.test(uid || '') ? uid : '', mine = n === '나' || (u ? u === Cloud.userUid : state.character.name && n === state.character.name);
   if (SYSTEM_SPEAKERS[n]) return icon(SYSTEM_SPEAKERS[n]);
-  const img = mine ? getAvatar() : view.avatars[n];
+  const img = mine ? getAvatar() : u ? view.avatarsU[u] : view.avatars[n];
   if (img && /^data:image\/(webp|jpeg|png);base64,[A-Za-z0-9+/=]+$/.test(img)) return `<img src="${esc(img)}" alt="">`;
-  if (!mine && chatOnline() && !(n in view.avatars) && n) { view.avWant.add(n); clearTimeout(view.avT); view.avT = setTimeout(fetchAvatars, 250); }
+  if (!mine && chatOnline() && n) { if (u) { if (!(u in view.avatarsU)) { view.avWantU.add(u); clearTimeout(view.avT); view.avT = setTimeout(fetchAvatars, 250); } } else if (!(n in view.avatars)) { view.avWant.add(n); clearTimeout(view.avT); view.avT = setTimeout(fetchAvatars, 250); } }
   return icon('person');
 }
+const userAttr = (name, uid) => `data-user="${esc(name)}"${UID_RE.test(uid || '') ? ` data-uid="${esc(uid)}"` : ''}`;
 async function fetchAvatars() { // 아직 모르는 대원의 이미지를 한꺼번에 가져온다 (없는 대원도 '없음'으로 기억해 다시 묻지 않는다)
+  const uids = [...view.avWantU].slice(0, 40); view.avWantU.clear();
+  if (uids.length && chatOnline()) { try { const got = await Cloud.getAvatarsUid(uids); uids.forEach(u => { view.avatarsU[u] = got && typeof got[u] === 'string' ? got[u] : ''; }); }
+    catch (e) { if (/404|PGRST202|Could not find/i.test(String(e && e.message))) { view._noAvU = true; uids.forEach(u => { delete view.avatarsU[u]; }); } else uids.forEach(u => { view.avatarsU[u] = ''; }); } renderChat(); /* 서버에 새 함수가 없으면 예전처럼 이름으로 */ $$('[data-uid] .round-avatar, .round-avatar[data-uid], .msg-ava[data-uid]').forEach(el => { const u = el.dataset.uid || (el.closest('[data-uid]') || {}).dataset?.uid; if (u && view.avatarsU[u]) el.innerHTML = avatarOf('?', u); }); }
   const names = [...view.avWant].slice(0, 40); view.avWant.clear(); if (!names.length || !chatOnline()) return;
   try {
     const got = await Cloud.getAvatars(names);
@@ -759,7 +768,7 @@ setInterval(async () => { // 끝까지 못 본 대련 판돈 정산 · 오래 �
   }
   if (ch) { renderProfile(); renderInventory(); }
 }, 30000);
-setInterval(() => { view.avatars = {}; }, 10 * 60 * 1000); // 10분마다 새로 받아 다른 대원이 바꾼 이미지도 반영
+setInterval(() => { view.avatars = {}; view.avatarsU = {}; }, 10 * 60 * 1000); // 10분마다 새로 받아 다른 대원이 바꾼 이미지도 반영
 async function smallAvatar(dataUrl, px = 64, max = 19000) { // 서버에는 64px 작은 이미지(채팅·목록) + 크게 보기용 300px 이미지를 따로 올린다
   const img = await new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = no; i.src = dataUrl; });
   const k = Math.min(1, px / Math.max(img.width, img.height, 1)), cv = document.createElement('canvas'); cv.width = Math.max(1, Math.round(img.width * k)); cv.height = Math.max(1, Math.round(img.height * k));
@@ -838,7 +847,7 @@ function renderChat() {
     const st = /^\[(.+)\]$/.exec(m), sticker = st && (STICKERS.find(x => x[0] === st[1]) || STICKERS_OLD.find(x => x[0] === st[1]));
     const body = sticker ? `<div class="bubble sticker-msg" title="${esc(sticker[0])}">${icon(sticker[1])}</div>` : `<div class="bubble">${esc(m)}</div>`;
     const mine = n === '나' || (!!uid && uid === Cloud.userUid), who = mine ? (state.character.name || '나') : n;
-    return `<div class="msg ${mine ? 'mine' : 'other'}"><div class="msg-ava" data-user="${esc(mine ? '나' : n)}">${avatarOf(mine ? '나' : n)}</div><div class="msg-main"><span class="msg-name" data-user="${esc(mine ? '나' : n)}">${esc(who)}</span>${tm ? `<time class="msg-time">${esc(tm)}</time>` : ''}${state.chatTab === '알림' && canNotice() && (view.nIds || {})[n + '\n' + m] ? `<button class="msg-del" data-act="notice-del" data-id="${(view.nIds || {})[n + '\n' + m]}" title="이 공지 삭제" aria-label="공지 삭제">${icon('delete')}</button>` : ''}${body}</div></div>`; // 컴팩트 한 줄 형식: 아이콘 · 이름 · 내용 (내 이름은 색이 다르다)
+    return `<div class="msg ${mine ? 'mine' : 'other'}"><div class="msg-ava" ${userAttr(mine ? '나' : n, mine ? '' : uid)}>${avatarOf(mine ? '나' : n, mine ? '' : uid)}</div><div class="msg-main"><span class="msg-name" ${userAttr(mine ? '나' : n, mine ? '' : uid)}>${esc(who)}</span>${tm ? `<time class="msg-time">${esc(tm)}</time>` : ''}${state.chatTab === '알림' && canNotice() && (view.nIds || {})[n + '\n' + m] ? `<button class="msg-del" data-act="notice-del" data-id="${(view.nIds || {})[n + '\n' + m]}" title="이 공지 삭제" aria-label="공지 삭제">${icon('delete')}</button>` : ''}${body}</div></div>`; // 컴팩트 한 줄 형식: 아이콘 · 이름 · 내용 (내 이름은 색이 다르다)
   }).join('');
   const feed = $('#chatFeed'); if (feed.dataset.tab !== tab || view.chatHtml !== feedHtml) { view.chatHtml = feedHtml; feed.dataset.tab = tab; feed.innerHTML = feedHtml; feed.scrollTop = feed.scrollHeight; } // 바뀐 게 없으면 다시 그리지 않는다 (오래 켜 둘 때 이미지 다시 읽기 방지)
 }
@@ -964,7 +973,7 @@ async function openBackups() {
   catch (e) { modal('서버 백업', '<p class="detail-desc">백업 목록을 불러오지 못했어요. 서버에 <b>supabase/backups.sql</b>을 한 번 실행해야 해요.</p>', ['<button data-act="close">닫기</button>'], true); return; }
   const when = at => { const d = new Date(at); return Number.isNaN(+d) ? '' : d.toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }); };
   const rows = list.map(b => `<div class="nearby-row"><div class="grow"><strong>${esc(when(b.at))} <span class="tag">${esc(BACKUP_KIND[b.kind] || '자동')}</span></strong><small>${esc(cleanText(b.name, 12) || '-')} · Lv.${esc(String(intIn(b.level, 0, 999, 0)))} · ${esc(String(intIn(b.money, 0, 99999999, 0)))} CR</small></div><button data-act="backup-restore" data-id="${esc(String(intIn(b.id, 0, 9e15, 0)))}">불러오기</button><button class="danger" data-act="backup-delete" data-id="${esc(String(intIn(b.id, 0, 9e15, 0)))}">삭제</button></div>`).join('');
-  modal('서버 백업', `<p class="tiny">서버 저장이 덮어써지기 전의 진행을 유저별로 최대 12개까지 보관해요. (6시간마다 자동, 캐릭터가 사라지는 덮어쓰기 직전에는 항상)</p>` +
+  modal('서버 백업', `<p class="tiny">서버 저장이 덮어써지기 전의 진행을 유저별로 최대 4개까지 보관하고, 넘으면 가장 오래된 것부터 지워요. (6시간마다 자동, 캐릭터가 사라지는 덮어쓰기 직전에는 항상)</p>` +
     (rows || '<div class="empty">아직 백업이 없어요. 서버에 저장된 진행이 있다면 \'지금 백업\'을 눌러 보세요.</div>'),
     ['<button data-act="close">닫기</button>', '<button class="primary" data-act="backup-now">지금 백업</button>'], true);
 }
@@ -1334,7 +1343,7 @@ function openFriends(noPoll) {
   Object.keys(view.avatars).forEach(k => { if (!view.avatars[k]) delete view.avatars[k]; }); // 못 찾았던 이름은 창을 열 때 다시 물어본다
   renderMailBadge();
   const on = Cloud.enabled && Cloud.user(), master = !!(state.guild && state.guild.master) && guildOnline();
-  const list = state.friends.map(n => { const uid = (view.friendUid || {})[n]; return `<div class="nearby-row"><div class="round-avatar" data-user="${esc(n)}">${avatarOf(n)}</div><div class="grow"><strong data-user="${esc(n)}">${esc(n)}</strong><small class="${on && (view.friendOnline || {})[n] ? 'st-on' : on ? 'st-off' : ''}">${esc(on ? ((view.friendOnline || {})[n] === undefined ? '확인 중…' : view.friendOnline[n] ? '온라인' : '오프라인') : (samplePlayer(n) || ['', '온라인'])[1])}</small></div><div class="row-btns">` +
+  const list = state.friends.map(n => { const uid = (view.friendUid || {})[n]; return `<div class="nearby-row"><div class="round-avatar" ${userAttr(n, uid)}>${avatarOf(n, uid)}</div><div class="grow"><strong data-uid="${esc(uid || '')}" data-user="${esc(n)}">${esc(n)}</strong><small class="${on && (view.friendOnline || {})[n] ? 'st-on' : on ? 'st-off' : ''}">${esc(on ? ((view.friendOnline || {})[n] === undefined ? '확인 중…' : view.friendOnline[n] ? '온라인' : '오프라인') : (samplePlayer(n) || ['', '온라인'])[1])}</small></div><div class="row-btns">` +
     `<button data-act="friend-mail" data-name="${esc(n)}">메일</button>` +
     (on ? `<button data-act="party-invite" data-uid="${esc(uid || '')}" data-name="${esc(n)}" ${uid && (!PARTY.id || partyLeader()) ? '' : 'disabled'} title="${!PARTY.id || partyLeader() ? '파티에 초대합니다 (2~4명)' : '파티장만 초대할 수 있어요'}">파티 초대</button>` : '') +
     `<button data-act="friend-guild-invite" data-name="${esc(n)}" ${master && uid ? '' : 'disabled'} title="${master ? '길드에 초대합니다' : '길드장만 초대할 수 있어요'}">길드 초대</button>` +
@@ -1843,11 +1852,14 @@ const A = {
   'rift-cell': el => { const e = riftMove(intIn(el.dataset.i, 0, 20, 0)); if (e) { toast(e); return; } sfx('click'); renderMapHead(); renderMap(); renderAction(); },
   'rift-inv': () => { const r = riftInvestigate(); if (r.err) { toast(r.err); return; } toast(r.text); sfx(r.good ? 'ok' : 'error'); renderProfile(); renderBars(); renderBuffs && renderBuffs(); if (r.out) riftDone('행동 기회를 모두 썼어요. 균열이 닫히며 원래 자리로 돌아왔어요.'); else { renderMapHead(); renderMap(); renderAction(); } },
   'rift-boss': () => { const r = riftBoss(); if (r.err) { toast(r.err); return; }
-    modal('균열 보스전', duelRoomHtml({ id: 0 }, r.fs), [btnClose]); duelPlay(r.fs, r.seed, 0); addLog(`균열 보스전: ${r.text}`);
-    { const show = () => { const end = $('#duelEnd'); if (!end) return; if (!end.querySelector('.duel-result')) { setTimeout(show, 300); return; } // 연출이 끝나면 얻은 것을 보여 준다
-        end.insertAdjacentHTML('afterbegin', `<div class="rift-reward ${r.win ? 'win' : 'lose'}"><b>${r.win ? '🎁 획득' : '패배'}</b> ${(r.reward || []).map(x => `<span class="chip">${esc(x)}</span>`).join(' ')}</div>`); toast(r.win ? `획득: ${(r.reward || []).join(', ')}` : r.text); }; show(); }
-    const out = r.win || !state.rift || state.rift.left <= 0; renderProfile(); renderBars();
-    if (out) riftDone(r.win ? '보스를 쓰러뜨렸어요! 균열이 닫히며 원래 자리로 돌아왔어요.' : '행동 기회를 모두 썼어요. 균열이 닫히며 원래 자리로 돌아왔어요.', true); else { renderMapHead(); renderMap(); renderAction(); } },
+    r.out = r.win || !state.rift || state.rift.left <= 0;
+    modal('균열 보스전', duelRoomHtml({ id: 0 }, r.fs), [btnClose]); duelPlay(r.fs, r.seed, 0);
+    const finish = () => { addLog(`균열 보스전: ${r.text}`); renderProfile(); renderBars(); if (r.out) riftDone(''); else { renderMapHead(); renderMap(); renderAction(); }
+      toast(r.win ? `보스를 쓰러뜨렸어요! 획득: ${(r.reward || []).join(', ')}` : r.text); if (r.out) setTimeout(() => toast(r.win ? '균열이 닫히며 원래 자리로 돌아왔어요.' : '행동 기회를 모두 썼어요. 균열이 닫히며 원래 자리로 돌아왔어요.'), 1800); };
+    const show = () => { const end = $('#duelEnd'); if (!end) { finish(); return; } // 창을 먼저 닫았으면 바로 알린다
+      if (!end.querySelector('.duel-result')) { setTimeout(show, 300); return; } // 승패는 연출이 끝난 뒤에만 보여 준다 (그 전엔 화면·알림 모두 그대로)
+      end.insertAdjacentHTML('afterbegin', `<div class="rift-reward ${r.win ? 'win' : 'lose'}"><b>${r.win ? '🎁 획득' : '패배'}</b> ${(r.reward || []).map(x => `<span class="chip">${esc(x)}</span>`).join(' ')}</div>`); finish(); };
+    show(); },
   'rift-exit': () => riftDone('균열에서 나왔어요.'),
   'cw-min': () => { const w = $('#cardWin'); if (w) { cwSave(); w.classList.add('min'); } },
   'cw-restore': () => { const w = $('#cardWin'); if (w) w.classList.remove('min'); },
@@ -2078,7 +2090,8 @@ const A = {
   /* 캐릭터 / 설정 */
   'profile-edit': () => { if (profileLockLeft() > 0) return; view.profEdit = true; openProfile(true); },
   'profile-edit-cancel': () => { view.profEdit = false; openProfile(); },
-  'char-save': () => {
+  'char-save': async () => {
+    { const nn = cleanText(($('#cName') || {}).value || '', 12); if (nn && nn !== state.character.name && profileLockLeft() <= 0 && chatOnline() && !(await nameFree(nn))) return; } // 같은 이름의 대원이 이미 있으면 바꿀 수 없다
     const c = state.character, left = profileLockLeft();
     if (left > 0) { // 쿨타임 중에도 주·부 스탯이 아직 비어 있으면 그것만 정할 수 있다 (수정 시각은 건드리지 않는다)
       if (c.mainStat || c.subStat) { toast(`프로필은 ${fmtLong(left)} 뒤에 다시 수정할 수 있어요.`); return; }
@@ -2404,14 +2417,18 @@ function otherEquipHtml(eq, who) { // 다른 대원의 착용 장비 (서버가 
   return `<div class="choice-label equip-head"><span>착용 장비</span>${who ? roomPeekBtn(who) : ''}</div><div class="equip-wrap other-equip"><div class="equip-grid">${EQUIP_SMALL.map(s => cell(s)).join('')}</div><div class="equip-big">${EQUIP_BIG.map(s => cell(s, true)).join('')}</div></div>`;
 }
 const myCard = () => { const c = state.character; return { name: c.name, online: true, level: c.level, rank: c.rank, ability: c.ability, abilityDesc: c.abilityDesc, title: c.title, age: c.age, guild: state.guild ? state.guild.name : '', keywords: c.keywords, equipment: state.equipment, mainStat: c.mainStat, subStat: c.subStat }; };
-async function viewUser(name) { // 이름·아이콘을 누르면 그 대원의 프로필을 보여준다. 나도 남이 보는 것과 같은 화면 (편집은 왼쪽 위 내 사진을 눌렀을 때만)
-  const me = name === '나' || name === state.character.name; if (me) name = state.character.name;
+async function nameFree(name) { // 서버에 같은 이름의 다른 대원이 있는가 (확인할 수 없으면 막지 않는다)
+  try { if (await Cloud.nameTaken(name)) { toast('이미 다른 대원이 쓰고 있는 이름이에요. 다른 이름을 골라 주세요.'); sfx('error'); return false; } } catch (e) { /* 서버에 friends.sql 최신본이 없으면 확인하지 않는다 */ }
+  return true;
+}
+async function viewUser(name, knownUid) { // 이름·아이콘을 누르면 그 대원의 프로필을 보여준다. 나도 남이 보는 것과 같은 화면 (편집은 왼쪽 위 내 사진을 눌렀을 때만)
+  const me = name === '나' || (UID_RE.test(knownUid || '') ? knownUid === Cloud.userUid : name === state.character.name); if (me) name = state.character.name;
   const cell = (k, v) => `<div class="uc"><span>${esc(k)}</span><b>${esc(v)}</b></div>`;
   const draw = (r, uid, note) => {
     const has = !me && state.friends.includes(name), p = samplePlayer(name), pr = r && r.ability !== undefined ? r : null;
     const st = r ? (r.online ? '온라인' : '자리 비움') : (REMOTE_PLAYERS[name] || (p && p[1]) || '알 수 없음');
     const kw = pr ? String(pr.keywords || '').split(',').map(t => t.trim()).filter(Boolean).map(t => '#' + cleanText(t, 10)).join(' ') : '';
-    modal('프로필', `<div class="user-card"><div class="round-avatar big zoomable" data-act="avatar-zoom" data-name="${esc(name)}" title="크게 보기">${avatarOf(name)}</div><div class="uc-name">${pr && pr.title ? `<span class="title-chip">${esc(cleanText(pr.title, 20))}</span>` : ''}<strong>${esc(name)}</strong></div>${pr ? `<div class="uc-ability"><b>${icon('bolt')} 이능력 · ${esc(cleanText(pr.ability, 20) || '미설정')}</b><p>${esc(cleanText(pr.abilityDesc, 300) || '이능력 설명이 없습니다.')}</p>${abilityStatChips({ mainStat: STAT_DEFS.some(d => d.key === pr.mainStat) ? pr.mainStat : '', subStat: STAT_DEFS.some(d => d.key === pr.subStat) && pr.subStat !== pr.mainStat ? pr.subStat : '' })}</div>` : ''}</div>` +
+    modal('프로필', `<div class="user-card"><div class="round-avatar big zoomable" data-act="avatar-zoom" data-name="${esc(name)}" title="크게 보기">${avatarOf(name, me ? '' : uid || knownUid)}</div><div class="uc-name">${pr && pr.title ? `<span class="title-chip">${esc(cleanText(pr.title, 20))}</span>` : ''}<strong>${esc(name)}</strong></div>${pr ? `<div class="uc-ability"><b>${icon('bolt')} 이능력 · ${esc(cleanText(pr.ability, 20) || '미설정')}</b><p>${esc(cleanText(pr.abilityDesc, 300) || '이능력 설명이 없습니다.')}</p>${abilityStatChips({ mainStat: STAT_DEFS.some(d => d.key === pr.mainStat) ? pr.mainStat : '', subStat: STAT_DEFS.some(d => d.key === pr.subStat) && pr.subStat !== pr.mainStat ? pr.subStat : '' })}</div>` : ''}</div>` +
       `<div class="user-grid">${cell('상태', st)}${r ? cell('레벨', 'Lv.' + intIn(r.level, 1, MAX_LEVEL, 1)) + cell('등급', ('FEDCBAS'.includes(r.rank) ? r.rank : 'F') + '등급') : ''}${pr ? cell('나이', intIn(pr.age, 0, 999, 0) + '세') : ''}${cell('관계', me ? '나' : has ? '친구' : '친구 아님')}${pr ? cell('길드', pr.guild ? cleanText(pr.guild, 12) : '-') : ''}</div>` +
       (kw ? `<div class="char-tags">${esc(kw)}</div>` : '') + (pr && pr.equipment ? otherEquipHtml(pr.equipment, name) : pr ? '<p class="tiny">장비 정보는 서버에 supabase/friends.sql 최신본을 실행하면 보여요.</p>' : '') +
       (pr ? '' : (Cloud.enabled && Cloud.user() ? `<p class="tiny">${esc(note || '자세한 프로필을 불러오는 중…')}</p>` : '<p class="tiny">서버에 로그인하면 이능력 등 자세한 프로필을 볼 수 있어요.</p>')),
@@ -2424,18 +2441,18 @@ async function viewUser(name) { // 이름·아이콘을 누르면 그 대원의 
   const ok = f => f && view.userShown === name && $('#overlay').classList.contains('open') && $('#modalBody').querySelector('.user-card');
   let why = '프로필을 찾지 못했어요. (닉네임이 바뀌었거나 없는 대원일 수 있어요)';
   try {
-    const f = await Cloud.getProfile(name);
+    const f = UID_RE.test(knownUid || '') ? await Cloud.getProfileUid(knownUid).catch(() => Cloud.getProfile(name)) : await Cloud.getProfile(name); // 계정을 알면 계정으로 (같은 이름의 다른 대원과 섞이지 않게)
     if (f && typeof f === 'object' && f.name) { if (ok(f)) draw(f, /^[0-9a-f-]{36}$/i.test(f.uid) ? f.uid : ''); return; }
   } catch (e) { why = '자세한 프로필(이능력 등)은 서버에 supabase/friends.sql 최신본을 실행해야 볼 수 있어요.'; }
   try {
-    const f = (await Cloud.searchPlayers(name)).find(r => r && cleanText(r.name, 12) === name);
+    const f = (await Cloud.searchPlayers(name)).find(r => r && cleanText(r.name, 12) === name && (!UID_RE.test(knownUid || '') || r.uid === knownUid));
     if (ok(f)) { draw(f, /^[0-9a-f-]{36}$/i.test(f.uid) ? f.uid : '', why); return; }
   } catch (e) { /* 서버 정보를 못 받아도 기본 정보는 보여준다 */ }
   if (ok(true)) draw(null, '', why);
 }
 document.addEventListener('click', e => {
   const u = e.target.closest('[data-user]');
-  if (u && !e.target.closest('button')) { viewUser(u.dataset.user); return; }
+  if (u && !e.target.closest('button')) { viewUser(u.dataset.user, u.dataset.uid); return; }
   const el = e.target.closest('[data-act]');
   if (el && !el.disabled && A[el.dataset.act]) A[el.dataset.act](el, e);
 });
@@ -3844,6 +3861,7 @@ $('#tutCreate').addEventListener('click', e => {
   if (b.id === 'ctNext') {
     if (!cleanText(cf.name, 12)) { toast('이름을 입력하세요.'); sfx('error'); return; }
     if (cf.age !== '' && !(Math.floor(+cf.age) >= AGE_MIN && Math.floor(+cf.age) <= AGE_MAX)) { toast(`나이는 ${AGE_MIN}~${AGE_MAX}세 사이로 입력하세요.`); sfx('error'); return; }
+    if (chatOnline()) { b.disabled = true; nameFree(cleanText(cf.name, 12)).then(ok => { b.disabled = false; if (!ok) return; cf.step = 2; renderCreate(); }); return; } // 같은 이름의 대원이 이미 있으면 막는다
     cf.step = 2; renderCreate();
   } else if (b.id === 'ctPrev') { cf.step = 1; renderCreate(); }
   else if (b.id === 'ctDone') {

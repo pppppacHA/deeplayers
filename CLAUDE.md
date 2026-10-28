@@ -355,3 +355,6 @@ STUB_ICONS=1 python3 tests/smoke.py   # 아이콘 폰트를 못 받는 환경(�
 - 균열 무기 이름 중복 수정(10/28): '화염장검'은 기존 '화염 장검'과 겹쳐 '분화구 열검'으로(LEGACY_ITEMS로 변환). feat_test no_near_duplicate_item_names(공백 무시 이름 중복 금지).
 - 10/28 (5): 축하 공지 확장 — S급 승급(rank:S, promo S → flags.annoS)·한계 돌파 Lv35(rank:LIMIT, 칭호 '한계를 넘어선' → flags.annoLimit), announceMore, 서버 announce_rank가 S·LIMIT 허용(friends.sql). 거래 '사기' 검색줄: 검색·새로고침(아이콘) 버튼을 검색창 오른쪽에 작게(.mk-search).
 - 10/28 (6): 묘사 없던 장비 55종 EQUIP_LINES(t 이동/b 전투) 보충 + EQUIP_SET_LINES 메이드·트레이너 세트. 장비 추가 시 EQUIP_LINES도 함께 (feat_test every_gear_has_equip_lines).
+- 균열 보스전(10/28): 승패 토스트·로그·CR/HP 화면 갱신·균열 닫힘은 대련 연출이 끝난 뒤(show→finish)에만. 창을 먼저 닫으면 즉시.
+- 서버 백업 보관 4개(10/28): backups.sql _trim_backups limit 4 + 실행 시 기존 초과분 일괄 정리. 설정 창·패치 노트 문구도 4개.
+- 10/28 (7): 제3구역 '산' 눈표범→잿빛 산양. 지도 검색 = 칸별 tileNames(그 칸에 실제로 나오는 재료·희귀·몬스터). 동명이인: avatarOf(name, uid)·userAttr(data-uid)·viewUser(name, uid)·get_profile_uid/get_avatars_uid(없으면 view._noAvU로 이름 기준), 새 이름은 name_taken으로 중복 금지(nameFree, 생성 1단계·프로필 수정). friends.sql 재실행.

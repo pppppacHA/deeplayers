@@ -118,6 +118,9 @@ def api(route):
     if '/rpc/get_profile' in u:
         return route.fulfill(headers=h, body=json.dumps({'uid': '33333333-3333-3333-3333-333333333333', 'name': body.get('p_name'), 'title': '신입 능력자', 'rank': 'E', 'level': '7', 'age': '24', 'keywords': '과묵,정찰', 'ability': '그림자 이동', 'abilityDesc': '그림자 사이를 건넌다', 'online': True, 'guild': '별무리'}) if body.get('p_name') == '하늘' else 'null')
     if '/rpc/chat_send' in u: server['chatsent'].append(body); return route.fulfill(headers=h, body=json.dumps({'ok': True}))
+    if '/rpc/get_avatars_uid' in u:  # 계정 기준 프로필 사진 (없으면 404 → 클라이언트가 이름 기준으로 되돌아간다)
+        if server.get('avatarsU') is None: return route.fulfill(status=404, headers=h, body=json.dumps({'message': 'Could not find the function public.get_avatars_uid'}))
+        return route.fulfill(headers=h, body=json.dumps({x: server['avatarsU'][x] for x in body.get('p_uids', []) if x in server['avatarsU']}))
     if '/rpc/get_avatars' in u: server['avq'].append(body.get('p_names')); return route.fulfill(headers=h, body=json.dumps({n: server['avatars'][n] for n in body.get('p_names', []) if n in server['avatars']}))
     if '/rpc/set_avatar' in u: server['setav'].append(body.get('p_img')); return route.fulfill(headers=h, body='null')
     if '/rpc/list_notices' in u: return route.fulfill(headers=h, body=json.dumps(sorted(server['notices'], key=lambda r: -r['id'])))
