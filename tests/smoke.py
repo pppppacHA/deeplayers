@@ -1071,7 +1071,7 @@ with sync_playwright() as p:
     # ---------- 설정 모달 (컴팩트) ----------
     pg.click('#settingsBtn'); pg.wait_for_timeout(80)
     h = rect(pg, '#modal')['h']
-    check('settings_compact', h < 800 and ev(pg, "[...document.querySelectorAll('#modalBody h3')].map(e=>e.textContent).filter(t=>t!=='저장').join()") == '소리,표시,튜토리얼,채팅창 탭,알림,테마', h)
+    check('settings_compact', h < 800 and ev(pg, "[...document.querySelectorAll('#modalBody h3')].map(e=>e.textContent).filter(t=>t!=='저장').join()") == '소리,표시,꾸미기 스티커,튜토리얼,채팅창 탭,알림,테마', h)
     tr_, md_ = rect(pg, '[data-act="tutorial-replay"]'), rect(pg, '#modalBody')
     check('tutorial_replay_button_left', tr_['x'] < md_['x'] + 60, [tr_, md_])
     check('local_save_load_buttons', pg.locator('[data-act="local-save"]').count() == 1 and pg.locator('[data-act="local-load"]').count() == 1)

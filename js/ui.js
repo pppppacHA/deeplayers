@@ -1027,6 +1027,7 @@ function openSettings() {
     `<div class="snd-card"><div class="snd-pair">${snd('clickOn', 'ads_click', '클릭음', st.clickOn)}${snd('alertOn', 'notifications_active', '알림음', st.alertOn)}</div>` +
     `<div class="snd-slider">${icon('volume_down')}<input id="sfxVolume" type="range" min="0" max="100" value="${st.sfxVolume}" aria-label="효과음 크기"><b id="sfxValue">${st.sfxVolume}%</b></div></div></div>` +
     `<div class="setting-group"><h3>표시</h3>${sw('cursorOn', '사용자 지정 커서', st.cursor)}${sw('quickBarOn', '퀵슬롯 표시 (넓은 화면에서만)', st.quickBar !== false)}${sw('duelFxOn', '대련 흔들림 효과', st.duelFx !== false)}<div class="srow fontrow"><span>글자 크기</span><select id="fontSize">${opt('s', '작게', st.fontSize)}${opt('m', '보통', st.fontSize)}${opt('l', '크게', st.fontSize)}${opt('xl', '아주 크게', st.fontSize)}</select></div><div class="row-gap ui-reset-row"><button data-act="ui-reset">${icon('restart_alt')} UI 기본값으로 되돌리기</button><span class="tiny">패널 폭·높이, 접은 패널, 지도 확대, 글자 크기, 커서를 처음 상태로 돌려요.</span></div></div>` +
+    `<div class="setting-group"><h3>꾸미기 스티커</h3><p class="tiny">넓은 화면에서 지도 오른쪽 위에 내 이미지를 스티커처럼 붙여요. (이 기기에만 저장)</p><div class="row-gap"><button data-act="sticker-pick">${stickerGet() ? '이미지 바꾸기' : '이미지 넣기'}</button><button data-act="sticker-move" ${stickerGet() ? '' : 'disabled'}>위치 조정</button><button data-act="sticker-del" ${stickerGet() ? '' : 'disabled'}>삭제</button></div></div>` +
     `<div class="setting-group"><h3>튜토리얼</h3><div class="row-gap"><button data-act="tutorial-replay">튜토리얼 다시 보기</button></div></div>` +
     cloudGroupHtml() +
     `<div class="setting-group"><h3>채팅창 탭</h3>${CHAT_TABS.map(k => sw('ctab_' + k, `${k} 탭 표시`, st.chatTabs[k])).join('')}<p class="tiny">끈 탭은 채팅창에서 사라지고, 그 채널의 새 메시지 알림도 오지 않아요. 최소 한 개는 켜 두어야 해요.</p></div>` +
@@ -1570,6 +1571,11 @@ document.addEventListener('click', e => { const b = e.target.closest('button'); 
 const A = {
   close: closeModal,
   'tutorial-replay': () => startTutorial(true),
+  'sticker-pick': () => { const f = document.createElement('input'); f.type = 'file'; f.accept = 'image/png,image/jpeg,image/webp,image/gif'; f.onchange = () => { const file = f.files && f.files[0]; if (file) stickerLoad(file); }; f.click(); },
+  'sticker-move': () => { if (!stickerGet()) return; closeModal(); stickerRender(true); },
+  'sticker-del': () => { try { localStorage.removeItem(STICKER_KEY); } catch (e) { /* 저장 불가 */ } stickerRender(); sfx('ok'); toast('스티커를 지웠어요.'); openSettings(); },
+  'sticker-ok': () => { const st = stickerGet(), el = $('#mapSticker'); if (!st || !el) return; st.x = +el.dataset.x || 0; st.y = +el.dataset.y || 0; st.s = +el.dataset.s || STICKER_SIZE[2]; stickerPut(st); stickerRender(); sfx('ok'); toast('스티커를 붙였어요.'); },
+  'sticker-cancel': () => stickerRender(),
   'avatar-pick': () => $('#avatarFile').click(),
   'confirm-cancel': () => { const b = view.confirmBack; view.confirmBack = null; if (b) b(); else closeModal(); },
   'crop-cancel': () => { if (view.crop) { view.crop.bmp.close && view.crop.bmp.close(); view.crop = null; } openProfile(); },
@@ -2406,7 +2412,7 @@ const A = {
   'duel-start': async el => { const id = intIn(el.dataset.id, 1, 9e15, 0); el.disabled = true; try { const r = await Cloud.duelStart(id); if (!r || !r.ok) { toast(r && r.msg === 'bet_need' ? '판돈 조건이 맞지 않아요. (한 명이라도 걸면 모두 걸어야 해요)' : r && r.msg === 'need_two' ? '양 팀에 한 명 이상 있어야 해요.' : '시작하지 못했어요.'); el.disabled = false; return; } const v = await Cloud.duelView(id); if (v) openDuelRoom(v); } catch (e) { toast('시작하지 못했어요.'); el.disabled = false; } },
   'lostbox-take': el => { const r = lostBoxTake(+el.dataset.i); if (typeof r === 'string') { toast(r); sfx('error'); return; } sfx('ok'); toast(`${shownName(r.n)} ×${r.q}을(를) 가방에 넣었습니다.`); renderBag(); openLostBox(); },
   'lostbox-all': () => { let n = 0, err = ''; for (let i = state.lostBox.length - 1; i >= 0; i--) { const r = lostBoxTake(i); if (typeof r === 'string') err = r; else n += r.q; } if (n) { sfx('ok'); toast(`보관함에서 ${n}개를 가방에 넣었습니다.${state.lostBox.length ? ' (자리가 모자라 일부는 남았어요)' : ''}`); } else if (err) { toast(err); sfx('error'); } renderBag(); openLostBox(); },
-  'avatar-zoom': el => openAvatarZoom(el.dataset.name),
+  'avatar-zoom': el => { const im = el.querySelector('img'); openAvatarZoom(el.dataset.name, im && im.getAttribute('src')); },
   'codex-journal': el => { codexView.jIdx = +el.dataset.j || 0; $('#codexRoot').innerHTML = codexHtml(); },
   'codex-tab': el => { codexView.tab = el.dataset.codex; codexView.sub = null; codexView.q = ''; $('#codexRoot').innerHTML = codexHtml(); },
   'codex-sort': el => { codexView.sort = el.dataset.sort || ''; $('#codexRoot').innerHTML = codexHtml(); },
@@ -2415,9 +2421,9 @@ const A = {
 };
 /* 프로필 사진 크게 보기: 프로필 창 위에 겹치는 오버레이(누르면 닫힘). 남의 사진은 300px 큰 이미지를 그때만 받는다 */
 const avBig = {};
-async function openAvatarZoom(name) {
+async function openAvatarZoom(name, shown) { // shown: 눌린 칸에 지금 보이는 그림 (uid 기준 사진도 그대로 크게)
   const mine = name === state.character.name, ok = v => typeof v === 'string' && AV_RE.test(v);
-  let img = mine ? getAvatar() : (avBig[name] || view.avatars[name]);
+  let img = mine ? getAvatar() : (avBig[name] || (ok(shown) ? shown : view.avatars[name]));
   if (!ok(img)) return;
   let z = $('#avZoom'); if (!z) { z = document.createElement('div'); z.id = 'avZoom'; z.className = 'av-zoom'; z.addEventListener('click', () => z.remove()); document.body.appendChild(z); }
   z.innerHTML = `<img src="${esc(img)}" alt="${esc(name)} 프로필 사진"><span class="tiny">${esc(name)} · 누르면 닫혀요</span>`;
@@ -2588,6 +2594,60 @@ document.addEventListener('change', e => {
 
 /* 프로필 창 → 그 안의 사진 버튼 → 이미지 선택. 이미지는 올리기 전에 작게 줄여 저장한다 (서버 부담↓) */
 const AVATAR_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'], AVATAR_PX = 300, AVATAR_MAX_BYTES = 200 * 1024;
+/* 꾸미기 스티커: 지도 패널 오른쪽 위 (넓은 화면만, 이 기기 localStorage) */
+const STICKER_KEY = 'deeplayer-sticker', STICKER_PX = 240, STICKER_SIZE = [40, 220, 120], STICKER_MOVE = 3000, STICKER_MAX = 400000, STICKER_R = 28, STICKER_T = 36; // 기본 자리(지도 패널 오른쪽 위)에서 옮긴 거리 — 범위는 지도 패널(헤더~지도) 안
+function stickerGet() { try { const v = JSON.parse(localStorage.getItem(STICKER_KEY) || 'null'); if (v && typeof v.img === 'string' && v.img.length <= STICKER_MAX && AV_RE.test(v.img)) return { img: v.img, x: intIn(v.x, -STICKER_MOVE, STICKER_MOVE, 0), y: intIn(v.y, -STICKER_MOVE, STICKER_MOVE, 0), s: intIn(v.s, STICKER_SIZE[0], STICKER_SIZE[1], STICKER_SIZE[2]) }; } catch (e) { /* 저장 불가·깨진 값 */ } return null; }
+function stickerPut(v) { try { localStorage.setItem(STICKER_KEY, JSON.stringify(v)); return true; } catch (e) { toast('이미지를 저장하지 못했어요. (저장 공간 부족)'); return false; } }
+async function stickerLoad(file) {
+  if (!/^image\//.test(file.type) || file.size > 8e6) { toast('8MB 이하의 이미지 파일만 넣을 수 있어요.'); sfx('error'); return; }
+  try {
+    const src = await new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = no; r.readAsDataURL(file); });
+    const im = await new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = no; i.src = src; });
+    let px = STICKER_PX, out = '';
+    for (let k = 0; k < 4 && (!out || out.length > STICKER_MAX); k++, px = Math.round(px * .8)) {
+      const sc = Math.min(1, px / Math.max(im.width, im.height)), c = document.createElement('canvas'); c.width = Math.max(1, Math.round(im.width * sc)); c.height = Math.max(1, Math.round(im.height * sc));
+      c.getContext('2d').drawImage(im, 0, 0, c.width, c.height); out = c.toDataURL('image/png'); if (out.length > STICKER_MAX) { const w = c.toDataURL('image/webp', .85); if (/^data:image\/webp/.test(w) && w.length < out.length) out = w; } // 투명 배경을 살린다
+    }
+    if (!AV_RE.test(out) || out.length > STICKER_MAX) { toast('이미지가 너무 커요.'); sfx('error'); return; }
+    const old = stickerGet(); if (!stickerPut({ img: out, x: 0, y: 0, s: old ? old.s : STICKER_SIZE[2] })) return;
+    closeModal(); stickerRender(true); toast('끌어서 위치를 맞춘 뒤 확정을 누르세요.');
+  } catch (e) { toast('이미지를 읽지 못했어요.'); sfx('error'); }
+}
+function stickerRender(edit) { // edit: 위치 조정 중 (끌기 + 확정/취소)
+  const panel = $('.map-panel'); if (!panel) return; let el = $('#mapSticker'); const st = stickerGet();
+  if (!st) { if (el) el.remove(); return; }
+  if (!el) { el = document.createElement('div'); el.id = 'mapSticker'; panel.appendChild(el); }
+  const place = (x, y) => { const c = stickerClamp(panel, el, x, y); el.dataset.x = c[0]; el.dataset.y = c[1]; el.style.setProperty('--sx', c[0] + 'px'); el.style.setProperty('--sy', c[1] + 'px'); const pr = panel.getBoundingClientRect(), r = el.getBoundingClientRect(); el.classList.toggle('bar-up', pr.bottom - r.bottom < 60); el.classList.toggle('bar-left', r.right - pr.left < 280); };
+  el.className = 'map-sticker' + (edit ? ' editing' : '');
+  el.innerHTML = `<img src="${esc(st.img)}" alt="" draggable="false">` + (edit ? `<span class="stk-grip" title="끌어서 크기 조절" aria-label="크기 조절"></span><div class="sticker-bar"><button class="primary" data-act="sticker-ok">확정</button><button data-act="sticker-cancel">취소</button></div>` : '');
+  const size = v => { const n = Math.max(STICKER_SIZE[0], Math.min(STICKER_SIZE[1], Math.round(v))); el.dataset.s = n; el.style.setProperty('--ss', n + 'px'); };
+  size(st.s); place(st.x, st.y); const im0 = el.querySelector('img'); if (im0 && !im0.complete) im0.onload = () => place(+el.dataset.x, +el.dataset.y);
+  const img = el.querySelector('img');
+  if (!edit) { img.onclick = () => stickerTalk(el); return; }
+  const resize = n => { const s0 = +el.dataset.s || STICKER_SIZE[2], w0 = img.offsetWidth; size(n); place(+el.dataset.x + (img.offsetWidth - w0), +el.dataset.y); return s0; }; // 왼쪽 위는 그대로, 오른쪽 아래로 커진다
+  const gr = el.querySelector('.stk-grip');
+  if (gr) gr.onpointerdown = e => { e.preventDefault(); e.stopPropagation(); gr.setPointerCapture(e.pointerId); const x0 = e.clientX, y0 = e.clientY, s0 = +el.dataset.s || STICKER_SIZE[2];
+    gr.onpointermove = m => resize(s0 + Math.max(m.clientX - x0, m.clientY - y0));
+    gr.onpointerup = () => { gr.onpointermove = null; }; };
+  img.onpointerdown = e => { e.preventDefault(); img.setPointerCapture(e.pointerId); const x0 = e.clientX, y0 = e.clientY, bx = +el.dataset.x, by = +el.dataset.y;
+    img.onpointermove = m => place(Math.round(bx + m.clientX - x0), Math.round(by + m.clientY - y0));
+    img.onpointerup = () => { img.onpointermove = null; }; };
+}
+function stickerClamp(panel, el, x, y) { // 지도 패널 안으로만 (기본 자리 = 오른쪽 위)
+  const pw = panel.clientWidth, ph = panel.clientHeight, im = el.querySelector('img'), w = (im && im.offsetWidth) || 0, h = (im && im.offsetHeight) || 0;
+  if (!pw || !ph) return [x | 0, y | 0];
+  return [Math.max(Math.min(0, -(pw - w - STICKER_R)), Math.min(STICKER_R, x | 0)), Math.max(-STICKER_T, Math.min(Math.max(0, ph - h - STICKER_T), y | 0))];
+}
+window.addEventListener('resize', () => { const el = $('#mapSticker'), st = stickerGet(); if (el && st && !el.classList.contains('editing')) stickerRender(); });
+const STICKER_FACES = [...STICKERS.filter(([, ic]) => /^sentiment_|^bedtime$/.test(ic)), ['좋아', 'sentiment_satisfied'], ['평온', 'sentiment_calm'], ['멍', 'sentiment_neutral'], ['훌쩍', 'sentiment_sad'], ['흐뭇', 'sentiment_content'], ['으악', 'sentiment_extremely_dissatisfied']]; // 채팅 이모티콘과 같은 그림
+function stickerTalk(el) { // 누르면 표정 말풍선 + 살짝 통통
+  let bb = el.querySelector('.sticker-bubble'); if (!bb) { bb = document.createElement('span'); bb.className = 'sticker-bubble'; el.appendChild(bb); }
+  const prev = bb.dataset.f; let f = pick(STICKER_FACES); for (let k = 0; k < 4 && f[1] === prev; k++) f = pick(STICKER_FACES);
+  bb.dataset.f = f[1]; bb.innerHTML = icon(f[1]); el.classList.remove('talk'); void el.offsetWidth; el.classList.add('talk');
+  clearTimeout(el._talkT); el._talkT = setTimeout(() => { el.classList.remove('talk'); bb.remove(); }, 1800);
+  if (state.settings.clickOn !== false) sfx('click');
+}
+setTimeout(() => stickerRender(), 0);
 async function compressImage(src, rect) { // 고른 정사각형 범위(rect)를 잘라 가장 긴 변 300px, WebP(미지원이면 JPEG)로 압축. 결과 200KB 이하
   const bmp = src instanceof Blob ? await createImageBitmap(src) : src;
   const r = rect || { x: 0, y: 0, w: bmp.width, h: bmp.height }, k = Math.min(1, AVATAR_PX / Math.max(r.w, r.h));

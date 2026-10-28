@@ -1611,3 +1611,26 @@ button.pcard:not(.off):hover{transform:translateY(-2px)}
 .mk-search #mkQ{height:32px;min-height:0;padding-top:0;padding-bottom:0}
 .mk-search .mk-btn{flex:none;min-height:0;height:32px;padding:0 10px}
 .mk-search .mk-btn.icon{width:32px;padding:0;display:grid;place-items:center}
+
+/* 꾸미기 스티커 (지도 패널 오른쪽 위, 넓은 화면만) */
+.map-panel{position:relative}
+.map-sticker{position:absolute;top:36px;right:28px;z-index:6;transform:translate(var(--sx,0),var(--sy,0));pointer-events:none}
+.map-sticker img{display:block;max-width:var(--ss,120px);max-height:var(--ss,120px);object-fit:contain;user-select:none;-webkit-user-drag:none}
+.map-sticker:not(.editing) img{pointer-events:auto;cursor:pointer}
+.map-sticker.talk img{animation:stkHop .5s ease-out}
+@keyframes stkHop{0%{transform:none}30%{transform:translateY(-6px) rotate(-5deg)}60%{transform:translateY(0) rotate(4deg)}80%{transform:rotate(-2deg)}100%{transform:none}}
+.sticker-bubble{position:absolute;right:calc(100% + 10px);top:-4px;display:flex;align-items:center;padding:6px 10px;background:var(--panel);color:var(--text-2);border:1px solid var(--line);border-radius:14px;box-shadow:0 3px 10px rgba(0,0,0,.16);white-space:nowrap;pointer-events:none;transform-origin:right 70%;animation:stkPop .22s ease-out}
+.sticker-bubble .material-symbols-rounded{font-size:30px;color:var(--accent)}
+.sticker-bubble::before,.sticker-bubble::after{content:'';position:absolute;top:50%;margin-top:-7px;border-style:solid;border-color:transparent}
+.sticker-bubble::before{right:-10px;border-width:7px 0 7px 10px;border-left-color:var(--line)}
+.sticker-bubble::after{right:-8px;margin-top:-6px;border-width:6px 0 6px 9px;border-left-color:var(--panel)}
+@keyframes stkPop{from{opacity:0;transform:scale(.6) translateY(6px)}to{opacity:1;transform:none}}
+.map-sticker.editing{pointer-events:auto;outline:1px dashed var(--accent);outline-offset:4px}
+.map-sticker.editing img{cursor:grab;touch-action:none}
+.map-sticker.editing img:active{cursor:grabbing}
+.sticker-bar{position:absolute;top:100%;right:0;margin-top:8px;display:flex;align-items:center;gap:6px;white-space:nowrap;padding:4px 6px;background:var(--panel);border:1px solid var(--line)}
+.map-sticker.bar-up .sticker-bar{top:auto;bottom:100%;margin:0 0 8px}
+.map-sticker.bar-left .sticker-bar{right:auto;left:0}
+.stk-grip{position:absolute;right:-2px;bottom:-2px;width:14px;height:14px;background:var(--panel);border:1px solid var(--accent);cursor:nwse-resize;touch-action:none;pointer-events:auto}
+.stk-grip::after{content:'';position:absolute;inset:3px;border-right:2px solid var(--accent);border-bottom:2px solid var(--accent)}
+@media (max-width:1200px){.map-sticker{display:none}}
