@@ -1653,29 +1653,29 @@ function takeMats(rc, qty, picks) { // 쓴 재료 [[이름, 수량, 제작자?],
   return Object.entries(used).map(([k, q]) => { const [n, mk] = k.split('\u0001'); return mk ? [n, q, mk] : [n, q]; });
 }
 /* 제작 아이템의 효과 문장 */
-function itemEffectParts(name, plain) { // { base: 기본 효과, extra: 강화·세공·세트 } 문장 목록
+function itemEffectParts(name, plain, fresh) { // fresh: 제작·상점·레시피처럼 새로 만들 물건 (내 강화·세공·이름은 붙이지 않는다) / { base: 기본 효과, extra: 강화·세공·세트 } 문장 목록
   const it = ITEMS[name], base = [], extra = [];
   if (it.use) { if (it.use.hp) base.push(`HP +${it.use.hp} 회복`); if (it.use.sp) base.push(`기력 +${it.use.sp} 회복`); }
   if (it.atk) base.push(`공격력 +${it.atk}`);
   if (it.mods) base.push(...modText(it.mods));
   if (it.petAcc && PET_ACC[name]) base.push(`펫 악세서리 효과: ${PET_ACC[name].text}`); // 펫에게 달았을 때의 효과
   if (plain) { if (it.capacity) base.push(`소지 칸 ${it.capacity}칸`); return { base, extra }; } // 다른 사람의 장비를 볼 때는 내 강화·세공·세트를 붙이지 않는다
-  if (reinforceLv(name)) extra.push(`강화 ${REINFORCE_RANKS[reinforceLv(name)]}랭 (공격력 +${reinforceBonus(name)})`);
-  if (state.enchants[name]) extra.push(`세공: ${enchantText(state.enchants[name])}`);
-  if (nickOf(name)) extra.push(`${state.character.name || '주인'}의 애착이 담긴 무기`);
+  if (!fresh && reinforceLv(name)) extra.push(`강화 ${REINFORCE_RANKS[reinforceLv(name)]}랭 (공격력 +${reinforceBonus(name)})`);
+  if (!fresh && state.enchants[name]) extra.push(`세공: ${enchantText(state.enchants[name])}`);
+  if (!fresh && nickOf(name) && canNick(name)) extra.push(`${state.character.name || '주인'}의 애착이 담긴 무기`);
   { const st = ITEM_SETS.find(x => x.need.includes(name)); if (st) extra.push(`세트 ${st.name}(${st.need.join('+')}): ${modText(st.mods).join(' ')}`); }
   if (it.capacity) base.push(`소지 칸 ${it.capacity}칸`);
   if (it.hold) base.push(`소지만 해도 ${modText(it.hold).join(' ')}`);
   return { base, extra };
 }
-function itemEffectRaw(name) { // 설명에 없는 착용·사용 효과. 없으면 ''
-  const { base, extra } = itemEffectParts(name); return [...base, ...extra].join(' · ');
+function itemEffectRaw(name, fresh) { // 설명에 없는 착용·사용 효과. 없으면 ''
+  const { base, extra } = itemEffectParts(name, false, fresh); return [...base, ...extra].join(' · ');
 }
-function itemEffect(name) { return itemEffectRaw(name) || '제작 재료'; }
+function itemEffect(name, fresh) { return itemEffectRaw(name, fresh) || '제작 재료'; }
 /* 아이템 설명 통일: 1줄 '설명 | 효과'(효과가 없으면 생략), 2줄 '[태그] … [판매가] nCR' */
-function itemLines(name, plain, mk) { // mk: 그 제작자 것의 설명 / 안 주면 내 소지품의 제작자들을 모아 보여 준다 (plain=남의 것은 빼고)
+function itemLines(name, plain, mk, fresh) { // mk: 그 제작자 것의 설명 / 안 주면 내 소지품의 제작자들을 모아 보여 준다 (plain=남의 것은 빼고)
   const it = ITEMS[name]; if (!it) return ['', ''];
-  const { base, extra } = itemEffectParts(name, plain), b = base.join(' · ');
+  const { base, extra } = itemEffectParts(name, plain, fresh), b = base.join(' · ');
   const eff = [b && !it.desc.includes(b) ? b : '', ...extra].filter(Boolean).join(' · '); // 기본 효과가 설명에 이미 있으면 빼고, 강화·세공은 항상 붙인다
   const l2 = [it.group ? `[분류] ${it.group}` : '', makerText(name, plain, mk), (it.tags || []).length ? `[태그] ${it.tags.join(' · ')}` : '', it.sell ? `[판매가] ${it.sell}CR` : ''].filter(Boolean).join(' ');
   return [it.desc + (eff ? ` | ${eff}` : ''), l2];
