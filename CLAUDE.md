@@ -353,3 +353,5 @@ STUB_ICONS=1 python3 tests/smoke.py   # 아이콘 폰트를 못 받는 환경(�
 - 10/28 (4): S등급 승급 promo_s(lv28, 제1~7구역 첫 지형 몬스터 8마리씩 + 구역 희귀 재료 3개씩 + 레시피 60), PROMO_ORDER에 S, A→S→limit_35. 칭호 '죽음을 두려워하지 않는'(S), '인간성 그 너머로'(Lv35+S).
 - 균열 보스 보상 표시(10/28): riftBoss가 reward 목록을 돌려주고, 대련 연출이 끝나면 #duelEnd 맨 위 .rift-reward(획득 칩) + 토스트 + 로그.
 - 균열 무기 이름 중복 수정(10/28): '화염장검'은 기존 '화염 장검'과 겹쳐 '분화구 열검'으로(LEGACY_ITEMS로 변환). feat_test no_near_duplicate_item_names(공백 무시 이름 중복 금지).
+- 10/28 (5): 축하 공지 확장 — S급 승급(rank:S, promo S → flags.annoS)·한계 돌파 Lv35(rank:LIMIT, 칭호 '한계를 넘어선' → flags.annoLimit), announceMore, 서버 announce_rank가 S·LIMIT 허용(friends.sql). 거래 '사기' 검색줄: 검색·새로고침(아이콘) 버튼을 검색창 오른쪽에 작게(.mk-search).
+- 10/28 (6): 묘사 없던 장비 55종 EQUIP_LINES(t 이동/b 전투) 보충 + EQUIP_SET_LINES 메이드·트레이너 세트. 장비 추가 시 EQUIP_LINES도 함께 (feat_test every_gear_has_equip_lines).

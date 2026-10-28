@@ -1604,3 +1604,10 @@ button.pcard:not(.off):hover{transform:translateY(-2px)}
 .rift-log{max-height:120px;margin:6px 0}
 .rift-left{position:absolute;left:12px;top:46px;z-index:4;padding:4px 10px;background:var(--panel);border:1px solid var(--line);font-size:calc(13px*var(--fs));pointer-events:none}.rift-left b{font-size:calc(22px*var(--fs));margin:0 2px}.rift-left small{color:var(--muted)}.rift-left.low b{color:var(--bad)}
 .rift-reward{margin:8px 0;padding:8px 10px;border:1px solid var(--accent-line);background:var(--accent-soft);display:flex;flex-wrap:wrap;gap:6px;align-items:center}.rift-reward.lose{border-color:var(--line);background:var(--panel-hi)}
+
+/* 10/28 대원 간 거래: 검색창 오른쪽에 검색·새로고침(아이콘)을 작게 */
+.mk-search{display:flex;align-items:stretch;gap:4px;flex-wrap:nowrap}
+.mk-search #mkQ{flex:1 1 auto;min-width:0}
+.mk-search #mkQ{height:32px;min-height:0;padding-top:0;padding-bottom:0}
+.mk-search .mk-btn{flex:none;min-height:0;height:32px;padding:0 10px}
+.mk-search .mk-btn.icon{width:32px;padding:0;display:grid;place-items:center}

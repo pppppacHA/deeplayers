@@ -245,6 +245,8 @@ with sync_playwright() as p:
     check('rift_boss_hp_persists', ev("(()=>{const R=state.rift||{};state.rift=state.rift||R;R.bossHp=30;const f=riftBossFighters()[1];return f.hp===30&&f.hpMax>30})()"))
     check('rift_weapons_by_zone', ev("Object.keys(RIFT_WEAPONS).length===7&&Object.values(RIFT_WEAPONS).flat().every(([n])=>ITEMS[n]&&ITEMS[n].slot==='무기'&&ITEMS[n].atk===7)&&!!ITEMS['분화구 열검']&&!ITEMS['화염장검']&&Object.values(RIFT_WEAPONS).flat().every(([n])=>ITEMS[n].desc.includes('균열 전리품'))"))
     check('no_near_duplicate_item_names', ev("(()=>{const m={};return Object.keys(ITEMS).every(n=>{const k=n.replace(/\\s/g,'');if(m[k])return false;m[k]=1;return true})})()"))
+    check('limit_and_s_announce_pending', ev("(()=>{const c=state.character,b=[c.level,c.rank,JSON.stringify(state.titles),state.flags.annoLimit];c.level=35;state.titles=state.titles.filter(t=>t!=='한계를 넘어선');state.flags.annoLimit=undefined;awardTitles();const ok=state.flags.annoLimit==='pending';c.level=b[0];c.rank=b[1];state.titles=JSON.parse(b[2]);state.flags.annoLimit=b[3];return ok})()"))
+    check('every_gear_has_equip_lines', ev("Object.keys(ITEMS).filter(n=>ITEMS[n].slot&&!ITEMS[n].petAcc&&!ITEMS[n].hidden&&!EQUIP_LINES[n]).length===0"))
     check('nearby_is_same_map', ev("(()=>{const d=state.dungeon;return !!d&&locKey()===d.zone})()"))
     ev("riftExit();renderMap();renderAction()")
     check('rift_exit_back_to_tile', ev("!state.rift&&!!state.dungeon&&state.dungeon.zone==='제1구역'"))

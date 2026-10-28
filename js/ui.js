@@ -549,7 +549,7 @@ function updateRunning() {
 
 /* ---------- 행동 완료 알림 (탭을 보고 있지 않을 때) ---------- */
 const baseTitle = document.title;
-function awardTitles() { checkTitles().forEach(t => { if (t === '정점에 다다른' && state.flags.annoMax !== 'done') { state.flags.annoMax = 'pending'; save(); toast('최고 레벨 달성! 축하합니다!'); announceMax(); } addLog(`칭호 획득: ${t}`); toast(`새 칭호를 얻었습니다! 「${t}」 (프로필에서 착용)`); sfx('levelup'); }); }
+function awardTitles() { checkTitles().forEach(t => { if (t === '한계를 넘어선' && state.flags.annoLimit !== 'done') { state.flags.annoLimit = 'pending'; save(); toast('한계 돌파! 레벨 35 달성을 축하합니다!'); announceLimit(); } if (t === '정점에 다다른' && state.flags.annoMax !== 'done') { state.flags.annoMax = 'pending'; save(); toast('최고 레벨 달성! 축하합니다!'); announceMax(); } addLog(`칭호 획득: ${t}`); toast(`새 칭호를 얻었습니다! 「${t}」 (프로필에서 착용)`); sfx('levelup'); }); }
 function notifyDone(text) {
   if (!state.settings.notify || !document.hidden) return;
   document.title = `✔ 행동 완료 · ${baseTitle}`;
@@ -724,7 +724,7 @@ const CHAT_CH = { '월드': 'world', '길드': 'guild', '파티': 'party', 'RP':
   try {
     const c = JSON.parse(localStorage.getItem(CHAT_CACHE)); if (!c || c.u !== Cloud.user()) return;
     for (const tab of ['월드', '길드', 'RP']) {
-      const rows = ((c[tab] || {}).rows || []).filter(r => Array.isArray(r) && Number.isFinite(r[3])).slice(-CHAT_KEEP).map(r => [cleanText(r[0], 12), cleanText(r[1], 200), /^[0-9a-f-]{36}$/i.test(r[2]) ? r[2] : '', r[3], Number.isFinite(r[4]) ? r[4] : 0, /^rank:(?:[A-Z]|MAX)$/.test(r[5] || '') ? r[5] : '']);
+      const rows = ((c[tab] || {}).rows || []).filter(r => Array.isArray(r) && Number.isFinite(r[3])).slice(-CHAT_KEEP).map(r => [cleanText(r[0], 12), cleanText(r[1], 200), /^[0-9a-f-]{36}$/i.test(r[2]) ? r[2] : '', r[3], Number.isFinite(r[4]) ? r[4] : 0, /^rank:(?:[A-Z]|MAX|LIMIT)$/.test(r[5] || '') ? r[5] : '']);
       view.chatSrv[tab] = rows; view.chatLast[tab] = rows.length ? rows[rows.length - 1][3] : 0;
     }
   } catch (e) { /* 저장된 대화 없음 */ }
@@ -798,7 +798,7 @@ async function chatPoll() { // 월드·길드 채팅을 서버에서 가져온�
       else continue;
       for (const r of rows) {
         const id = Number(r.id); if (!Number.isFinite(id) || id <= view.chatLast[tab]) continue;
-        view.chatLast[tab] = id; view.chatNewAt = nowMs(); view.chatSrv[tab].push([cleanText(r.name, 12) || '?', cleanText(r.body, 200), /^[0-9a-f-]{36}$/i.test(r.uid) ? r.uid : '', id, Date.parse(r.at) || 0, /^rank:(?:[A-Z]|MAX)$/.test(r.sys || '') ? r.sys : '']); changed = true;
+        view.chatLast[tab] = id; view.chatNewAt = nowMs(); view.chatSrv[tab].push([cleanText(r.name, 12) || '?', cleanText(r.body, 200), /^[0-9a-f-]{36}$/i.test(r.uid) ? r.uid : '', id, Date.parse(r.at) || 0, /^rank:(?:[A-Z]|MAX|LIMIT)$/.test(r.sys || '') ? r.sys : '']); changed = true;
         if (r.uid !== Cloud.userUid && state.chatTab !== tab && view.chatReady && view.chatTabReady[tab] && id > (view.chatSeen[tab] || 0)) { /* 이 탭을 이번 접속에서 처음 받아 오는 지난 글·이미 본 글은 알리지 않는다 */ toast(`[${tab}] ${cleanText(r.name, 12)}: ${cleanText(r.body, 40)}`); }
       }
       view.chatSrv[tab] = view.chatSrv[tab].slice(-100); view.chatTabReady[tab] = true;
@@ -1222,10 +1222,17 @@ async function announceMax() {
     if (r && r.ok) { state.flags.annoMax = 'done'; save(); toast('최고 레벨 달성을 월드 채팅에 알렸어요!'); chatPoll(); }
   } catch (e) { /* 다음에 다시 */ } finally { view.annoMaxBusy = false; }
 }
+async function announceMore(kind, flag, done) { // S급 승급 · 한계 돌파(Lv.35) 축하: A급·만렙과 같은 방식·같은 모양(월드 채팅 가운데 공지, 한 번만)
+  if (state.flags[flag] !== 'pending' || !Cloud.enabled || !Cloud.user() || view['b_' + flag]) return;
+  view['b_' + flag] = true;
+  try { flushSave(); const p = await cloudPushNow(); if (!(p && p.ok)) return; const r = await Cloud.announceRank(kind);
+    if (r && r.ok) { state.flags[flag] = 'done'; save(); toast(done); chatPoll(); } } catch (e) { /* 다음에 다시 (서버에 새 friends.sql 이 필요) */ } finally { view['b_' + flag] = false; }
+}
+const announceS = () => announceMore('S', 'annoS', 'S급 승급을 월드 채팅에 알렸어요!'), announceLimit = () => announceMore('LIMIT', 'annoLimit', '한계 돌파(Lv.35)를 월드 채팅에 알렸어요!');
 async function friendPoll() {
   marketSync(); // 서버에서 친구 신청·메일·교환 소식을 가져온다
   if (!Cloud.enabled || !Cloud.user() || !state.created || _polling) return;
-  announceRankA(); announceMax();
+  announceRankA(); announceMax(); announceS(); announceLimit();
   if (!view.mailBackfill) { view.mailBackfill = true; Cloud.myItemMailCount().then(n => { n = intIn(n, 0, 99999, 0); if (n > (state.mailItemSent | 0)) { state.mailItemSent = n; save(); awardTitles(); } }).catch(() => {}); } // 이 기능 전에 보낸 아이템 메일도 (서버에 남은 만큼) 센다
   _polling = true;
   try {
@@ -2504,7 +2511,7 @@ function marketHtml() {
   let body;
   if (tab === '사기') {
     const rows = view.mkList == null ? '<div class="empty">불러오는 중…</div>' : view.mkList.map(x => `<div class="shop-row"><span class="shop-ic">${icon(ITEMS[x.item].icon)}</span><div class="grow"><strong>${esc(shownName(x.item))} <span class="tiny">남은 ${x.qty}개</span></strong>${x.mk ? `<small class="mk-line">제작 · ${esc(x.mk)}</small>` : ''}<small class="tiny">개당 ${x.price} CR${tradeValue(x.item) ? ` (상점 시세 ${tradeValue(x.item)} CR)` : ''}</small></div>${x.mine ? '<em class="tag" title="내가 올린 상품이에요. 내 목록에서 취소할 수 있어요.">내 상품</em>' : `<input type="number" class="mk-n" id="mkN${x.id}" min="1" max="${x.qty}" value="1" aria-label="살 개수"><button class="primary" data-act="mk-buy" data-id="${x.id}">구매</button>`}</div>`).join('') || `<div class="empty">${view.mkErr ? '서버에 연결하지 못했어요.' : '올라온 물건이 없어요.'}</div>`;
-    body = `<div class="mk-search"><input id="mkQ" maxlength="20" placeholder="물건 이름 검색" value="${esc(view.mkQ || '')}"><button data-act="mk-search">검색</button><button data-act="mk-refresh">새로고침</button></div><div class="shop-list">${rows}</div>`;
+    body = `<div class="mk-search"><input id="mkQ" maxlength="20" placeholder="물건 이름 검색" value="${esc(view.mkQ || '')}"><button class="mk-btn" data-act="mk-search">검색</button><button class="icon mk-btn" data-act="mk-refresh" title="새로고침" aria-label="새로고침">${icon('refresh')}</button></div><div class="shop-list">${rows}</div>`;
   } else if (tab === '팔기') {
     const vs = invVariants().filter(v => ITEMS[v.n] && !ITEMS[v.n].hidden && v.n !== MAIL_SHIP_ITEM).sort((x, y) => ITEMS[x.n].tab.localeCompare(ITEMS[y.n].tab) || x.n.localeCompare(y.n)), keys = vs.map(v => vKey(v.n, v.mk));
     const selK = keys.includes(view.mkItem) ? view.mkItem : keys[0], selV = vs[keys.indexOf(selK)], sel = selV && selV.n; // 제작자가 다르면 따로 고른다
@@ -3444,7 +3451,8 @@ function questFinish(q, drop) {
   if (r.promo) {
     const news = RECIPES.filter(rc => rc.rank === r.promo && !recipeKnown(rc)).map(rc => rc.out);
     renderCraft(); renderLeftTab();
-    if (r.promo === 'A') { state.flags.annoA = 'pending'; save(); announceRankA(); } // A급이 되면 월드 채팅에 축하 공지가 올라간다
+    if (r.promo === 'A') { state.flags.annoA = 'pending'; save(); announceRankA(); }
+    if (r.promo === 'S') { state.flags.annoS = 'pending'; save(); announceS(); } // S급도 같은 축하 공지 // A급이 되면 월드 채팅에 축하 공지가 올라간다
     if (news.length) { addLog(`${r.promo}등급 승급! 속성학습으로 배울 수 있는 레시피 ${news.length}종 추가`); toast(`${r.promo}등급 승급! 속성학습으로 새 레시피 ${news.length}종을 배울 수 있게 되었습니다.`); }
   }
   const lost = Object.entries(drop).filter(([, c]) => c > 0).map(([n, c]) => `${shownName(n)} ×${c}`);
