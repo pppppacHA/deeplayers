@@ -1334,6 +1334,10 @@ button.primary{--bd:var(--primary-line)}
 .quick-bar .qs .qty{position:absolute;left:24px;bottom:1px;font-size:calc(9px*var(--fs));font-weight:700;color:var(--text-2)}
 .quick-bar .qs-name{display:none;min-width:0;font-size:calc(11px*var(--fs));white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .quick-bar.open .qs-name{display:block}
+.quick-bar:not(.open) .qs.item,.quick-bar:not(.open) .qs.snd{justify-content:center;padding:0} /* 접혀 있으면 아이콘을 칸 정중앙에 */
+.quick-bar .qs .qty{z-index:1;text-shadow:0 0 2px var(--panel),0 0 2px var(--panel)}
+.quick-bar:not(.open) .qs .qty{left:auto;right:2px}
+.quick-bar .qs .px-icon{width:var(--px-2,32px);height:var(--px-2,32px)}
 .quick-bar .qs.toggle{justify-content:center;padding:0;height:22px;border-color:transparent;background:transparent}
 .quick-bar .qs-sep{display:block;height:1px;margin:2px 0;background:var(--line)}
 @media(min-width:1201px){body.has-quick .app{padding-right:58px}} /* 오른쪽 탭과 퀵슬롯 사이를 살짝 좁게 */
