@@ -1068,9 +1068,10 @@ function rescueShown(z, x, y, seed) { // 이 칸에 구조를 기다리는 대�
   if (d && d.zone === z.id && (d.rs || {})[`${x},${y}`]) return false;
   return seededRng((seed || 1) * 23 + x * 4517 + y * 7883 + z.n * 104723)() < RESCUE_APPEAR;
 }
+const foeLvScale = (m, c = FOE_SCALE) => { const l = Math.max(0, (state.character.level || 1) - 1), pw = (3 + weaponAtk()) * (1 + effects().atk), hm = Math.max(1, Math.pow(pw / c.ref, c.pow)); return { ...m, hp: Math.round(m.hp * hm), atk: Math.max(1, Math.round(m.atk * (1 + c.atk * l) * 10) / 10) }; }; // 모의전투·구조 상대를 내 강함(무기·근력·레벨)에 맞춘다
 function rescueFoe() { // 지금 칸에서 구조할 때 상대 (그 칸에 나오는 몬스터, 깊을수록 강하다)
   const d = state.dungeon, z = zoneOf(d.zone), t = z.terrains[terrainIndex(tileOf(z, d.x, d.y))], a = ACTIONS[tileBattleId(z, t, d.x, d.y, d.seed)], base = (a && monsterBase(a)) || t.monster, dd = curDifficulty();
-  return { name: base.name, kind: base.kind, atk: Math.max(1, Math.round(base.atk * (1 + .6 * dd))), hp: Math.round(base.hp * (1.4 + 1.6 * dd)), cr: base.cr, d: dd, rare: t.rare, terrain: t };
+  return foeLvScale({ name: base.name, kind: base.kind, atk: Math.max(1, Math.round(base.atk * (1 + .6 * dd))), hp: Math.round(base.hp * (1.4 + 1.6 * dd)), cr: base.cr, d: dd, rare: t.rare, terrain: t }, RESCUE_SCALE);
 }
 const rescueHpLoss = dd => clamp(Math.round(RESCUE_HP[0] + (RESCUE_HP[1] - RESCUE_HP[0]) * dd + (Math.random() * 2 - 1)), RESCUE_HP[0], RESCUE_HP[1]);
 function tileBattleId(z, t, x, y, seed) { const r = seededRng((seed || 1) * 17 + x * 6151 + y * 92821 + z.n * 7919); return t.battleIds[Math.floor(r() * t.battleIds.length)]; }
@@ -1261,17 +1262,20 @@ function battleLine(m, r, ctx = {}) {
   const t = ctx.stats || totalStats(), fx = ctx.fx || effects(), dmg = (3 + weaponAtk()) * (1 + fx.atk), jit = () => .85 + r() * .3, top = topCombatStat(t);
   const roll = r(), name = m.name;
   if (roll < .42) { // 내가 때렸다
-    const crit = r() < .1, d = Math.max(1, Math.round(dmg * jit() * (crit ? 2 : 1)));
+    const S = MOCK_STAT, crit = r() < .1 + Math.min(S.intCritMax, (t.int || 0) * S.intCrit), d = Math.max(1, Math.round(dmg * jit() * (crit ? 2 : 1))); // 지능: 치명타 확률↑
     if (top && HIT_STYLE[top] && r() < .55) return { text: (crit ? '치명타! ' : '') + HIT_STYLE[top](name, d), kind: 'hit', dealt: d, taken: 0 };
     const gen = [`${name}에게 일격을 가했다. (-${d})`, `${name}의 옆구리를 베어 냈다. (-${d})`, `재빠르게 파고들어 ${name}을(를) 때렸다. (-${d})`, `${name}이(가) 주춤할 만큼 강하게 쳤다. (-${d})`];
     return { text: (crit ? '치명타! ' : '') + gen[Math.floor(r() * gen.length)], kind: 'hit', dealt: d, taken: 0 };
   }
   if (roll < .62) { // 맞았다
-    const d = Math.max(1, Math.round(m.atk * jit() * (1 - fx.evade)));
+    const S = MOCK_STAT;
+    if (r() < Math.min(S.lukSaveMax, (t.luk || 0) * S.lukSave)) return { text: `🍀 운 좋게 발이 미끄러져 ${name}의 공격이 비껴갔다.`, kind: 'dodge', dealt: 0, taken: 0 }; // 행운: 맞을 뻔한 공격을 모면
+    const d = Math.max(1, Math.round(m.atk * jit() * (1 - fx.evade) * (1 - Math.min(S.wilMax, (t.wil || 0) * S.wil)))); // 의지: 받는 피해↓
     const gen = [`${name}의 반격에 스쳤다. (피해 ${d})`, `${name}의 공격을 막지 못하고 맞았다. (피해 ${d})`, `${name}에게 밀려 자세가 흐트러졌다. (피해 ${d})`];
     return { text: gen[Math.floor(r() * gen.length)], kind: 'hurt', dealt: 0, taken: d };
   }
   if (roll < .84) { // 피했다
+    { const S = MOCK_STAT; if (r() < Math.min(S.senMax, (t.sen || 0) * S.sen)) { const c = Math.max(1, Math.round(dmg * S.ctrMult * jit())); return { text: `↺ ${name}의 공격을 흘려 내고 그 틈에 반격했다! (-${c})`, kind: 'hit', dealt: c, taken: 0 }; } } // 감각: 피한 뒤 반격
     if (top && DODGE_STYLE[top] && r() < .6) return { text: DODGE_STYLE[top](name), kind: 'dodge', dealt: 0, taken: 0 };
     const gen = [`${name}의 공격을 가까스로 피했다.`, `${name}이(가) 휘두른 공격이 허공을 갈랐다.`, `뒤로 물러나 ${name}과(와) 거리를 벌렸다.`];
     return { text: gen[Math.floor(r() * gen.length)], kind: 'dodge', dealt: 0, taken: 0 };
@@ -1937,7 +1941,7 @@ function takeQuest(id) {
   if (!q || !q.board) return '수주할 수 없는 임무입니다.';
   if (!state.created) return '먼저 캐릭터를 만드세요.';
   if (placeKey() !== q.board) return '이 장소에서 받을 수 있는 임무가 아닙니다.';
-  if (state.questDone[id]) return q.once ? '이미 완수한 임무입니다.' : '이미 완수한 임무입니다. 24시간 뒤에 다시 나타납니다.';
+  if (state.questDone[id]) return q.once ? '이미 완수한 임무입니다.' : '이미 완수한 임무입니다. 다음 오전 4시에 다시 받을 수 있어요.';
   if (state.questTaken[id]) return '이미 수주한 임무입니다.';
   if (activeBoard().length >= BOARD_MAX_ACTIVE) return `수주 임무는 동시에 ${BOARD_MAX_ACTIVE}개까지 진행할 수 있습니다.`;
   state.questTaken[id] = true; state.qprog[id] = 0; state.questAt[id] = nowMs(); save();
@@ -2368,6 +2372,12 @@ const expLeft = p => p.exp ? Math.max(0, p.exp.at + (p.exp.ms || PET_EXP_MS) - n
 const expReady = p => !!p.exp && expLeft(p) === 0;
 const BOWL_BAIT = '__bowl';
 function bowlCheapest() { return Object.keys(state.petBowl || {}).filter(k => state.petBowl[k] > 0 && ITEMS[k]).sort((a, b) => (ITEMS[a].feed || 0) - (ITEMS[b].feed || 0))[0] || null; }
+const expIdle = () => state.pets.map((p, i) => i).filter(i => !state.pets[i].exp && state.petActive !== i); // 탐험을 보낼 수 있는 펫 (동행·탐험 중 제외)
+function sendExpeditionAll(ids, zoneId) { // 여러 마리를 같은 구역으로. 먹이는 한 마리마다 먹이통 → 가방의 가장 싼 먹이 순으로 1개씩
+  let sent = 0, err = null;
+  for (const i of ids) { err = sendExpedition(i, zoneId, null); if (err) break; sent++; }
+  return { sent, err };
+}
 function sendExpedition(i, zoneId, baitName = null) {
   const p = state.pets[i], z = DANGER_ZONES.find(x => x.id === zoneId);
   if (!p) return '펫이 없습니다.';
@@ -2637,7 +2647,7 @@ function duelClean(sn, name) { // 받은 능력치를 다시 거른다
 }
 function duelDummies(n, team = 2, off = 0) { // 연습 상대(2팀) · 연습 동료(1팀): 내 능력치를 조금 낮춘 허수아비
   const me = duelSnap();
-  return Array.from({ length: Math.max(0, Math.min(DUEL_TEAM_MAX, n)) }, (_, k) => { const i = k + off; return { team, ...duelClean({ ...me, help: team === 1 ? '뒤는 맡겨!' : '', name: team === 1 ? ['동료 훈련병', '교관 보조 로봇'][k] || '동료' : DUEL_DUMMY[i % DUEL_DUMMY.length], hp: Math.round(me.hp * (.75 + i * .05)), atk: me.atk * .8, ev: me.ev * .6, main: DUEL_STATS[(i * 2 + 1) % 6], sub: DUEL_STATS[(i * 2 + 4) % 6], ...(team === 1 ? { win: '해냈다! 같이 싸워서 다행이야.', lose: '다음엔 꼭 이기자.' } : { win: '훈련 종료. 자세를 다시 점검하십시오.', lose: '삐빅… 훌륭합니다.' }) }) }; });
+  return Array.from({ length: Math.max(0, Math.min(DUEL_TEAM_MAX, n)) }, (_, k) => { const i = k + off; return { team, ...duelClean({ ...me, help: team === 1 ? '뒤는 맡겨!' : '', name: team === 1 ? ['동료 훈련병', '교관 보조 로봇'][k] || '동료' : DUEL_DUMMY[i % DUEL_DUMMY.length], hp: Math.round(me.hp * (DUEL_DUMMY_MULT.hp + i * DUEL_DUMMY_MULT.step)), atk: me.atk * DUEL_DUMMY_MULT.atk, ev: me.ev * DUEL_DUMMY_MULT.ev, main: DUEL_STATS[(i * 2 + 1) % 6], sub: DUEL_STATS[(i * 2 + 4) % 6], ...(team === 1 ? { win: '해냈다! 같이 싸워서 다행이야.', lose: '다음엔 꼭 이기자.' } : { win: '훈련 종료. 자세를 다시 점검하십시오.', lose: '삐빅… 훌륭합니다.' }) }) }; });
 }
 /* fighters: [{team(1|2), name, hp, atk, ev, main, sub}] (순서 고정) → { log:[{r,a,t,d,dmg,dodge,ko}], win: 1|2, hp:[남은 HP] } */
 function duelSim(fighters, seed) {
@@ -2655,14 +2665,14 @@ function duelSim(fighters, seed) {
       const A = fighters[a], t = foes[Math.floor(rnd() * foes.length)], T = fighters[t], S = DUEL_STAT;
       let d = 1 + Math.floor(rnd() * 6), lucky = false;
       if (d <= 2 && rnd() < Math.min(S.lukMax, (A.st.luk || 0) * S.luk)) { d = 1 + Math.floor(rnd() * 6); lucky = true; } // 행운: 나쁜 주사위를 다시 굴린다
-      const dodge = d < 6 && d > 1 && rnd() < Math.max(0, T.ev * .5 - (A.st.int || 0) * S.intPierce), bo = !!boost[a]; // 지능: 상대 회피를 꿰뚫는다
+      const dodge = d < 6 && d > 1 && rnd() < Math.max(0, T.ev * (S.evMult || .5) - (A.st.int || 0) * S.intPierce), bo = !!boost[a]; // 지능: 상대 회피를 꿰뚫는다
       let dmg = dodge ? 0 : A.atk * DUEL_D6[d - 1] * (.9 + rnd() * .2) * (bo ? DUEL_SUP_MULT : 1);
       if (!dodge && d >= 5) dmg *= 1 + Math.min(S.intCritMax, (A.st.int || 0) * S.intCrit); // 지능: 강타·결정타 위력↑
       dmg = dodge ? 0 : Math.round(dmg * (1 - Math.min(S.wilMax, (T.st.wil || 0) * S.wil))); if (!dodge) boost[a] = 0; // 의지: 받는 피해↓
       let endure = false; if (dmg >= hp[t] && !used[t] && rnd() < Math.min(S.endureMax, (T.st.wil || 0) * S.endure)) { dmg = hp[t] - 1; used[t] = 1; endure = true; } // 의지: 한 번은 1로 버틴다
       hp[t] = Math.max(0, hp[t] - dmg);
       log.push({ r, a, t, d, dmg, dodge, ko: hp[t] <= 0, bo, hp: hp[t], lucky, endure, s: Math.floor(rnd() * 1000) });
-      if (dodge && hp[a] > 0 && rnd() < Math.min(S.senMax, (T.st.sen || 0) * S.sen)) { const c = Math.max(1, Math.round(T.atk * S.ctrMult)); hp[a] = Math.max(0, hp[a] - c); log.push({ r, a: t, t: a, d: 0, dmg: c, ctr: true, ko: hp[a] <= 0, hp: hp[a], s: Math.floor(rnd() * 1000) }); } // 감각: 피한 뒤 반격
+      if ((dodge || (S.senWeak && d <= 2 && hp[t] > 0)) && hp[a] > 0 && rnd() < Math.min(S.senMax, (T.st.sen || 0) * S.sen)) { const c = Math.max(1, Math.round(T.atk * S.ctrMult)); hp[a] = Math.max(0, hp[a] - c); log.push({ r, a: t, t: a, d: 0, dmg: c, ctr: true, ko: hp[a] <= 0, hp: hp[a], s: Math.floor(rnd() * 1000) }); } // 감각: 피한 뒤 반격
     }
   }
   const left = tm => fighters.reduce((s, f, i) => s + (f.team === tm ? hp[i] / f.hp : 0), 0);

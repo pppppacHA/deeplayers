@@ -630,6 +630,16 @@ function openPetSend(i) { // 탐험 보내기: 구역과 가져갈 먹이를 고
   modal(`${petName(p)} 탐험 보내기`, `<div class="srow fontrow"><span>탐험 구역</span><select id="expZone">${DANGER_ZONES.map(z => `<option value="${esc(z.id)}" ${z.id === view.expZone ? 'selected' : ''}>${esc(z.name)}</option>`).join('')}</select></div>` +
     `<p class="tiny">가져갈 먹이를 고르고 '보내기'를 누르세요. 먹이 1개가 들고, 24시간 뒤에 그 구역의 재료를 가져와요.</p>` + (bowlRow + rows || '<div class="empty">가져갈 먹이(작물·펫 사료)가 없습니다. 먹이통을 채워 두면 거기서 챙겨 가요.</div>'), [btnClose], true);
 }
+function openPetSendAll() { // 탐험 일괄 보내기: 구역 하나 + 보낼 펫 고르기 (먹이는 먹이통 → 가방의 싼 먹이 순으로 자동)
+  const idle = expIdle(); if (!idle.length) { toast('탐험을 보낼 수 있는 펫이 없어요.'); return; }
+  if (!view.expZone || !DANGER_ZONES.some(z => z.id === view.expZone)) view.expZone = DANGER_ZONES[0].id;
+  const food = baitItems().length + bowlTotal();
+  const rows = idle.map(i => { const p = state.pets[i], sp = PET_SPECIES[p.id] || {}; return `<label class="nearby-row pet-pick"><input type="checkbox" class="exp-pick" value="${i}" checked><div class="round-avatar">${icon(sp.icon || 'pets')}</div><div class="grow"><strong>${esc(petName(p))}</strong><small>Lv.${p.lv || 1} · 친밀도 ${p.bond}/100</small></div></label>`; }).join('');
+  modal('한꺼번에 탐험 보내기', `<div class="srow fontrow"><span>탐험 구역</span><select id="expZone">${DANGER_ZONES.map(z => `<option value="${esc(z.id)}" ${z.id === view.expZone ? 'selected' : ''}>${esc(z.name)}</option>`).join('')}</select></div>` +
+    `<p class="tiny">고른 펫이 모두 같은 구역으로 떠나요. 먹이는 한 마리마다 1개씩, 먹이통 → 가방의 가장 싼 먹이 순으로 챙겨요. (지금 먹이 ${food}개 · 24시간 뒤 돌아와요)</p>` +
+    `<div class="choice-label">보낼 펫 <button class="exp-all" data-act="exp-pick-all">모두 선택/해제</button></div>${rows}`,
+    [btnClose, `<button class="primary" data-act="pet-send-all-do" ${food ? '' : 'disabled'}>보내기</button>`], true);
+}
 function openPetAcc(i) { // 펫 악세서리 창: 가진 악세서리를 달거나 벗긴다
   const p = state.pets[i]; if (!p) return;
   const have = Object.keys(PET_ACC).filter(n => countItem(n) > 0);
@@ -783,6 +793,8 @@ setInterval(async () => { // 끝까지 못 본 대련 판돈 정산 · 오래 �
   if (ch) { renderProfile(); renderInventory(); }
 }, 30000);
 setInterval(() => { view.avatars = {}; view.avatarsU = {}; }, 10 * 60 * 1000); // 10분마다 새로 받아 다른 대원이 바꾼 이미지도 반영
+const AV_BIG_MIN = 160; // 이보다 작은 사진은 크게 보기용으로 올리지 않는다
+const imgWidth = src => new Promise(ok => { const i = new Image(); i.onload = () => ok(Math.max(i.width, i.height)); i.onerror = () => ok(0); i.src = src; });
 async function smallAvatar(dataUrl, px = 64, max = 19000) { // 서버에는 64px 작은 이미지(채팅·목록) + 크게 보기용 300px 이미지를 따로 올린다
   const img = await new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = no; i.src = dataUrl; });
   const k = Math.min(1, px / Math.max(img.width, img.height, 1)), cv = document.createElement('canvas'); cv.width = Math.max(1, Math.round(img.width * k)); cv.height = Math.max(1, Math.round(img.height * k));
@@ -794,10 +806,16 @@ async function syncMyAvatar(clear) { // 내 이미지를 서버와 맞춘다. �
   if (!chatOnline()) return;
   try {
     const my = getAvatar();
-    if (my) { const sm = await smallAvatar(my); if (sm) { await Cloud.setAvatar(sm); try { const bg = await smallAvatar(my, 300, 88000); if (bg) await Cloud.setAvatarBig(bg); } catch (e) { /* 크게 보기 이미지는 서버 준비 전이면 생략 */ } } return; } // 변환에 실패해 빈 값이 되면 서버 이미지를 지우지 않는다
+    if (my) {
+      const w = await imgWidth(my);
+      if (w < AV_BIG_MIN) { // 다른 기기에서 받아 온 64px 사진뿐이면: 서버의 큰 사진을 받아 쓰고, 작은 것으로 큰 사진을 덮어쓰지 않는다 (확대하면 깨지던 원인)
+        try { const b = await Cloud.avatarBigUid(Cloud.userUid); if (typeof b === 'string' && AV_RE.test(b) && (await imgWidth(b)) > w) { localStorage.setItem(AVATAR_KEY, b); renderProfile(); } } catch (e) { /* 서버에 새 함수가 없으면 그대로 */ }
+      }
+      const sm = await smallAvatar(my); if (sm) { await Cloud.setAvatar(sm); if (w >= AV_BIG_MIN) { try { const bg = await smallAvatar(my, 300, 88000); if (bg) await Cloud.setAvatarBig(bg); } catch (e) { /* 크게 보기 이미지는 서버 준비 전이면 생략 */ } } } return; } // 변환에 실패해 빈 값이 되면 서버 이미지를 지우지 않는다
     if (clear) { await Cloud.setAvatar(''); return; }
     const nm = state.created && state.character.name; if (!nm) return;
-    const got = await Cloud.getAvatars([nm]), img = got && got[nm];
+    let img = ''; try { img = await Cloud.avatarBigUid(Cloud.userUid); } catch (e) { /* 없으면 작은 것 */ } // 다른 기기에서도 큰 사진(300px)으로 받는다
+    if (!(typeof img === 'string' && AV_RE.test(img))) { const got = await Cloud.getAvatars([nm]); img = got && got[nm]; }
     if (typeof img === 'string' && /^data:image\/(webp|jpeg|png);base64,[A-Za-z0-9+/=]+$/.test(img)) { try { localStorage.setItem(AVATAR_KEY, img); } catch (e) { /* 저장 불가 */ } renderProfile(); renderChat(); }
   } catch (e) { /* 서버 준비 전 */ }
 }
@@ -1751,6 +1769,16 @@ const A = {
   'pet-stroke': el => { const r = petStroke(+el.dataset.i); if (r.err) { toast(r.err); sfx('error'); return; } view.petMsg = { i: +el.dataset.i, text: r.text }; sfx('ok'); petRefresh(el); },
   'pet-mood': el => { const r = petAskMood(+el.dataset.i); if (r.err) { toast(r.err); sfx('error'); return; } view.petMsg = { i: +el.dataset.i, text: r.text }; sfx('ok'); petRefresh(el); },
   'pet-send': el => { view.petFrom = el.closest('#sideView') ? 'side' : 'modal'; openPetSend(+el.dataset.i); }, // 탐험 보내기: 구역·먹이를 고르는 창
+  'pet-send-all': el => { view.petFrom = el.closest('#sideView') ? 'side' : 'modal'; openPetSendAll(); },
+  'exp-pick-all': () => { const l = $$('.exp-pick'), on = l.some(c => !c.checked); l.forEach(c => { c.checked = on; }); },
+  'pet-send-all-do': () => {
+    const sel = $('#expZone'); if (sel) view.expZone = sel.value;
+    const ids = $$('.exp-pick').filter(c => c.checked).map(c => +c.value); if (!ids.length) { toast('보낼 펫을 골라 주세요.'); sfx('error'); return; }
+    const r = sendExpeditionAll(ids, view.expZone);
+    if (!r.sent) { toast(r.err || '보내지 못했어요.'); sfx('error'); return; }
+    renderBag(); sfx('ok'); toast(`펫 ${r.sent}마리가 ${view.expZone} 탐험을 떠났습니다.${r.err ? ` 나머지는 못 보냈어요: ${r.err}` : ' 24시간 뒤에 돌아와요.'}`);
+    if (view.petFrom === 'side') { closeModal(); renderSide(); } else { openPets(); renderSide(); }
+  },
   'pet-send-do': el => {
     const sel = $('#expZone'); if (sel) view.expZone = sel.value;
     const i = +el.dataset.i, err = sendExpedition(i, view.expZone, el.dataset.item);
@@ -2121,23 +2149,28 @@ const A = {
   'profile-edit': () => { if (profileLockLeft() > 0) return; view.profEdit = true; openProfile(true); },
   'profile-edit-cancel': () => { view.profEdit = false; openProfile(); },
   'char-save': async () => {
-    { const nn = cleanText(($('#cName') || {}).value || '', 12); if (nn && nn !== state.character.name && profileLockLeft() <= 0 && chatOnline() && !(await nameFree(nn))) return; } // 같은 이름의 대원이 이미 있으면 바꿀 수 없다
+    const val = id => { const e = $(id); return e ? e.value : ''; }, chk = id => { const e = $(id); return !!(e && e.checked); };
+    const form = { name: val('#cName'), age: val('#cAge'), kw: val('#cKeywords'), ab: val('#cAbility'), desc: val('#cAbilityDesc'), ms: val('#cMain'), ss: val('#cSub'), fr: chk('#cFriend'), gu: chk('#cGuild') }; // 서버 확인(await)을 기다리는 동안 창이 다시 그려져도 입력한 그대로 저장되게 먼저 읽어 둔다
+    { const nn = cleanText(form.name, 12); if (nn && nn !== state.character.name && profileLockLeft() <= 0 && chatOnline() && !(await nameFree(nn))) return; } // 같은 이름의 대원이 이미 있으면 바꿀 수 없다
     const c = state.character, left = profileLockLeft();
     if (left > 0) { // 쿨타임 중에도 주·부 스탯이 아직 비어 있으면 그것만 정할 수 있다 (수정 시각은 건드리지 않는다)
       if (c.mainStat || c.subStat) { toast(`프로필은 ${fmtLong(left)} 뒤에 다시 수정할 수 있어요.`); return; }
-      const ms = $('#cMain').value, ss = $('#cSub').value, ok = k => STAT_DEFS.some(d => d.key === k);
+      const ms = form.ms, ss = form.ss, ok = k => STAT_DEFS.some(d => d.key === k);
       if (!ok(ms) && !ok(ss)) { toast('주 스탯이나 부 스탯을 골라 주세요.'); sfx('error'); return; }
       if (ms && ms === ss) { toast('주 스탯과 부 스탯은 서로 다른 스테이터스로 골라 주세요.'); sfx('error'); return; }
       c.mainStat = ok(ms) ? ms : ''; c.subStat = ok(ss) ? ss : '';
       toast('주·부 스탯을 정했습니다. 이후 변경은 프로필 수정 간격(24시간)을 따라요.'); sfx('ok'); view.profEdit = false; renderProfile(); renderStatus(); save(); closeModal(); return;
     }
-    const next = { name: cleanText($('#cName').value, 12) || c.name, age: intIn($('#cAge').value, AGE_MIN, AGE_MAX, c.age), keywords: cleanText($('#cKeywords').value, 60),
-      ability: cleanText($('#cAbility').value, 20) || c.ability, abilityDesc: cleanText($('#cAbilityDesc').value, 300),
-      mainStat: $('#cMain').value, subStat: $('#cSub').value, allowFriend: $('#cFriend').checked, allowGuild: $('#cGuild').checked };
+    const ageTxt = String(form.age).replace(/[^0-9]/g, ''); // '22세'처럼 글자가 섞여도 숫자만. 비어 있으면 원래 나이 그대로 (예전엔 빈 값이 0 → 최소 10살이 됐다)
+    if (ageTxt && (+ageTxt < AGE_MIN || +ageTxt > AGE_MAX)) { toast(`나이는 ${AGE_MIN}~${AGE_MAX}세로 적어 주세요.`); sfx('error'); return; }
+    const next = { name: cleanText(form.name, 12) || c.name, age: ageTxt ? +ageTxt : c.age, keywords: cleanText(form.kw, 60),
+      ability: cleanText(form.ab, 20) || c.ability, abilityDesc: cleanText(form.desc, 300),
+      mainStat: form.ms, subStat: form.ss, allowFriend: form.fr, allowGuild: form.gu };
     if (!STAT_DEFS.some(d => d.key === next.mainStat)) next.mainStat = ''; if (!STAT_DEFS.some(d => d.key === next.subStat)) next.subStat = '';
     if (next.mainStat && next.mainStat === next.subStat) { toast('주 스탯과 부 스탯은 서로 다른 스테이터스로 골라 주세요.'); sfx('error'); return; }
     if (Object.keys(next).some(k => next[k] !== c[k])) { Object.assign(c, next); state.profileEditAt = nowMs(); toast('프로필을 수정했습니다. 24시간 뒤에 다시 수정할 수 있어요.'); }
     view.profEdit = false; renderProfile(); save(); closeModal();
+    if (Cloud.enabled && Cloud.user()) { flushSave(); cloudPushNow().catch(() => { /* 다음 자동 저장 때 */ }); } // 바뀐 프로필을 바로 서버에 (다른 기기·남이 보는 프로필이 옛 내용으로 남지 않게)
   },
   'settings-save': () => { if (applySettingsNow()) { closeModal(); toast('설정을 저장했습니다.'); } }, // 예전 저장 버튼(지금은 바꾸는 즉시 저장되므로 창에는 없다)
 
@@ -2423,7 +2456,7 @@ const A = {
   'lostbox-take': el => { const r = lostBoxTake(+el.dataset.i); if (typeof r === 'string') { toast(r); sfx('error'); return; } sfx('ok'); toast(`${shownName(r.n)} ×${r.q}을(를) 가방에 넣었습니다.`); renderBag(); openLostBox(); },
   'lostbox-all': () => { let n = 0, err = ''; for (let i = state.lostBox.length - 1; i >= 0; i--) { const r = lostBoxTake(i); if (typeof r === 'string') err = r; else n += r.q; } if (n) { sfx('ok'); toast(`보관함에서 ${n}개를 가방에 넣었습니다.${state.lostBox.length ? ' (자리가 모자라 일부는 남았어요)' : ''}`); } else if (err) { toast(err); sfx('error'); } renderBag(); openLostBox(); },
   'user-back': () => { const b = view.userBack; view.userBack = ''; if (b === 'friend') openFriends(true); else if (b === 'mail') openMail(); else if (b === 'guild') openGuild(); else closeModal(); },
-  'avatar-zoom': el => { const im = el.querySelector('img'); openAvatarZoom(el.dataset.name, im && im.getAttribute('src')); },
+  'avatar-zoom': el => { const im = el.querySelector('img'), u = el.dataset.uid || ((el.querySelector('[data-uid]') || {}).dataset || {}).uid || ''; openAvatarZoom(el.dataset.name, im && im.getAttribute('src'), u); },
   'codex-journal': el => { codexView.jIdx = +el.dataset.j || 0; $('#codexRoot').innerHTML = codexHtml(); },
   'codex-tab': el => { codexView.tab = el.dataset.codex; codexView.sub = null; codexView.q = ''; $('#codexRoot').innerHTML = codexHtml(); },
   'codex-sort': el => { codexView.sort = el.dataset.sort || ''; $('#codexRoot').innerHTML = codexHtml(); },
@@ -2432,14 +2465,15 @@ const A = {
 };
 /* 프로필 사진 크게 보기: 프로필 창 위에 겹치는 오버레이(누르면 닫힘). 남의 사진은 300px 큰 이미지를 그때만 받는다 */
 const avBig = {};
-async function openAvatarZoom(name, shown) { // shown: 눌린 칸에 지금 보이는 그림 (uid 기준 사진도 그대로 크게)
+async function openAvatarZoom(name, shown, uid) { // shown: 눌린 칸에 지금 보이는 그림 (uid 기준 사진도 그대로 크게)
   const mine = name === state.character.name, ok = v => typeof v === 'string' && AV_RE.test(v);
-  let img = mine ? getAvatar() : (avBig[name] || (ok(shown) ? shown : view.avatars[name]));
+  const key = UID_RE.test(uid || '') ? uid : name;
+  let img = mine ? getAvatar() : (avBig[key] || (ok(shown) ? shown : view.avatars[name]));
   if (!ok(img)) return;
   let z = $('#avZoom'); if (!z) { z = document.createElement('div'); z.id = 'avZoom'; z.className = 'av-zoom'; z.addEventListener('click', () => z.remove()); document.body.appendChild(z); }
   z.innerHTML = `<img src="${esc(img)}" alt="${esc(name)} 프로필 사진"><span class="tiny">${esc(name)} · 누르면 닫혀요</span>`;
-  if (mine || avBig[name] || !(Cloud.enabled && Cloud.user() && Cloud.avatarBig)) return;
-  try { const b = await Cloud.avatarBig(name); if (ok(b)) { avBig[name] = b; const im = $('#avZoom img'); if (im) im.src = b; } } catch (e) { /* 큰 이미지가 없으면 작은 것 그대로 */ }
+  if (mine || avBig[key] || !(Cloud.enabled && Cloud.user() && Cloud.avatarBig)) return;
+  try { let b = ''; if (key !== name) { try { b = await Cloud.avatarBigUid(key); } catch (e) { b = ''; } } if (!ok(b)) b = await Cloud.avatarBig(name); if (ok(b)) { avBig[key] = b; const im = $('#avZoom img'); if (im) im.src = b; } } catch (e) { /* 큰 이미지가 없으면 작은 것 그대로 */ } // 계정(uid) 기준으로 먼저, 없으면 이름으로
 }
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('#avZoom')) { $('#avZoom').remove(); e.stopPropagation(); } }, true);
 function otherEquipHtml(eq, who, wnick) { // wnick: 그 대원이 무기에 붙인 이름 // 다른 대원의 착용 장비 (서버가 준 {칸: 이름}을 걸러서 내 장비 탭과 같은 칸 UI로)
@@ -2462,7 +2496,7 @@ async function viewUser(name, knownUid) { // 이름·아이콘을 누르면 그 
     const has = !me && state.friends.includes(name), p = samplePlayer(name), pr = r && r.ability !== undefined ? r : null;
     const st = r ? (r.online ? '온라인' : '자리 비움') : (REMOTE_PLAYERS[name] || (p && p[1]) || '알 수 없음');
     const kw = pr ? String(pr.keywords || '').split(',').map(t => t.trim()).filter(Boolean).map(t => '#' + cleanText(t, 10)).join(' ') : '';
-    modal('프로필', `<div class="user-card"><div class="round-avatar big zoomable" data-act="avatar-zoom" data-name="${esc(name)}" title="크게 보기">${avatarOf(name, me ? '' : uid || knownUid)}</div><div class="uc-name">${pr && pr.title ? `<span class="title-chip">${esc(cleanText(pr.title, 20))}</span>` : ''}<strong>${esc(name)}</strong></div>${pr ? `<div class="uc-ability"><b>${icon('bolt')} 이능력 · ${esc(cleanText(pr.ability, 20) || '미설정')}</b><p>${esc(cleanText(pr.abilityDesc, 300) || '이능력 설명이 없습니다.')}</p>${abilityStatChips({ mainStat: STAT_DEFS.some(d => d.key === pr.mainStat) ? pr.mainStat : '', subStat: STAT_DEFS.some(d => d.key === pr.subStat) && pr.subStat !== pr.mainStat ? pr.subStat : '' })}</div>` : ''}</div>` +
+    modal('프로필', `<div class="user-card"><div class="round-avatar big zoomable" data-act="avatar-zoom" data-name="${esc(name)}" data-uid="${esc(me ? '' : (UID_RE.test(uid || '') ? uid : UID_RE.test(knownUid || '') ? knownUid : ''))}" title="크게 보기">${avatarOf(name, me ? '' : uid || knownUid)}</div><div class="uc-name">${pr && pr.title ? `<span class="title-chip">${esc(cleanText(pr.title, 20))}</span>` : ''}<strong>${esc(name)}</strong></div>${pr ? `<div class="uc-ability"><b>${icon('bolt')} 이능력 · ${esc(cleanText(pr.ability, 20) || '미설정')}</b><p>${esc(cleanText(pr.abilityDesc, 300) || '이능력 설명이 없습니다.')}</p>${abilityStatChips({ mainStat: STAT_DEFS.some(d => d.key === pr.mainStat) ? pr.mainStat : '', subStat: STAT_DEFS.some(d => d.key === pr.subStat) && pr.subStat !== pr.mainStat ? pr.subStat : '' })}</div>` : ''}</div>` +
       `<div class="user-grid">${cell('상태', st)}${r ? cell('레벨', 'Lv.' + intIn(r.level, 1, MAX_LEVEL, 1)) + cell('등급', ('FEDCBAS'.includes(r.rank) ? r.rank : 'F') + '등급') : ''}${pr ? cell('나이', intIn(pr.age, 0, 999, 0) + '세') : ''}${cell('관계', me ? '나' : has ? '친구' : '친구 아님')}${pr ? cell('길드', pr.guild ? cleanText(pr.guild, 12) : '-') : ''}</div>` +
       (kw ? `<div class="char-tags">${esc(kw)}</div>` : '') + (pr && pr.equipment ? otherEquipHtml(pr.equipment, name, pr.weaponNick) : pr ? '<p class="tiny">장비 정보는 서버에 supabase/friends.sql 최신본을 실행하면 보여요.</p>' : '') +
       (pr ? '' : (Cloud.enabled && Cloud.user() ? `<p class="tiny">${esc(note || '자세한 프로필을 불러오는 중…')}</p>` : '<p class="tiny">서버에 로그인하면 이능력 등 자세한 프로필을 볼 수 있어요.</p>')),
@@ -2722,7 +2756,7 @@ function openProfile(keepScroll) {
     `<div class="setting-group"><div class="pf-head"><h3>캐릭터 정보</h3><div class="pf-side">${editing ? `<button class="pf-edit on" data-act="profile-edit-cancel">${icon('close')} 편집 취소</button>` : `<button class="pf-edit" data-act="profile-edit" ${lock > 0 ? 'disabled' : ''}>${icon('edit')} 편집</button>`}</div></div>` +
     (lock > 0 ? `<p class="tiny">프로필(칭호 제외)은 수정 후 24시간이 지나야 다시 바꿀 수 있어요. 남은 시간 ${fmtLong(lock)}${statFree ? ' · 주·부 스탯은 아직 정하지 않아서 지금 고를 수 있어요.' : ''}</p>` : state.profileEditAt ? '' : '<p class="tiny">첫 수정은 바로 가능하고, 그 뒤에는 24시간마다 한 번 수정할 수 있어요.</p>') +
     row('이름', `<input id="cName" maxlength="12" ${dis} value="${esc(dr ? dr.name : c.name)}">`) +
-    row('나이', `<input id="cAge" ${dis} type="number" min="${AGE_MIN}" max="${AGE_MAX}" value="${esc(dr ? dr.age : c.age)}">`) +
+    row('나이', `<input id="cAge" ${dis} type="text" inputmode="numeric" maxlength="3" placeholder="${AGE_MIN}~${AGE_MAX}" value="${esc(dr ? dr.age : c.age)}">`) +
     row('키워드', `<input id="cKeywords" maxlength="60" ${dis} placeholder="쉼표로 구분 (예: 과묵, 정찰)" value="${esc(dr ? dr.kw : c.keywords)}">`) +
     row('이능력 이름', `<input id="cAbility" maxlength="20" ${dis} value="${esc(dr ? dr.ab : c.ability)}">`) +
     row('이능력 설명', `<textarea id="cAbilityDesc" maxlength="300" ${dis} placeholder="어떤 능력인지 자유롭게 적어 주세요">${esc(dr ? dr.desc : c.abilityDesc)}</textarea>`) +
@@ -2822,7 +2856,7 @@ function sendChat(val) {
 }
 
 /* ---------- 임무 수주 / 상점 / 길드 창 ---------- */
-const fmtLeft = ms => { const h = Math.floor(ms / 3600000), m = Math.ceil(ms % 3600000 / 60000); return h ? `${h}시간 ${m % 60}분` : `${m}분`; };
+const fmtLeft = ms => { const t = Math.ceil(ms / 60000), h = Math.floor(t / 60), m = t % 60; return h ? `${h}시간 ${m}분` : `${m}분`; }; // 분을 먼저 올림한 뒤 나눈다 ('3시간 60분' 방지)
 function openQuestBoard(keepScroll) {
   const place = placeKey(), d = state.dungeon, ci = d ? Math.max(0, campsOf(d.zone).findIndex(c => c.x === d.x && c.y === d.y)) : 0, list = QUESTS.filter(q => q.board === place && !(q.once && state.questDone[q.id]) && (!q.daily || boardDailyOk(q, undefined, ci) || state.questTaken[q.id])); // 캠프마다 다른 임무
   if (!list.length) { toast('이곳에서는 임무를 수주할 수 없습니다.'); return; }
@@ -3274,7 +3308,7 @@ function petCareHtml(compact) { // 펫 돌보기 화면. compact=오른쪽 '펫'
     return (rows || '<div class="empty">아직 길들인 펫이 없습니다.</div>') + '<p class="tiny">성격 허브를 간식으로 주면 펫의 성격이 바뀌어요. 탐험 보내기·도감 등 전체 돌보기는 개인실의 \'펫 돌보기\'에서 할 수 있어요.</p>';
   }
   return `<p class="tiny">펫은 지상의 짐승 지형에서 <b>길들이기</b>로 얻어요. 펫 보관함은 소지품과 별도이고, 같은 종은 한 마리만 모을 수 있어요. 한 마리는 <b>동행</b>(배부름이 남아 있는 동안 타일 이동 시간 단축), 나머지는 <b>24시간 자동 탐험</b>을 보낼 수 있어요.</p>` +
-    (order.length ? `<div class="choice-label">내 펫 ${order.length}마리 <small class="tiny">· 눌러서 돌보기·탐험·동행</small></div><div class="pet-grid">${order.map(card).join('')}</div>${rows}` : '<div class="empty">아직 길들인 펫이 없습니다. 지상에서 작물이나 펫 사료를 들고 짐승을 길들여 보세요.</div>') +
+    (order.length ? `<div class="choice-label">내 펫 ${order.length}마리 <small class="tiny">· 눌러서 돌보기·탐험·동행</small>${expIdle().length >= 2 ? `<button class="pet-send-all" data-act="pet-send-all" ${state.location === '개인실' ? '' : 'disabled title="탐험 보내기는 개인실에서 할 수 있어요"'}>${icon('travel_explore')} 한꺼번에 탐험 보내기</button>` : ''}</div><div class="pet-grid">${order.map(card).join('')}</div>${rows}` : '<div class="empty">아직 길들인 펫이 없습니다. 지상에서 작물이나 펫 사료를 들고 짐승을 길들여 보세요.</div>') +
     bowlHtml() +
     `<button class="choice-label dex-toggle" data-act="pet-dex-toggle" aria-expanded="${!!view.petDexOpen}">${icon(view.petDexOpen ? 'expand_less' : 'expand_more')} 펫 도감 ${state.pets.length}/${petCap()}</button>${view.petDexOpen ? `<div class="pet-dex-grid">${dex}</div>` : ''}` +
     `<p class="tiny">성격 허브(활발·얌전·장난꾸러기·느긋·호기심·의젓)를 간식으로 주면 펫의 성격이 바뀌고, 성격에 따라 돌보는 문구가 달라져요. 허브는 농장에서 키울 수 있고 씨앗은 채집하다 아주 가끔 나옵니다.</p>` +
@@ -3320,7 +3354,7 @@ function openTrade(name, keepScroll) {
 /* ---------- 추가 기능: 모의 전투 (실제 진행·보상에는 영향 없음) ---------- */
 function mockMonsters() {
   const seen = new Set(), out = [];
-  for (const [id, a] of Object.entries(ACTIONS)) { if (a.kind !== 'battle') continue; const m = monsterBase(a); if (m && !seen.has(m.name)) { seen.add(m.name); out.push(m); } }
+  for (const [id, a] of Object.entries(ACTIONS)) { if (a.kind !== 'battle') continue; const m = monsterBase(a); if (m && !seen.has(m.name)) { seen.add(m.name); out.push(foeLvScale(m)); } } // 내 레벨에 맞춰 강해진 상대
   return out.sort((x, y) => x.hp * x.atk - y.hp * y.atk); // 위쪽이 약한 몬스터, 아래로 갈수록 강한 몬스터
 }
 /* 모의전투 · 대원 구조: 대련과 같은 화면(체력 막대·잔상·피해 숫자·KO·흔들림·타격음·FIGHT!)으로 보여 준다 */
@@ -3370,7 +3404,7 @@ function openRescueFight() { // 대원 구조 전투: 이미 정해진 결과(st
 function openMock() {
   const ms = mockMonsters();
   modal('추가 기능 · 모의 전투', `<p class="tiny">상대를 골라 전투를 구경해 보세요. 위쪽일수록 약하고 아래로 갈수록 강한 상대예요. 보상·HP·기력에는 영향이 없어요.</p>` +
-    `<div class="srow fontrow"><span>상대</span><select id="mockMon">${ms.map((m, i) => `<option value="${i}">${esc(m.name)} (HP ${m.hp})</option>`).join('')}</select></div><div id="mockArena">${arenaHtml({ name: state.character.name, hp: Math.max(20, state.vitals.hpMax), sub: `Lv.${state.character.level}` }, { name: (ms[0] || {}).name || '상대', hp: ((ms[0] || {}).hp || 1) * 2, sub: '모의 상대' })}</div>`,
+    `<div class="srow fontrow"><span>상대</span><select id="mockMon">${ms.map((m, i) => `<option value="${i}">${esc(m.name)} (HP ${m.hp * 2})</option>`).join('')}</select></div><div id="mockArena">${arenaHtml({ name: state.character.name, hp: Math.max(20, state.vitals.hpMax), sub: `Lv.${state.character.level}` }, { name: (ms[0] || {}).name || '상대', hp: ((ms[0] || {}).hp || 1) * 2, sub: '모의 상대' })}</div>`,
     [btnClose, '<button class="primary" data-act="mock-start">전투 시작</button>']);
   { const lg = $('#duelLog'); if (lg) lg.innerHTML = '<div class="bl-note">상대를 고르고 시작을 누르세요.</div>'; }
 }

@@ -1397,7 +1397,11 @@ const POSTS = {
 · 프로필 사진을 눌러도 크게 보이지 않던 문제를 고쳤어요.
 · 꾸미기 스티커(넓은 화면): 환경 설정 → 꾸미기 스티커에서 이미지를 넣으면 지도 오른쪽 위에 붙어요. 넣은 직후 지도 패널 안 어디로든 끌어서 옮기고 오른쪽 아래 모서리를 끌어 크기도 조절한 뒤 확정. 스티커를 누르면 표정 말풍선이 떠요. 위치 조정·삭제도 설정에서.
 · 프로필 사진을 눌러도 크게 보이지 않던 문제를 고쳤어요.
-· 도감: 열수 뱀장어·균열 무기의 획득 장소가 표시되고, 훈련용 무기 6종은 하나만 받을 수 있어서 '훈련용 무기' 한 항목으로 합쳤어요.`],
+· 도감: 열수 뱀장어·균열 무기의 획득 장소가 표시되고, 훈련용 무기 6종은 하나만 받을 수 있어서 '훈련용 무기' 한 항목으로 합쳤어요.
+· 펫 탐험 일괄 보내기: 펫 돌보기에서 '한꺼번에 탐험 보내기'로 여러 마리를 같은 구역에 한 번에 보내요(먹이는 먹이통 → 가방의 싼 먹이 순).
+· 프로필 수정에서 나이가 10살로 바뀌거나 입력한 글이 저장되지 않던 문제를 고쳤어요.
+· 대련·보스전·모의전투·대원 구조에서 근력 말고 다른 능력치의 효과가 더 커졌어요. 모의전투·구조에서도 지능(치명타)·행운(위기 모면)·의지(피해 감소)·감각(반격)이 작동해요.
+· 모의전투·대원 구조의 상대가 내 강함(무기·근력·레벨)에 맞춰 강해지고, 대련 연습 상대도 내 능력치에 더 가까워졌어요. 이제 강한 상대는 쉽게 이기기 어려워요.`],
     ['업데이트 · 10월 27일', `[신규]
 · 대련: 서로의 체력이 실시간으로 줄어들고, 여럿이 싸우면 같은 팀의 지원(보스전과 같은 연출 · 다음 공격 +30%)이 터져요. 방을 만들 때 팀을 고를 수 있고, 연습은 2:2·3:3도 돼요.
 · 채팅 탭마다 안 읽은 메시지 수가 표시돼요. 제작 탭은 위쪽 분류(장비·소모품·약·기타)와 아래쪽 태그 줄로 함께 거를 수 있고, 둘 다 스크롤해도 고정돼요.
@@ -1929,7 +1933,11 @@ const CARD_GAMES = { joker: '조커 뽑기', onecard: '원카드' }, CARD_PICK_S
 const DUEL_BET_CR_MIN = 50, DUEL_BET_CR_MAX = 1000, DUEL_BET_QTY_MAX = 10, DUEL_BET_FEE = .05; // 대련 판돈(각자): CR 50~1000 또는 아이템 1~10개(상대 팀 인원 이상), 이긴 쪽이 진 쪽 판돈을 나눠 갖고 CR 수수료 5%는 사라진다
 const DUEL_SUP_P = .08, DUEL_SUP_MULT = 1.3; // 다수 대련: 공격 전 이 확률로 같은 팀 대원의 지원(보스전과 같은 연출, 다음 공격 ×1.3)
 /* 대련 스탯 효과 (2026-10-27): 근력=공격력(atk) · 민첩=회피(ev)+선공 · 지능=회피 꿰뚫기+강타 위력 · 의지=받는 피해↓+한 번 버티기 · 감각=피한 뒤 반격 · 행운=나쁜 주사위(1·2) 다시 굴리기 */
-const DUEL_STAT = { agiFirst: .03, intPierce: .007, intCrit: .018, intCritMax: .6, wil: .009, wilMax: .35, endure: .017, endureMax: .5, sen: .018, senMax: .55, ctrMult: .75, luk: .022, lukMax: .6 }; // 10/27 근력 외 능력 상향(약 1.5배)
+const DUEL_STAT = { agiFirst: .045, evMult: 1, intPierce: .007, intCrit: .016, intCritMax: .6, wil: .007, wilMax: .3, endure: .012, endureMax: .35, sen: .034, senMax: .7, senWeak: 1, ctrMult: .9, luk: .035, lukMax: .75 }; // 10/30 재조정: 민첩 회피 2배(evMult)·감각은 약한 공격(🎲1~2)에도 반격(senWeak)·행운 상향, 의지·지능은 근력과 비슷하게 (같은 포인트 1:1 승률 약 40~60%)
+/* 모의전투·대원 구조(battleLine)의 근력 외 능력 효과 (10/30): 근력=공격력, 민첩=회피는 그대로 */
+const FOE_SCALE = { ref: 5.5, pow: 1, atk: .05 }, RESCUE_SCALE = { ref: 7, pow: 1, atk: .03 }; // 모의전투(FOE)·대원 구조(RESCUE) 상대가 내 강함에 맞춰 강해진다: HP ×(내 기본 피해 ÷ ref)^pow (1 미만이면 그대로), 공격 ×(1 + atk·(레벨-1)). 시뮬레이션: 모의전투 약한/중간/강한 상대 승률 약 99/78/50%, 구조 얕은/중간/깊은 칸 약 100/80~95/25~75%
+const DUEL_DUMMY_MULT = { hp: .95, step: .05, atk: .95, ev: .9 }; // 대련 연습 상대: 내 능력치 대비 (예전 체력 .75·공격 .8·회피 .6)
+const MOCK_STAT = { intCrit: .007, intCritMax: .3, lukSave: .012, lukSaveMax: .35, wil: .011, wilMax: .4, sen: .016, senMax: .5, ctrMult: .7 };
 const DUEL_TEAM_MAX = 3, DUEL_MSG_MAX = 40, DUEL_ROUND_MAX = 30, DUEL_LINE_MS = 900;
 const DUEL_D6 = [0, .6, 1, 1.25, 1.5, 1.9];
 const DUEL_DUMMY = ['훈련용 허수아비', '낡은 교관 로봇', '모래주머니 골렘'];
@@ -2703,30 +2711,6 @@ RECIPES.push(
    - 16×16으로 그리면 소지품 칸·상점·레시피에서는 2배(32px), 작은 자리에서는 1배(16px)로 보인다.
    - 표에 없는 아이템, 파일이 없는 아이템은 원래 아이콘(defItems 두 번째 칸)이 그대로 나온다. */
 const ITEM_PNG = {
-  '감자 씨앗': 'seed',
-  '허브 씨앗': 'seed',
-  '사탕무 씨앗': 'seed_red',
-  '야생 열매 씨앗': 'seed',
-  '해풍 콩 씨앗': 'seed_blue',
-  '화산 고추 씨앗': 'seed_red',
-  '협곡 보리 씨앗': 'seed',
-  '설원 순무 씨앗': 'seed_blue',
-  '사막 수박 씨앗': 'seed_red',
-  '정글 카사바 씨앗': 'seed_blue',
-  '나뭇가지': 'branch',
-  '돌': 'stone',
-  '합금 파편': 'alloy_fragments',
-  '흑요석': 'obsidian',
-  '석재': 'building_stone',
-  '점토': 'clay',
-  '허브': 'herb',
-  '협곡 허브': 'canyon_herb',
-  '제1구역 캠프 신호기': '1_return_beacon',
-  '제2구역 캠프 신호기': '2_return_beacon',
-  '제3구역 캠프 신호기': '3_return_beacon',
-  '제4구역 캠프 신호기': '4_return_beacon',
-  '제5구역 캠프 신호기': '5_return_beacon',
-  '제6구역 캠프 신호기': '6_return_beacon',
-  '제7구역 캠프 신호기': '7_return_beacon',
+  // '흑요석 단검': 'obsidian_dagger',
 };
 Object.entries(ITEM_PNG).forEach(([n, f]) => { const it = ITEMS[n]; if (it && typeof f === 'string' && /^[a-z0-9_]{1,40}$/.test(f) && !String(it.icon).startsWith('png:')) { it.icon0 = it.icon; it.icon = `png:${f}:${it.icon}`; } });

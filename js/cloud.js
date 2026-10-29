@@ -106,6 +106,7 @@ const Cloud = (() => {
     async setAvatar(img) { await call('/rest/v1/rpc/set_avatar', { p_img: img || '' }, await token()); },
     async setAvatarBig(img) { await call('/rest/v1/rpc/set_avatar_big', { p_img: img || '' }, await token()); },
     async avatarBig(name) { return await call('/rest/v1/rpc/get_avatar_big', { p_name: name }, await token()); },
+    async avatarBigUid(uid) { return await call('/rest/v1/rpc/get_avatar_big_uid', { p_uid: uid }, await token()); },
     async getAvatars(names) { return (await call('/rest/v1/rpc/get_avatars', { p_names: names.slice(0, 40) }, await token())) || {}; },
     async chatSend(channel, body) { return await call('/rest/v1/rpc/chat_send', { p_channel: channel, p_body: body }, await token()); },
     async prefetchInbox() { // 친구·메일·교환·길드 소식을 요청 한 번으로 받아 두고, 뒤따르는 각 함수 호출이 한 번씩 꺼내 쓴다 (서버에 poll_inbox 가 없으면 아무것도 안 함)
