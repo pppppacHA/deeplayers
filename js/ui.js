@@ -1065,6 +1065,9 @@ function itemSources() {
   Object.entries(CROPS).forEach(([n, c]) => put(n, `농장 (${c.seed} 심기)`));
   RECIPES.forEach(rc => put(rc.out, `제작 (${Object.entries(rc.mats).map(([n, q]) => `${n} ×${q}`).join(' + ')})`));
   QUESTS.forEach(q => ((q.reward && q.reward.items) || []).forEach(([n]) => put(n, `임무 보상 · ${q.title}`)));
+  Object.entries(FISH_SPOTS).forEach(([z, sp]) => (sp.fish || []).forEach(n => put(n, `${z} ${sp.name} 낚시`)));
+  Object.entries(RIFT_WEAPONS).forEach(([z, l]) => l.forEach(([n]) => put(n, `${z} 균열 (보스 처치·조사에서 드물게)`)));
+  WEAPON_NAMES.forEach(n => put(n, '튜토리얼 시작 무기 (6종 중 1개를 골라 받는다)'));
   _src = m; return m;
 }
 const sourceText = n => { const l = itemSources()[n]; return l ? l.join(' / ') : '특별한 이벤트·거래 등'; }; // 얻는 곳은 전부 보여 준다 (예전엔 4곳 + 외 n곳)
@@ -1083,7 +1086,8 @@ function codexEntries(tab) {
     ...DANGER_ZONES.map(z => ({ sub: '지상', icon: z.icon, name: z.name, desc: z.desc, known: c.zones[z.id] })),
     ...DANGER_ZONES.flatMap(z => z.terrains.map(t => ({ sub: '지형', icon: t.icon, name: `${t.name} · ${z.id}`, desc: t.desc, known: c.zones[`${z.id}:${t.name}`] })))
   ];
-  if (tab === '아이템') return Object.entries(ITEMS).filter(([n, it]) => !it.hidden || c.items[n]).map(([n, it]) => ({ sub: codexItemSub(n), icon: it.icon, name: n, desc: it.desc + (FISH_SIZE[n] ? ` (크기 ${FISH_SIZE[n][0]}~${FISH_SIZE[n][1]}cm)` : ''), src: sourceText(n), best: FISH_SIZE[n] ? (state.fishBest[n] ? `최고 기록 ${state.fishBest[n]}cm` : '아직 기록이 없어요') : '', known: c.items[n] }));
+  if (tab === '아이템') return Object.entries(ITEMS).filter(([n, it]) => (!it.hidden || c.items[n]) && !(WEAPON_NAMES.includes(n) && n !== WEAPON_NAMES[0])).map(([n, it]) => n === WEAPON_NAMES[0] ? { // 훈련용 무기 6종은 하나만 받을 수 있어서 한 항목
+      sub: '장비', icon: it.icon, name: '훈련용 무기', desc: `등급 F · 공격력 +3. 처음에 ${WEAPON_NAMES.map(w => w.replace('훈련용 ', '')).join('·')} 중 하나를 골라 받는 기본 무기다.${WEAPON_NAMES.filter(w => c.items[w]).length ? ` (받은 것: ${WEAPON_NAMES.filter(w => c.items[w]).join(', ')})` : ''}`, src: sourceText(n), best: '', known: WEAPON_NAMES.some(w => c.items[w]) } : ({ sub: codexItemSub(n), icon: it.icon, name: n, desc: it.desc + (FISH_SIZE[n] ? ` (크기 ${FISH_SIZE[n][0]}~${FISH_SIZE[n][1]}cm)` : ''), src: sourceText(n), best: FISH_SIZE[n] ? (state.fishBest[n] ? `최고 기록 ${state.fishBest[n]}cm` : '아직 기록이 없어요') : '', known: c.items[n] }));
   if (tab === '펫') return Object.entries(PET_SPECIES).map(([id, sp]) => { const p = state.pets.find(x => x.id === id); // 지금 데리고 있는 펫만 '발견'으로 보인다
     return { sub: '', icon: sp.icon || 'pets', name: p ? `${petName(p)}${p.name ? ` (${sp.name})` : ''}` : sp.name, desc: p ? `고향 ${sp.zone} · Lv.${p.lv || 1} · 친밀도 ${p.bond}/100 · 동행 시 이동 시간 -${Math.round(petBuff(p) * 100)}%` : '', where: p ? '' : sp.zone, known: !!p }; });
   if (tab === '저널') return DANGER_ZONES.filter(z => QMARKS[z.id]).map(z => ({ sub: '', icon: 'menu_book', name: `${QMARKS[z.id].name} 탐험록 · ${z.id}`, desc: QMARKS[z.id].journal, known: !!(state.journals || {})[z.id], journal: true }))
