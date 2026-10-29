@@ -115,8 +115,9 @@ function hardenState(s) {
   s.money = intIn(s.money, 0, 999999999, 0); s.statPoints = intIn(s.statPoints, 0, 99, 0);
   STAT_DEFS.forEach(d => { s.stats[d.key] = intIn(s.stats[d.key], 0, 99, STAT_BASE); });
   s.enchants = Object.fromEntries(Object.entries(s.enchants && typeof s.enchants === 'object' ? s.enchants : {}).filter(([k, e]) => ITEMS[k] && ITEMS[k].tab === '장비' && e && (e.k === 'hp' || e.k === 'sp' || STAT_DEFS.some(d => d.key === e.k))).map(([k, e]) => [k, { k: e.k, v: intIn(e.v, 1, e.k === 'hp' || e.k === 'sp' ? 30 : 5, 1), n: intIn(e.n, 1, 9999, 1) }]));
-  s.reinforce = Object.fromEntries(Object.entries(s.reinforce && typeof s.reinforce === 'object' ? s.reinforce : {}).filter(([k]) => ITEMS[k] && ITEMS[k].slot === '무기').map(([k, v]) => [k, intIn(v, 0, REINFORCE_RANKS.length - 1, 0)]).filter(([, v]) => v > 0));
-  s.nicks = Object.fromEntries(Object.entries(s.nicks && typeof s.nicks === 'object' ? s.nicks : {}).filter(([k, v]) => ITEMS[k] && ITEMS[k].slot === '무기' && s.reinforce[k] >= REINFORCE_RANKS.length - 1 && typeof v === 'string').map(([k, v]) => [k, cleanText(v, NICK_MAX)]).filter(([, v]) => v));
+  s.reinforce = Object.fromEntries(Object.entries(s.reinforce && typeof s.reinforce === 'object' ? s.reinforce : {}).filter(([k]) => ITEMS[k] && ITEMS[k].slot === '무기').map(([k, v]) => [k, intIn(v, 0, REINFORCE_MAX, 0)]).filter(([, v]) => v > 0));
+  s.reinforceXp = Object.fromEntries(Object.entries(s.reinforceXp && typeof s.reinforceXp === 'object' ? s.reinforceXp : {}).filter(([k]) => s.reinforce[k] >= REINFORCE_A && s.reinforce[k] < REINFORCE_MAX).map(([k, v]) => [k, intIn(v, 0, 99999, 0)]).filter(([, v]) => v > 0));
+  s.nicks = Object.fromEntries(Object.entries(s.nicks && typeof s.nicks === 'object' ? s.nicks : {}).filter(([k, v]) => ITEMS[k] && ITEMS[k].slot === '무기' && s.reinforce[k] >= REINFORCE_A && typeof v === 'string').map(([k, v]) => [k, cleanText(v, NICK_MAX)]).filter(([, v]) => v));
   s.fishBest = Object.fromEntries(Object.entries(s.fishBest && typeof s.fishBest === 'object' ? s.fishBest : {}).filter(([k, v]) => FISH_SIZE[k] && Number.isFinite(v) && v > 0).map(([k, v]) => [k, Math.min(300, Math.round(v * 10) / 10)]));
   s.flags = { ...(s.flags && typeof s.flags === 'object' ? s.flags : {}), lostFound: !!(s.flags && s.flags.lostFound), annoA: s.flags && (s.flags.annoA === 'pending' || s.flags.annoA === 'done') ? s.flags.annoA : '', annoMax: s.flags && (s.flags.annoMax === 'pending' || s.flags.annoMax === 'done') ? s.flags.annoMax : '' };
   if (s.dungeon) s.dungeon.tf = Object.fromEntries(Object.entries(s.dungeon.tf && typeof s.dungeon.tf === 'object' ? s.dungeon.tf : {}).filter(([k, v]) => /^-?\d{1,3},-?\d{1,3}$/.test(k) && Number.isFinite(v)).map(([k, v]) => [k, intIn(v, 0, TAME_FAIL_MAX, 0)]));
@@ -361,7 +362,7 @@ const reinforceBonus = n => REINFORCE_BONUS[reinforceLv(n)] || 0;
 function reinforceItem(name, rnd = Math.random) { // 성공 { ok, lv } / 실패 사유 문자열
   if (!ITEMS[name] || ITEMS[name].slot !== '무기' || !enchantables().includes(name)) return '강화할 수 없는 무기입니다.';
   const lv = reinforceLv(name);
-  if (lv >= REINFORCE_RANKS.length - 1) return '이미 최고 랭크(A)입니다.';
+  if (lv >= REINFORCE_A) return 'A랭부터는 쓰지 않는 장비를 먹여 승급합니다.';
   const cost = REINFORCE_COST[lv];
   if (state.money < cost) return `CR이 부족합니다. (필요 ${cost})`;
   state.money -= cost;
@@ -369,6 +370,41 @@ function reinforceItem(name, rnd = Math.random) { // 성공 { ok, lv } / 실패 
   if (ok) state.reinforce[name] = lv + 1;
   save();
   return { ok, lv: ok ? lv + 1 : lv };
+}
+/* 승급 (A랭 → S → SS → SSS): 쓰지 않는 장비를 먹여 경험치를 채운다 */
+const reinforceXpOf = n => ((state.reinforceXp || {})[n]) | 0;
+const reinforceNeed = n => { const lv = reinforceLv(n); return lv >= REINFORCE_A && lv < REINFORCE_MAX ? REINFORCE_XP[lv - REINFORCE_A] : 0; };
+function feedXp(n) { const it = ITEMS[n]; if (!it) return 0; return Math.max(5, Math.round(FEED_XP.base + (it.sell || 0) / FEED_XP.sellDiv + (it.slot === '무기' ? (it.atk || 0) * FEED_XP.atk + reinforceBonus(n) * FEED_XP.rank : 0))); }
+const feedables = target => dismantlable().filter(([n]) => n !== target && !isLocked(n) && !ITEMS[n].capacity); // 소지품의 장비(착용·잠금·가방·같은 이름 제외)
+function reinforceFeed(target, picks) { // picks: [[이름, 개수]] → { xp, lv, up } / 사유 문자열
+  if (!state.created) return '먼저 캐릭터를 만드세요.';
+  if (placeKey() !== '본부') return '승급은 본부에서만 할 수 있습니다.';
+  if (!ITEMS[target] || ITEMS[target].slot !== '무기' || !enchantables().includes(target)) return '승급할 수 없는 무기입니다.';
+  const lv0 = reinforceLv(target); if (lv0 < REINFORCE_A) return 'A랭까지 강화한 무기만 승급할 수 있습니다.'; if (lv0 >= REINFORCE_MAX) return '이미 최고 랭크(SSS)입니다.';
+  const ok = new Map(feedables(target)), list = (picks || []).map(([n, q]) => [n, intIn(q, 0, 99, 0)]).filter(([n, q]) => q > 0 && ok.has(n));
+  if (!list.length) return '먹일 장비를 골라 주세요.';
+  for (const [n, q] of list) if (q > ok.get(n)) return `${n}이(가) 모자랍니다.`;
+  let xp = 0; for (const [n, q] of list) { xp += feedXp(n) * q; removeItem(n, q); if (!state.inventory['장비'].some(s => s.n === n) && !Object.values(state.equipment).includes(n) && !(state.storage[n] > 0)) { delete state.enchants[n]; delete state.reinforce[n]; delete state.nicks[n]; delete state.engraves[n]; if (state.reinforceXp) delete state.reinforceXp[n]; } }
+  state.reinforceXp = state.reinforceXp || {}; let cur = reinforceXpOf(target) + xp, lv = lv0;
+  while (lv < REINFORCE_MAX && cur >= REINFORCE_XP[lv - REINFORCE_A]) { cur -= REINFORCE_XP[lv - REINFORCE_A]; lv++; }
+  state.reinforce[target] = lv; if (lv >= REINFORCE_MAX || cur <= 0) delete state.reinforceXp[target]; else state.reinforceXp[target] = cur;
+  syncMax(); save();
+  return { xp, lv, up: lv - lv0 };
+}
+/* 계승: 한 무기의 강화·승급 경험치·세공·이름을 다른 무기로 옮긴다 (원래 무기는 처음 상태가 된다) */
+function transferWeapon(from, to) { // { lv } / 사유 문자열
+  if (!state.created) return '먼저 캐릭터를 만드세요.';
+  if (placeKey() !== '본부') return '계승은 본부에서만 할 수 있습니다.';
+  const own = enchantables(), w = n => ITEMS[n] && ITEMS[n].slot === '무기' && own.includes(n);
+  if (!w(from) || !w(to)) return '가지고 있는 무기끼리만 옮길 수 있습니다.';
+  if (from === to) return '같은 무기로는 옮길 수 없습니다.';
+  if (!reinforceLv(from) && !state.enchants[from]) return '옮길 강화·세공이 없는 무기입니다.';
+  if (state.money < TRANSFER_COST) return `CR이 부족합니다. (필요 ${TRANSFER_COST})`;
+  state.money -= TRANSFER_COST; state.reinforceXp = state.reinforceXp || {};
+  const mv = (o, k) => { if (o[from] !== undefined) o[to] = o[from]; else delete o[to]; delete o[from]; };
+  mv(state.reinforce); mv(state.reinforceXp); mv(state.enchants); mv(state.nicks);
+  syncMax(); save();
+  return { lv: reinforceLv(to) };
 }
 /* A랭까지 강화한 무기에는 이름을 붙일 수 있다 */
 /* ---------- 분해: 소지품의 장비(가방 포함)를 재료 + 소정의 CR로 ---------- */
@@ -639,7 +675,7 @@ function engraveItem(name, text) { // 반지에 이름 새기기 (비우면 지�
   if (!t) delete state.engraves[name]; else state.engraves[name] = t;
   save(); return null;
 }
-const canNick = n => !!(ITEMS[n] && ITEMS[n].slot === '무기' && reinforceLv(n) >= REINFORCE_RANKS.length - 1);
+const canNick = n => !!(ITEMS[n] && ITEMS[n].slot === '무기' && reinforceLv(n) >= REINFORCE_A);
 function setNick(name, text) { // 성공 null / 실패 사유
   if (!canNick(name) || !enchantables().includes(name)) return 'A랭까지 강화한 무기에만 이름을 붙일 수 있습니다.';
   const t = cleanText(text, NICK_MAX);

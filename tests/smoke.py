@@ -535,7 +535,7 @@ with sync_playwright() as p:
     pg.click('#choices button:has-text("종합 상가")'); pg.wait_for_timeout(80)
     check('mall_tabs_5', '종합 상가' in text(pg, '#modalTitle') and ev(pg, "[...document.querySelectorAll('.shop-tabs button')].map(b=>b.textContent)")== ['무기', '장비', '재료', '농사', 'RP템', '판매'] and text(pg, '.shop-tabs button.active') == '무기')
     check('shop_equipment_shows_effect', pg.locator('.shop-row').count() == ev(pg, "shopSections('종합 상가')['무기'].length") and pg.locator('.shop-row').count() >= 3 and pg.locator('.shop-row .item-info .it-l1').count() == pg.locator('.shop-row').count() and ev(pg, "[...document.querySelectorAll('.shop-row .it-l1')].every(e=>e.textContent.trim().length>0)"))
-    check('mall_weapon_gear_split', ev(pg, "(()=>{const s=shopSections('종합 상가');return s['무기'].every(([n])=>ITEMS[n].slot==='무기')&&s['장비'].every(([n])=>ITEMS[n].tab==='장비'&&ITEMS[n].slot!=='무기')&&s['무기'].length+s['장비'].length===26&&s['무기'].some(([n])=>n==='아이스크림 소드')})()") is True)
+    check('mall_weapon_gear_split', ev(pg, "(()=>{const s=shopSections('종합 상가');return s['무기'].every(([n])=>ITEMS[n].slot==='무기')&&s['장비'].every(([n])=>ITEMS[n].tab==='장비'&&ITEMS[n].slot!=='무기')&&s['무기'].length+s['장비'].length===28&&s['무기'].some(([n])=>n==='아이스크림 소드')})()") is True)
     pg.click('.shop-tabs button:has-text("장비")'); pg.wait_for_timeout(50)
     check('mall_gear_rows_show_wear_slot', pg.locator('.shop-row .slot-tag').count() == pg.locator('.shop-row').count() and pg.locator('.slot-hint').count() == 1)
     check('mall_gear_tab_rows', pg.locator('.shop-row').count() == ev(pg, "shopSections('종합 상가')['장비'].length") and text(pg, '.shop-tabs button.active') == '장비')
@@ -1714,13 +1714,13 @@ with sync_playwright() as p:
     ev(pg, "(()=>{state.money=1000;state.enchants={};addItem('가죽 장갑',1);addItem('전술 장갑',1);syncMax()})()")
     check('enhance_is_real_action', ev(pg, "ACTIONS['장비 강화'].kind")== 'enhance' and ev(pg, "enchantables().includes('가죽 장갑')"))
     home('본부'); pg.click('#choices button:has-text("장비 강화")'); pg.wait_for_timeout(80)
-    check('enhance_modal_default_reinforce_tab', pg.locator('#overlay.open').count() == 1 and '장비 강화' in text(pg, '#modalTitle') and pg.locator('[data-act="enh-tab"]').count() == 2 and pg.locator('[data-act="enhance-roll"]').count() == 0)
+    check('enhance_modal_default_reinforce_tab', pg.locator('#overlay.open').count() == 1 and '장비 강화' in text(pg, '#modalTitle') and pg.locator('[data-act="enh-tab"]').count() == 3 and pg.locator('[data-act="enhance-roll"]').count() == 0)
     ev(pg, "(()=>{state.money=5000;state.reinforce={};addItem('훈련용 검',1);openEnhance()})()")
     check('reinforce_lists_weapons_with_rank', pg.locator('[data-act="reinforce-roll"]').count() >= 1 and 'F랭' in text(pg, '#modalBody') and '130' in text(pg, '#modalBody'))
     check('reinforce_rules', ev(pg, """(()=>{const bak=JSON.stringify(state.reinforce);state.reinforce={};state.money=99999;let a=reinforceItem('훈련용 검',()=>0.99);let okFail=a.ok===false&&reinforceLv('훈련용 검')===0;let b=reinforceItem('훈련용 검',()=>0.01);let okWin=b.ok===true&&reinforceLv('훈련용 검')===1;
       for(let i=0;i<10;i++)reinforceItem('훈련용 검',()=>0.01);const maxed=reinforceLv('훈련용 검')===5&&typeof reinforceItem('훈련용 검')==='string';const m0=state.money;state.money=10;const poor=typeof reinforceItem('플라즈마 블레이드')==='string';state.money=m0;state.reinforce={};return okFail&&okWin&&maxed&&poor})()"""))
     check('reinforce_raises_weapon_atk', ev(pg, """(()=>{state.reinforce={};changeEquipment('무기','훈련용 검');const a=weaponAtk();state.reinforce={'훈련용 검':2};const b=weaponAtk();state.reinforce={};return b===a+REINFORCE_BONUS[2]&&a===3})()"""))
-    check('reinforce_survives_sanitize', ev(pg, "(()=>{const s={...createDefaultState(),reinforce:{'훈련용 검':3,'없는템':2,'가죽 장갑':1,'훈련용 창':99}};hardenState(s);return JSON.stringify(s.reinforce)==='{\"훈련용 검\":3,\"훈련용 창\":5}'})()"))
+    check('reinforce_survives_sanitize', ev(pg, "(()=>{const s={...createDefaultState(),reinforce:{'훈련용 검':3,'없는템':2,'가죽 장갑':1,'훈련용 창':99}};hardenState(s);return JSON.stringify(s.reinforce)==='{\"훈련용 검\":3,\"훈련용 창\":8}'})()"))
     ev(pg, "changeEquipment('무기',null)")
     pg.click('[data-act="enh-tab"][data-tab="세공"]'); pg.wait_for_timeout(60)
     check('enhance_modal_lists_equipment', pg.locator('[data-act="enhance-roll"]').count() >= 2 and '100' in text(pg, '#modalBody'))
@@ -2018,7 +2018,7 @@ with sync_playwright() as p:
     # --- 8. 신규 아이템 / 레시피 (기존 것은 건너뛴다) ---
     check('new_items_defined', ev(pg, "['돌','달걀','나뭇가지','슬라임','마석','라벤더'].every(n=>ITEMS[n]&&ITEMS[n].sell>0)&&ITEMS['돌'].how==='채굴'&&['달걀','나뭇가지','라벤더'].every(n=>ITEMS[n].how==='채집')&&!ITEMS['슬라임'].how&&!ITEMS['마석'].how"))
     check('new_items_skip_existing', ev(pg, "(()=>{const d=ITEMS['돌'].desc,s=ITEMS['돌'].sell;defItems('재료',[['돌','x','덮어쓰기?',{sell:999}]]);const n=RECIPES.length;NEW_RECIPES.forEach(rc=>{if(!RECIPES.some(r=>r.out===rc.out))RECIPES.push(rc)});addCrop('활발 허브',{seed:'x',grow:1,yield:[1,1],feed:1,icon:'x',desc:'x'});return ITEMS['돌'].desc===d&&ITEMS['돌'].sell===s&&RECIPES.length===n&&CROPS['활발 허브'].grow===150})()"))
-    check('new_recipes_appended_at_tail', ev(pg, "RECIPES.length")== 99 and ev(pg, "RECIPES[0].out")== '응급 키트' and ev(pg, "RECIPES[44].out")== '서리 수정 지팡이' and ev(pg, "RECIPES.slice(45,59).map(r=>r.out).join()")== '달걀 프라이,라벤더 차,돌 팔찌,라벤더 향낭,나뭇가지 지팡이,슬라임 연고,마석 반지,설탕,과일 주스,계란말이,오징어구이,피라냐튀김,초코바나나,이스터에그' and ev(pg, "RECIPES.every(rc=>ITEMS[rc.out]&&Object.keys(rc.mats).every(n=>ITEMS[n]||MAT_GROUPS[n]))") and ev(pg, "new Set(RECIPES.map(r=>r.out)).size")== 99)
+    check('new_recipes_appended_at_tail', ev(pg, "RECIPES.length")== 101 and ev(pg, "RECIPES[0].out")== '응급 키트' and ev(pg, "RECIPES[44].out")== '서리 수정 지팡이' and ev(pg, "RECIPES.slice(45,59).map(r=>r.out).join()")== '달걀 프라이,라벤더 차,돌 팔찌,라벤더 향낭,나뭇가지 지팡이,슬라임 연고,마석 반지,설탕,과일 주스,계란말이,오징어구이,피라냐튀김,초코바나나,이스터에그' and ev(pg, "RECIPES.every(rc=>ITEMS[rc.out]&&Object.keys(rc.mats).every(n=>ITEMS[n]||MAT_GROUPS[n]))") and ev(pg, "new Set(RECIPES.map(r=>r.out)).size")== 101)
     check('new_recipe_ranks', ev(pg, "RECIPES.find(r=>r.out==='슬라임 연고').rank")== 'E' and ev(pg, "RECIPES.find(r=>r.out==='달걀 프라이').rank")== 'F' and ev(pg, "MEDICINES.has('슬라임 연고')"))
     check('new_materials_gatherable', ev(pg, "ACTIONS['제1구역 채석지 돌']&&ACTIONS['제1구역 채석지 돌'].kind==='gather'&&ACTIONS['제1구역 채석지 돌'].method==='채굴'&&ACTIONS['제1구역 숲 나뭇가지'].method==='채집'&&ACTIONS['제1구역 숲 달걀']&&ACTIONS['제1구역 깊은 숲 라벤더']&&!!GATHER_VERBS['돌']"))
     check('new_materials_dropped', ev(pg, "DANGER_ZONES.some(z=>z.terrains.some(t=>t.monsters.some(m=>m.kind==='이능 몬스터'&&m.drops.some(d=>d[0]==='슬라임'))))&&DANGER_ZONES.filter(z=>z.n>=2).some(z=>z.terrains.some(t=>t.monsters.some(m=>m.drops.some(d=>d[0]==='마석'))))&&DANGER_ZONES.every(z=>z.terrains.every(t=>t.monsters.every(m=>m.kind!=='짐승'||!m.drops.some(d=>d[0]==='슬라임'))))"))
@@ -2029,7 +2029,7 @@ with sync_playwright() as p:
     # --- 9. 세이브 호환: 옛 저장(새 필드 없음)을 불러와도 기본값이 채워진다 ---
     old = ev(pg, """(()=>{const o=JSON.parse(JSON.stringify(state));['tickets','questCount','gacha','actMs'].forEach(k=>delete o[k]);o.pets=[{id:Object.keys(PET_SPECIES)[0],bond:30,fedAt:0,exp:null}];const r=sanitize(merge(createDefaultState(),o));hardenState(r);
       return [r.tickets,r.questCount,r.gacha.pat,r.gacha.pulls,r.actMs,PET_PERS_LIST.includes(r.pets[0].pers),r.pets[0].bond,RECIPES.length,r.learned.length>=0]})()""")
-    check('old_save_gets_new_defaults', old == [0, 0, 0, 0, 0, True, 30, 99, True], old)
+    check('old_save_gets_new_defaults', old == [0, 0, 0, 0, 0, True, 30, 101, True], old)
     check('bad_new_fields_sanitized', ev(pg, """(()=>{const o=JSON.parse(JSON.stringify(state));o.tickets=-5;o.questCount='x';o.gacha={pat:99,pulls:-1,wins:'a'};o.actMs=NaN;o.pets=[{id:Object.keys(PET_SPECIES)[0],bond:30,fedAt:0,exp:null,pers:'없는성격'}];const r=sanitize(merge(createDefaultState(),o));hardenState(r);return r.tickets===0&&r.questCount===0&&r.gacha.pat<GACHA_SETS.length&&r.gacha.pulls===0&&r.gacha.wins===0&&r.actMs===0&&PET_PERS_LIST.includes(r.pets[0].pers)})()"""))
     # --- 10. 행동 시간 누적 → 칭호 ---
     check('title_time_flies_defined', ev(pg, "TITLES.includes('시간 가는 줄 모르는')"))
@@ -2208,7 +2208,7 @@ with sync_playwright() as p:
     check('billboard_has_deep_boss_rumor', ev(pg, "BILLBOARD.some(b=>b.t==='뉴스'&&b.text.includes('최심부'))") is True)
     check('billboard_event_overrides', ev(pg, "(()=>{BILLBOARD_EVENT.push('이벤트 임시 문구');const ok=bbPool().length===1&&bbPick().text==='이벤트 임시 문구';BILLBOARD_EVENT.length=0;return ok&&bbPool().length===BILLBOARD.length})()") is True)
     check('billboard_hidden_in_dungeon', ev(pg, "(()=>{state.location='제1구역';enterDungeon('제1구역');renderAction();const n=document.querySelectorAll('.billboard').length;state.dungeon=null;state.location='본부';renderAction();return n})()") == 0)
-    check('new_recipes_2026_10_24', ev(pg, "RECIPES.slice(55,59).map(r=>r.out).join()") == '오징어구이,피라냐튀김,초코바나나,이스터에그' and ev(pg, "RECIPES.length") == 99 and ev(pg, "new Set(RECIPES.map(r=>r.out)).size") == 99)
+    check('new_recipes_2026_10_24', ev(pg, "RECIPES.slice(55,59).map(r=>r.out).join()") == '오징어구이,피라냐튀김,초코바나나,이스터에그' and ev(pg, "RECIPES.length") == 101 and ev(pg, "new Set(RECIPES.map(r=>r.out)).size") == 101)
     check('easter_egg_uses_egg_group', ev(pg, "RECIPES.find(r=>r.out==='이스터에그').mats['알']") == 2)
     check('new_items_exist_and_shops', ev(pg, "['오징어구이','피라냐튀김','초코바나나','이스터에그','군용 컵라면','아이스크림 소드','노트북','초콜릿'].every(n=>ITEMS[n])") is True and ev(pg, "shopRows('보급품 상점').some(([n])=>n==='군용 컵라면')") is True and ev(pg, "shopRows('종합 상가').some(([n])=>n==='아이스크림 소드')&&shopRows('종합 상가').some(([n])=>n==='노트북')&&shopRows('종합 상가').some(([n])=>n==='초콜릿')") is True)
     check('laptop_gives_int_when_held', ev(pg, "(()=>{removeItem('노트북',countItem('노트북'));const a=totalStats().int;addItem('노트북',1);const b=totalStats().int;removeItem('노트북',1);return b===a+1})()") is True)

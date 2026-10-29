@@ -1651,3 +1651,18 @@ button.pcard:not(.off):hover{transform:translateY(-2px)}
 .mail-kind{position:absolute;right:-5px;bottom:-5px;width:16px;height:16px;display:grid;place-items:center;border-radius:50%;background:var(--panel);border:1px solid var(--line);color:var(--accent)}
 .mail-kind .material-symbols-rounded{font-size:11px}
 .mail-from{display:flex;align-items:center;gap:8px}
+
+/* 펫 탐험 일괄 보내기 */
+.choice-label:has(.pet-send-all),.choice-label:has(.exp-all){display:flex;align-items:center;gap:6px}
+.choice-label .pet-send-all,.choice-label .exp-all{margin-left:auto;font-size:calc(11px*var(--fs));padding:3px 8px;display:inline-flex;align-items:center;gap:4px}
+.choice-label .exp-all{font-size:calc(11px*var(--fs));padding:2px 8px}
+.choice-label .pet-send-all .material-symbols-rounded{font-size:15px}
+.pet-pick{cursor:pointer}
+.pet-pick input{margin:0 4px 0 0;flex:none}
+
+/* 무기 승급 · 계승 */
+.xp-bar{display:block;height:5px;margin-top:4px;background:var(--bar-track);overflow:hidden}
+.xp-bar i{display:block;height:100%;background:var(--accent)}
+.feed-sum{font-weight:700;margin:6px 0}
+.nearby-row .feed-q{flex:none;width:56px}
+.tf-info{margin:0 0 8px}

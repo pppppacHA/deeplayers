@@ -2225,6 +2225,31 @@ const A = {
     renderBag(); renderInventory(); renderProfile(); renderAction(); sfx('ok'); openStorage(true);
   },
   'enh-tab': el => { view.enhTab = el.dataset.tab; openEnhance(); },
+  'feed-open': el => openFeed(el.dataset.name),
+  'feed-back': () => openEnhance(),
+  'feed-do': () => {
+    const picks = $$('.feed-q').map(x => [x.dataset.name, +x.value]).filter(([, q]) => q > 0), t = view.feedT;
+    if (!picks.length) { toast('먹일 장비를 골라 주세요.'); sfx('error'); return; }
+    askConfirm('승급', `${picks.map(([n, q]) => `${n} ×${q}`).join(', ')}을(를) ${shownName(t)}에게 먹일까요? 먹인 장비는 사라집니다.`, '먹이기', 'feed-do2', { picks: JSON.stringify(picks) }, () => openFeed(t));
+  },
+  'feed-do2': el => {
+    let picks = []; try { picks = JSON.parse(el.dataset.picks || '[]'); } catch (e) { picks = []; }
+    const t = view.feedT, r = reinforceFeed(t, picks);
+    if (typeof r === 'string') { toast(r); sfx('error'); openFeed(t); return; }
+    sfx(r.up ? 'levelup' : 'ok'); toast(r.up ? `${shownName(t)} 승급! ${REINFORCE_RANKS[r.lv]}랭이 되었어요. (경험치 +${r.xp})` : `경험치 +${r.xp}`);
+    if (r.up) addLog(`무기 승급: ${t} (${REINFORCE_RANKS[r.lv]}랭)`);
+    renderBag(); renderStatus(); if (r.lv < REINFORCE_MAX) openFeed(t); else openEnhance();
+  },
+  'transfer-ask': () => {
+    const f = ($('#tfFrom') || {}).value, t = ($('#tfTo') || {}).value; if (!f || !t) return; view.tfFrom = f; view.tfTo = t;
+    askConfirm('무기 계승', `${f}의 강화(${REINFORCE_RANKS[reinforceLv(f)]}랭)·세공·이름을 ${t}(으)로 옮길까요? ${f}은(는) F랭이 되고, ${t}에 있던 강화·세공은 사라집니다. (${TRANSFER_COST} CR)`, '계승하기', 'transfer-do', {}, () => openEnhance());
+  },
+  'transfer-do': () => {
+    const r = transferWeapon(view.tfFrom, view.tfTo);
+    if (typeof r === 'string') { toast(r); sfx('error'); openEnhance(); return; }
+    sfx('ok'); toast(`${view.tfTo}이(가) ${REINFORCE_RANKS[r.lv]}랭을 이어받았어요.`); addLog(`무기 계승: ${view.tfFrom} → ${view.tfTo} (${REINFORCE_RANKS[r.lv]}랭)`);
+    view.tfFrom = view.tfTo; renderBag(); renderStatus(); openEnhance();
+  },
   'nick-open': el => {
     const n = el.dataset.name; if (!canNick(n)) { toast('A랭까지 강화한 무기에만 이름을 붙일 수 있어요.'); return; }
     view.nickFor = n;
@@ -3619,16 +3644,27 @@ function askConfirm(title, msg, okLabel, act, data, back) {
 }
 function openEnhance(keepScroll) {
   const st0 = keepScroll === true && $('#modalBody') ? $('#modalBody').scrollTop : 0, names = enchantables(), worn = new Set(Object.values(state.equipment));
-  const tab = view.enhTab === '세공' ? '세공' : '강화';
-  const tabs = `<div class="tabs flush">${['강화', '세공'].map(t => `<button class="${t === tab ? 'active' : ''}" data-act="enh-tab" data-tab="${t}">${t}</button>`).join('')}</div>`;
+  const tab = ['세공', '계승'].includes(view.enhTab) ? view.enhTab : '강화';
+  const tabs = `<div class="tabs flush">${['강화', '계승', '세공'].map(t => `<button class="${t === tab ? 'active' : ''}" data-act="enh-tab" data-tab="${t}">${t}</button>`).join('')}</div>`;
   let intro, rows;
   if (tab === '강화') {
-    intro = `<p class="tiny">무기를 F랭에서 A랭까지 키웁니다. 랭크가 오를수록 무기 공격력이 늘지만, 도전에 실패하면 CR만 잃어요. (랭크는 내려가지 않아요) 보유 CR ${state.money}</p>`;
+    intro = `<p class="tiny">무기를 F랭에서 A랭까지 CR로 강화합니다. 실패하면 CR만 잃어요(랭크는 내려가지 않아요). A랭부터는 <b>승급</b>: 쓰지 않는 장비를 먹여 경험치를 채우면 S → SS → SSS랭이 됩니다. 보유 CR ${state.money}</p>`;
     rows = names.filter(n => ITEMS[n].slot === '무기').map(n => {
-      const it = ITEMS[n], lv = reinforceLv(n), max = lv >= REINFORCE_RANKS.length - 1;
-      return `<div class="nearby-row"><div class="round-avatar">${icon(it.icon)}</div><div class="grow"><strong>${esc(shownName(n))}${nickOf(n) ? ` <small>(${esc(n)})</small>` : ''} <em class="tag">${REINFORCE_RANKS[lv]}랭</em></strong><small>${worn.has(n) ? '착용 중' : '소지품'} · 공격력 +${it.atk + reinforceBonus(n)}${lv ? ` (강화 +${reinforceBonus(n)})` : ''}</small><small>${max ? (nickOf(n) ? `최고 랭크입니다. 이름: 「${esc(nickOf(n))}」` : '최고 랭크입니다. 이제 이 무기에 이름을 붙일 수 있어요.') : `${REINFORCE_RANKS[lv]} → ${REINFORCE_RANKS[lv + 1]} · 성공 ${Math.round(REINFORCE_RATE[lv] * 100)}% · 공격력 +${REINFORCE_BONUS[lv + 1] - REINFORCE_BONUS[lv]}`}</small></div>` +
-        (max ? `<button class="primary" data-act="nick-open" data-name="${esc(n)}">${icon('edit')} ${nickOf(n) ? '이름 바꾸기' : '이름 붙이기'}</button></div>` : `<button class="primary" data-act="reinforce-roll" data-name="${esc(n)}" ${state.money < REINFORCE_COST[lv] ? 'disabled' : ''}>강화 (${REINFORCE_COST[lv]} CR)</button></div>`);
+      const it = ITEMS[n], lv = reinforceLv(n), aRank = lv >= REINFORCE_A, top = lv >= REINFORCE_MAX, need = reinforceNeed(n), xp = reinforceXpOf(n);
+      const info = top ? `최고 랭크(SSS)입니다.${nickOf(n) ? ` 이름: 「${esc(nickOf(n))}」` : ''}` : aRank ? `승급 ${REINFORCE_RANKS[lv]} → ${REINFORCE_RANKS[lv + 1]} · 경험치 ${xp}/${need} · 공격력 +${REINFORCE_BONUS[lv + 1] - REINFORCE_BONUS[lv]}${nickOf(n) ? ` · 이름 「${esc(nickOf(n))}」` : ''}` : `${REINFORCE_RANKS[lv]} → ${REINFORCE_RANKS[lv + 1]} · 성공 ${Math.round(REINFORCE_RATE[lv] * 100)}% · 공격력 +${REINFORCE_BONUS[lv + 1] - REINFORCE_BONUS[lv]}`;
+      return `<div class="nearby-row"><div class="round-avatar">${icon(it.icon)}</div><div class="grow"><strong>${esc(shownName(n))}${nickOf(n) ? ` <small>(${esc(n)})</small>` : ''} <em class="tag">${REINFORCE_RANKS[lv]}랭</em></strong><small>${worn.has(n) ? '착용 중' : '소지품'} · 공격력 +${it.atk + reinforceBonus(n)}${lv ? ` (강화 +${reinforceBonus(n)})` : ''}</small><small>${info}</small>${aRank && !top ? `<span class="xp-bar"><i style="width:${Math.min(100, Math.round(xp / need * 100))}%"></i></span>` : ''}</div>` +
+        (aRank ? `<div class="row-gap">${top ? '' : `<button class="primary" data-act="feed-open" data-name="${esc(n)}">${icon('upgrade')} 승급</button>`}<button data-act="nick-open" data-name="${esc(n)}">${icon('edit')} ${nickOf(n) ? '이름' : '이름 붙이기'}</button></div></div>` : `<button class="primary" data-act="reinforce-roll" data-name="${esc(n)}" ${state.money < REINFORCE_COST[lv] ? 'disabled' : ''}>강화 (${REINFORCE_COST[lv]} CR)</button></div>`);
     }).join('') || '<div class="empty">강화할 무기가 없습니다. 무기를 얻거나 제작해 보세요.</div>';
+  } else if (tab === '계승') {
+    const ws = names.filter(n => ITEMS[n].slot === '무기'), src = ws.filter(n => reinforceLv(n) || state.enchants[n]);
+    if (!src.includes(view.tfFrom)) view.tfFrom = src[0] || ''; if (!ws.includes(view.tfTo) || view.tfTo === view.tfFrom) view.tfTo = ws.find(n => n !== view.tfFrom) || '';
+    const desc = n => !n ? '' : [reinforceLv(n) ? `${REINFORCE_RANKS[reinforceLv(n)]}랭` : 'F랭', reinforceXpOf(n) ? `경험치 ${reinforceXpOf(n)}` : '', state.enchants[n] ? `세공 ${enchantText(state.enchants[n])}` : '', nickOf(n) ? `이름 「${nickOf(n)}」` : ''].filter(Boolean).join(' · ');
+    const opt = (l, cur) => l.map(n => `<option value="${esc(n)}" ${n === cur ? 'selected' : ''}>${esc(n)}</option>`).join('');
+    intro = `<p class="tiny">한 무기의 강화 랭크·승급 경험치·세공·이름을 다른 무기로 그대로 옮깁니다. 원래 무기는 처음 상태(F랭)가 되고, 받는 무기에 있던 강화·세공은 사라져요. 비용 ${TRANSFER_COST} CR · 보유 CR ${state.money}</p>`;
+    rows = src.length && ws.length > 1 ? `<div class="srow fontrow"><span>옮길 무기</span><select id="tfFrom" data-act-change="tf">${opt(src, view.tfFrom)}</select></div><p class="tiny tf-info">${esc(desc(view.tfFrom))}</p>` +
+      `<div class="srow fontrow"><span>받을 무기</span><select id="tfTo">${opt(ws.filter(n => n !== view.tfFrom), view.tfTo)}</select></div><p class="tiny tf-info">지금: ${esc(desc(view.tfTo))}</p>` +
+      `<div class="row-gap"><button class="primary" data-act="transfer-ask" ${state.money < TRANSFER_COST ? 'disabled' : ''}>계승하기 (${TRANSFER_COST} CR)</button></div>`
+      : '<div class="empty">강화·세공한 무기와 옮겨 받을 다른 무기가 모두 있어야 해요.</div>';
   } else {
     intro = `<p class="tiny">CR ${ENCHANT_COST}을 내면 장비에 무작위 효과(스탯 +1~2, 최대 HP·기력 +5~15)가 하나 붙습니다. 장착하면 적용되고, 다시 세공하면 새 효과로 바뀝니다. 같은 이름의 장비는 효과를 함께 씁니다. 보유 CR ${state.money}</p>`;
     rows = names.map(n => {
@@ -3640,6 +3676,20 @@ function openEnhance(keepScroll) {
   modal('장비 강화', tabs + intro + rows, [btnClose], true);
   $('#modalBody').scrollTop = st0;
 }
+function openFeed(target) { // 승급: 먹일 장비 고르기
+  const lv = reinforceLv(target); if (lv < REINFORCE_A || lv >= REINFORCE_MAX) { openEnhance(); return; }
+  view.feedT = target; const list = feedables(target), need = reinforceNeed(target), xp = reinforceXpOf(target);
+  const rows = list.map(([n, c]) => { const it = ITEMS[n], up = [reinforceLv(n) ? `${REINFORCE_RANKS[reinforceLv(n)]}랭` : '', state.enchants[n] ? '세공' : ''].filter(Boolean).join('·');
+    return `<div class="nearby-row"><div class="round-avatar">${icon(it.icon)}</div><div class="grow"><strong>${esc(n)}</strong><small>${esc(it.slot)} · 경험치 +${feedXp(n)}${up ? ` · ${esc(up)} 기록은 마지막 1개를 먹이면 사라짐` : ''}</small></div><select class="feed-q" data-name="${esc(n)}" data-xp="${feedXp(n)}" aria-label="${esc(n)} 개수">${Array.from({ length: c + 1 }, (_, k) => `<option value="${k}">${k}</option>`).join('')}</select><small class="tiny">/ ${c}</small></div>`; }).join('');
+  modal(`${shownName(target)} 승급`, `<p class="tiny">${REINFORCE_RANKS[lv]} → ${REINFORCE_RANKS[lv + 1]} · 경험치 ${xp}/${need}. 먹인 장비는 사라지고 되돌릴 수 없어요. (착용 중·잠금·가방·이 무기와 같은 이름은 목록에 없어요)</p>` +
+    `<p class="feed-sum" id="feedSum">고른 경험치 +0</p>` + (rows || '<div class="empty">먹일 수 있는 장비가 없습니다. 소지품에 쓰지 않는 장비가 있어야 해요.</div>'),
+    [`<button data-act="feed-back">${icon('arrow_back')} 뒤로</button>`, `<button class="danger" data-act="feed-do" ${rows ? '' : 'disabled'}>먹이기</button>`], true);
+}
+document.addEventListener('change', e => { // 승급 합계 / 계승 무기 고르기
+  if (e.target && e.target.classList && e.target.classList.contains('feed-q')) { const t = $$('.feed-q').reduce((a, x) => a + (+x.value) * (+x.dataset.xp), 0), lv = reinforceLv(view.feedT), cur = reinforceXpOf(view.feedT) + t; let l = lv, c = cur; while (l < REINFORCE_MAX && c >= REINFORCE_XP[l - REINFORCE_A]) { c -= REINFORCE_XP[l - REINFORCE_A]; l++; } const el = $('#feedSum'); if (el) el.textContent = `고른 경험치 +${t}${l > lv ? ` → ${REINFORCE_RANKS[l]}랭으로 승급!` : ''}`; }
+  if (e.target && e.target.id === 'tfFrom') { view.tfFrom = e.target.value; openEnhance(true); }
+  if (e.target && e.target.id === 'tfTo') view.tfTo = e.target.value;
+});
 function openDismantle(keepScroll) {
   const st0 = keepScroll === true && $('#modalBody') ? $('#modalBody').scrollTop : 0, rows = dismantlable().map(([n, c]) => {
     const it = ITEMS[n], y = dismantleYield(n), up = [reinforceLv(n) ? `${REINFORCE_RANKS[reinforceLv(n)]}랭` : '', state.enchants[n] ? '세공' : '', nickOf(n) ? '이름' : ''].filter(Boolean).join('·');
