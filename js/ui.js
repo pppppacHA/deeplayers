@@ -4113,3 +4113,9 @@ document.addEventListener('error', e => { // 도트 아이콘 파일이 없으�
   const t = e.target; if (!t || t.tagName !== 'IMG' || !t.dataset.px) return;
   PX_BAD.add(t.dataset.px); const sp = t.closest('.px-icon'); if (sp) sp.outerHTML = icon(t.dataset.fb || 'category');
 }, true);
+
+function pxScale() { // 도트 아이콘(16px 원본)이 실제 화면 픽셀에 정수 배로 찍히는 CSS 크기. 배율이 1.25·1.5면 16·32px이 픽셀 사이에 걸려 도트가 깨진다
+  const d = window.devicePixelRatio || 1, f = t => { const n = Math.max(1, Math.ceil(t * d / 16 - 0.5)); return (n * 16 / d).toFixed(3) + 'px'; };
+  const r = document.documentElement.style; r.setProperty('--px-1', f(16)); r.setProperty('--px-2', f(32));
+}
+pxScale(); window.addEventListener('resize', pxScale); // 확대·축소(Ctrl +/−)도 배율이 바뀌어 resize가 온다

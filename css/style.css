@@ -1637,8 +1637,8 @@ button.pcard:not(.off):hover{transform:translateY(-2px)}
 
 /* 아이템 도트 아이콘 (assets/items/*.png): 16px 기준, 칸·상점·레시피에서는 2배 */
 .px-icon{display:inline-grid;place-items:center;line-height:0;flex:none;vertical-align:middle}
-.px-icon img{width:16px;height:16px;image-rendering:pixelated;image-rendering:crisp-edges;display:block;user-select:none;-webkit-user-drag:none}
-.slot .px-icon img,.shop-ic .px-icon img,.round-avatar .px-icon img{width:32px;height:32px}
+.px-icon img{width:var(--px-1,16px);height:var(--px-1,16px);image-rendering:crisp-edges;image-rendering:pixelated;display:block;user-select:none;-webkit-user-drag:none}
+.slot .px-icon img,.shop-ic .px-icon img,.round-avatar .px-icon img,.quick-bar .qs .px-icon img{width:var(--px-2,32px);height:var(--px-2,32px)} /* --px-1/2: 화면 배율(윈도우 125%·150% 등)에서도 도트가 정수 배로 찍히는 크기 (pxScale) */
 .shop-ic:has(> .px-icon),.round-avatar:has(> .px-icon){width:34px;height:34px}
 
 /* 메일: 보낸 대원 사진 + 편지/택배 표시 */
