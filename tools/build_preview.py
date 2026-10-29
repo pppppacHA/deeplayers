@@ -1,30 +1,60 @@
-"""미리보기 단일 HTML 빌드. 사용법: python3 tools/build_preview.py 출력경로.html
-- css/js를 인라인하고, CSP 메타를 제거하고(인라인 스크립트가 필요), BGM을 base64로 넣고, 가입 링크를 뺀다.
-- 개발자 도구(js/dev.js)는 이 빌드에 처음부터 합쳐진다. 배포본(index.html)에서는 설정의 개발자 코드를 맞게 입력했을 때만 불러온다.
+"""미리보기 빌드: index.html + css + js(+dev.js) 를 한 파일로 합친다. (배포 금지 — tools/ 는 zip 에 넣지 않는다)
+사용: python3 tools/build_preview.py <출력.html>
+- CSP 메타 제거, css/js 인라인, dev.js 는 ui.js 뒤에 붙인다(미리보기에만 개발자 도구)
+- 서버 연결 끄기(CLOUD 비움), signup.html 로 보내는 부분 제거
+- BGM·방 PNG 는 data: URI 로 넣는다 (_로 시작하는 안내 그림은 제외)
+※ 이전 버전 파일이 사라져 게시된 미리보기 결과물과 같게 나오도록 다시 만든 것 (2026-10-24)
 """
-import base64, re, sys
+import base64, json, re, sys
 from pathlib import Path
+
 ROOT = Path(__file__).resolve().parent.parent
-out = Path(sys.argv[1])
-h = (ROOT / 'index.html').read_text(encoding='utf8')
-h = re.sub(r'<meta http-equiv="Content-Security-Policy"[^>]*>\n?', '', h)
-h = h.replace('<title>공중도시 DEEP LAYER</title>', '<title>DEEP LAYER UI</title>')
-for css in ('theme', 'style'):
-    h = h.replace(f'<link rel="stylesheet" href="css/{css}.css">', '<style>\n' + (ROOT / f'css/{css}.css').read_text(encoding='utf8') + '\n</style>')
-bgm = 'data:audio/mpeg;base64,' + base64.b64encode((ROOT / 'audio/bgm.mp3').read_bytes()).decode()
-def js(name):
-    t = (ROOT / f'js/{name}.js').read_text(encoding='utf8')
-    if name == 'data':
-        t = t.replace("'audio/bgm.mp3'", "'" + bgm + "'")
-    if name == 'cloud':
-        t = re.sub(r"const CLOUD = \{[^}]*\};", "const CLOUD = { url: '', key: '' };", t)  # 미리보기는 서버에 연결하지 않는다
-        t = t.replace("location.replace('signup.html')", 'void 0')
-    if name == 'ui':
-        t = t.replace('<a class="btn-link" href="signup.html">가입 페이지</a>', '').replace('<a class="btn-link" href="signup.html">가입</a>', '').replace("location.href = 'signup.html'", "location.reload()")
-        t += '\n' + (ROOT / 'js/dev.js').read_text(encoding='utf8')  # 미리보기에는 개발자 도구가 처음부터 켜져 있다
-    return t
-for n in ('data', 'core', 'cloud', 'ui'):
-    h = h.replace(f'<script src="js/{n}.js"></script>', '<script>\n' + js(n) + '\n</script>')
-assert 'src="js/' not in h and 'href="css/' not in h
-out.write_text(h, encoding='utf8')
-print('OK', out, round(out.stat().st_size / 1024 / 1024, 1), 'MB')
+
+
+def read(p):
+    return (ROOT / p).read_text(encoding='utf8')
+
+
+def data_uri(path, mime):
+    return f'data:{mime};base64,' + base64.b64encode(path.read_bytes()).decode()
+
+
+def build():
+    html = read('index.html')
+    html = re.sub(r'<title>[^<]*</title>', '<title>DEEP LAYER UI</title>', html)
+    html = re.sub(r'<meta http-equiv="Content-Security-Policy"[^>]*>\n', '', html)
+    import urllib.parse as _u
+    html = re.sub(r'<link rel="(?:icon|apple-touch-icon)"[^>]*>\n', '', html)  # 파일 파비콘 → 미리보기에는 SVG 를 data: 로 넣는다
+    html = html.replace('</title>', '</title>\n<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,' + _u.quote(read('favicon.svg')) + '">', 1)
+    for css in ('theme', 'style'):
+        html = html.replace(f'<link rel="stylesheet" href="css/{css}.css">', '<style>\n' + read(f'css/{css}.css') + '\n</style>')
+
+    data = read('js/data.js')
+    assets = {p.name: data_uri(p, 'image/png') for p in sorted((ROOT / 'assets/room').glob('*.png')) if not p.name.startswith('_')}
+    data = 'const ROOM_ASSETS = ' + json.dumps(assets) + ';\n' + data
+    items = {p.name: data_uri(p, 'image/png') for p in sorted((ROOT / 'assets/items').glob('*.png')) if not p.name.startswith('_')} if (ROOT / 'assets/items').is_dir() else {}
+    data = 'const ITEM_ASSETS = ' + json.dumps(items) + ';\n' + data  # 아이템 도트 아이콘도 한 파일 안에
+    data = data.replace('src: `assets/room/${id}.png`', 'src: (ROOM_ASSETS[`${id}.png`] || `assets/room/${id}.png`)')
+    data = data.replace('maskSrc: o.mask ? `assets/room/${id}_mask.png` : \'\'', 'maskSrc: o.mask ? (ROOM_ASSETS[`${id}_mask.png`] || `assets/room/${id}_mask.png`) : \'\'')
+    bgm = ROOT / 'audio/bgm.mp3'
+    if bgm.exists():
+        data = data.replace("const BGM_FILE = 'audio/bgm.mp3';", "const BGM_FILE = '" + data_uri(bgm, 'audio/mpeg') + "';")
+
+    cloud = read('js/cloud.js')
+    cloud = re.sub(r"const CLOUD = \{[^}]*\};", "const CLOUD = { url: '', key: '' };", cloud)
+    cloud = cloud.replace("location.replace('signup.html');", 'void 0;')
+
+    ui = read('js/ui.js').replace("location.href = 'signup.html';", 'location.reload();') + '\n' + read('js/dev.js')
+
+    parts = {'data': data, 'core': read('js/core.js'), 'cloud': cloud, 'ui': ui, 'room': read('js/room.js')}
+    for name, src in parts.items():
+        html = html.replace(f'<script src="js/{name}.js"></script>', '<script>\n' + src + '\n</script>')
+    if 'signup.html' in html or 'src="js/' in html:
+        raise SystemExit('남은 외부 참조가 있습니다: ' + ', '.join(m for m in ('signup.html', 'src="js/') if m in html))
+    return html
+
+
+if __name__ == '__main__':
+    if len(sys.argv) != 2:
+        raise SystemExit('사용: python3 tools/build_preview.py <출력.html>')
+    Path(sys.argv[1]).write_text(build(), encoding='utf8')

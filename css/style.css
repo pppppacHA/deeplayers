@@ -1634,3 +1634,9 @@ button.pcard:not(.off):hover{transform:translateY(-2px)}
 .stk-grip{position:absolute;right:-2px;bottom:-2px;width:14px;height:14px;background:var(--panel);border:1px solid var(--accent);cursor:nwse-resize;touch-action:none;pointer-events:auto}
 .stk-grip::after{content:'';position:absolute;inset:3px;border-right:2px solid var(--accent);border-bottom:2px solid var(--accent)}
 @media (max-width:1200px){.map-sticker{display:none}}
+
+/* 아이템 도트 아이콘 (assets/items/*.png): 16px 기준, 칸·상점·레시피에서는 2배 */
+.px-icon{display:inline-grid;place-items:center;line-height:0;flex:none;vertical-align:middle}
+.px-icon img{width:16px;height:16px;image-rendering:pixelated;image-rendering:crisp-edges;display:block;user-select:none;-webkit-user-drag:none}
+.slot .px-icon img,.shop-ic .px-icon img,.round-avatar .px-icon img{width:32px;height:32px}
+.shop-ic:has(> .px-icon),.round-avatar:has(> .px-icon){width:34px;height:34px}

@@ -15,7 +15,9 @@ const CUSTOM_ICONS = {
   quill: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.6 3.4C14.8 3.6 9.9 6.4 7.9 11.4c-.5 1.2-.7 2.5-.7 3.8L3 19.6 4.4 21l4.3-4.2c1.3 0 2.6-.2 3.8-.7 5-2 7.8-6.9 8.1-12.7z"/></svg>',
   pistol: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="1.5" y="5" width="20" height="6" rx="1.2"/><rect x="2.5" y="3.4" width="2" height="1.8"/><rect x="18" y="3.4" width="2" height="1.8"/><path d="M12.6 11h6.4l-1.9 9.2a1 1 0 0 1-1 .8h-2.6a1 1 0 0 1-1-1.2z"/><path d="M6.5 11v3c0 1.2.9 2 2 2h3.6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><rect x="9.6" y="11" width="1.5" height="3" rx=".6"/></svg>'
 };
-const icon = n => CUSTOM_ICONS[n] ? `<span class="material-symbols-rounded custom-icon" aria-hidden="true">${CUSTOM_ICONS[n]}</span>` : `<span class="material-symbols-rounded" aria-hidden="true">${n}</span>`;
+const PX_BAD = new Set(); // 불러오지 못한 도트 아이콘 파일 (다시 시도하지 않고 원래 아이콘으로)
+const itemPngSrc = f => (typeof ITEM_ASSETS === 'object' && ITEM_ASSETS && ITEM_ASSETS[f + '.png']) || `assets/items/${f}.png`;
+const icon = n => typeof n === 'string' && n.startsWith('png:') ? (([, f, fb]) => PX_BAD.has(f) ? icon(fb || 'category') : `<span class="px-icon" aria-hidden="true"><img src="${itemPngSrc(f)}" alt="" data-px="${f}" data-fb="${String(fb || 'category').replace(/[^a-z0-9_]/g, '')}" draggable="false"></span>`)(n.split(':')) : CUSTOM_ICONS[n] ? `<span class="material-symbols-rounded custom-icon" aria-hidden="true">${CUSTOM_ICONS[n]}</span>` : `<span class="material-symbols-rounded" aria-hidden="true">${n}</span>`;
 const fmtTime = ms => { const s = Math.max(0, Math.ceil(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 const isObj = v => v && typeof v === 'object' && !Array.isArray(v);
 const merge = (base, over) => {

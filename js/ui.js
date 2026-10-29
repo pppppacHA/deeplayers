@@ -4095,3 +4095,8 @@ document.addEventListener('change', e => {
   g.innerHTML = useGainHtml(name, +t.value);
 });
 document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target && e.target.id === 'tcIn' && !e.isComposing) { e.preventDefault(); tableChatSend(); } }); // 카드방 채팅 Enter
+
+document.addEventListener('error', e => { // 도트 아이콘 파일이 없으면 원래 아이콘으로 바꾼다 (CSP 때문에 onerror 속성 대신)
+  const t = e.target; if (!t || t.tagName !== 'IMG' || !t.dataset.px) return;
+  PX_BAD.add(t.dataset.px); const sp = t.closest('.px-icon'); if (sp) sp.outerHTML = icon(t.dataset.fb || 'category');
+}, true);

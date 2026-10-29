@@ -2675,3 +2675,27 @@ Object.assign(EQUIP_SET_LINES, {
   '트레이너 세트': { need: ['트레이너 상의', '트레이너 하의'], t: ['트레이너 세트를 갖춰 입으니 산책도 훈련처럼 느껴졌다.', '구령에 맞춰 뛰듯 리듬 있게 걸었다.'], b: ['몸에 밴 훈련 동작 그대로 빈틈없이 움직였다.'] }
 });
 
+
+/* ===== 아이템 도트 아이콘 (assets/items/파일이름.png) =====
+   한 줄 = '게임에 보이는 아이템 이름(띄어쓰기까지 똑같이)': '파일 이름(.png 빼고, 영어 소문자·숫자·_ 만)',
+   - 16×16으로 그리면 소지품 칸·상점·레시피에서는 2배(32px), 작은 자리에서는 1배(16px)로 보인다.
+   - 표에 없는 아이템, 파일이 없는 아이템은 원래 아이콘(defItems 두 번째 칸)이 그대로 나온다. */
+const ITEM_PNG = {
+  '감자 씨앗': 'seed',
+  '허브 씨앗': 'seed',
+  '사탕무 씨앗': 'seed_red',
+  '야생 열매 씨앗': 'seed',
+  '해풍 콩 씨앗': 'seed_blue',
+  '화산 고추 씨앗': 'seed_red',
+  '협곡 보리 씨앗': 'seed',
+  '설원 순무 씨앗': 'seed_blue',
+  '사막 수박 씨앗': 'seed_red',
+  '정글 카사바 씨앗': 'seed_blue',
+  '나뭇가지': 'branch',
+  '돌': 'stone',
+  '합금 파편': 'alloy_fragments',
+  '흑요석': 'obsidian',
+  '석재': 'building_stone',
+  '점토': 'clay',
+};
+Object.entries(ITEM_PNG).forEach(([n, f]) => { const it = ITEMS[n]; if (it && typeof f === 'string' && /^[a-z0-9_]{1,40}$/.test(f) && !String(it.icon).startsWith('png:')) { it.icon0 = it.icon; it.icon = `png:${f}:${it.icon}`; } });
