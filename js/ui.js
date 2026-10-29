@@ -1380,6 +1380,11 @@ function invVariants(tab) { // 소지품 순서대로, 제작자가 다르면 �
   (tab ? [tab] : ['장비', '소모품', '재료']).flatMap(t => state.inventory[t]).forEach(s => { if (seen.has(s.n)) return; seen.add(s.n); itemVariants(s.n).forEach(v => out.push({ n: s.n, mk: v.mk, q: v.q })); });
   return out;
 }
+function mailFace(m) { // 메일 목록·본문 왼쪽: 보낸 대원의 프로필 사진 + 편지/택배 작은 표시 (시스템 메일은 아이콘만)
+  const kind = icon(m.items.length ? 'package_2' : 'mail'), n = String(m.from || ''), uid = (view.friendUid || {})[n];
+  const person = n && !/ · /.test(n) && !SYSTEM_SPEAKERS[n] && (uid || state.friends.includes(n));
+  return person ? `<div class="round-avatar mail-face" ${userAttr(n, uid)}>${avatarOf(n, uid)}<span class="mail-kind">${kind}</span></div>` : `<div class="round-avatar">${kind}</div>`;
+}
 function renderMailAttach() {
   if (!$('#mailGrid')) return;
   const tab = view.mailInvTab || null, att = view.mailAtt || (view.mailAtt = {});
@@ -1423,14 +1428,15 @@ function openMail(keepScroll) {
     return;
   }
   const open = view.mailOpen && state.mail.find(m => m.id === view.mailOpen && mailDelivered(m));
+  // (보낸 대원의 사진은 mailFace)
   if (open) {
-    body = `<div class="result mail-view"><strong>${esc(open.subject)}</strong><small>${esc(open.from)} · ${new Date(open.at).toLocaleDateString('ko-KR')} · ${open.kept ? '보존됨' : `${mailDaysLeft(open)}일 뒤 사라짐`}</small><p>${esc(open.body)}</p>` +
+    body = `<div class="result mail-view"><div class="mail-from">${mailFace(open)}<strong>${esc(open.subject)}</strong></div><small>${esc(open.from)} · ${new Date(open.at).toLocaleDateString('ko-KR')} · ${open.kept ? '보존됨' : `${mailDaysLeft(open)}일 뒤 사라짐`}</small><p>${esc(open.body)}</p>` +
       (open.items.length ? `<div class="reward-list">${chipList(open.items.map(([n, q, mk]) => `${n} ×${q}${mk ? ` (제작 · ${mk})` : ''}`))}</div>` : '') + '</div>';
     modal('메일', body, [`<button data-act="mail-back">목록</button>`, `<button data-act="mail-reply" data-id="${open.id}">${icon('reply')} 답장</button>`, `<button data-act="mail-keep" data-id="${open.id}">${open.kept ? '보존 해제' : `보존 (${keptCount()}/${MAIL_KEEP_MAX})`}</button>`, `<button data-act="mail-delete" data-id="${open.id}">삭제</button>`,
       open.items.length ? `<button class="primary" data-act="mail-claim" data-id="${open.id}" ${open.got ? 'disabled' : ''}>${open.got ? '수령 완료' : '첨부 받기'}</button>` : btnClose], true);
     return;
   }
-  const rows = state.mail.filter(mailDelivered).map(m => `<div class="nearby-row mail-row ${m.read ? '' : 'unread'}"><div class="round-avatar">${icon(m.items.length ? 'package_2' : 'mail')}</div><div class="grow"><strong>${esc(m.subject)}</strong><small>${esc(m.from)} · ${m.kept ? '보존됨' : `${mailDaysLeft(m)}일 뒤 사라짐`}${m.items.length && !m.got ? ' · 첨부 있음' : ''}</small></div><button data-act="mail-open" data-id="${m.id}">읽기</button></div>`).join('');
+  const rows = state.mail.filter(mailDelivered).map(m => `<div class="nearby-row mail-row ${m.read ? '' : 'unread'}">${mailFace(m)}<div class="grow"><strong>${esc(m.subject)}</strong><small>${esc(m.from)} · ${m.kept ? '보존됨' : `${mailDaysLeft(m)}일 뒤 사라짐`}${m.items.length && !m.got ? ' · 첨부 있음' : ''}</small></div><button data-act="mail-open" data-id="${m.id}">읽기</button></div>`).join('');
   modal('메일', tabs + `<p class="tiny">메일은 ${MAIL_KEEP_DAYS}일이 지나면 사라져요. 보존한 메일(${keptCount()}/${MAIL_KEEP_MAX}통까지)만 남습니다.</p>` + (rows || '<div class="empty">받은 메일이 없습니다.</div>'),
     [btnClose, `<button class="primary" data-act="mail-tab" data-tab="메일 보내기">${icon('edit')} 메일 쓰기</button>`], true);
   $('#modalBody').scrollTop = st;
@@ -2416,6 +2422,7 @@ const A = {
   'duel-start': async el => { const id = intIn(el.dataset.id, 1, 9e15, 0); el.disabled = true; try { const r = await Cloud.duelStart(id); if (!r || !r.ok) { toast(r && r.msg === 'bet_need' ? '판돈 조건이 맞지 않아요. (한 명이라도 걸면 모두 걸어야 해요)' : r && r.msg === 'need_two' ? '양 팀에 한 명 이상 있어야 해요.' : '시작하지 못했어요.'); el.disabled = false; return; } const v = await Cloud.duelView(id); if (v) openDuelRoom(v); } catch (e) { toast('시작하지 못했어요.'); el.disabled = false; } },
   'lostbox-take': el => { const r = lostBoxTake(+el.dataset.i); if (typeof r === 'string') { toast(r); sfx('error'); return; } sfx('ok'); toast(`${shownName(r.n)} ×${r.q}을(를) 가방에 넣었습니다.`); renderBag(); openLostBox(); },
   'lostbox-all': () => { let n = 0, err = ''; for (let i = state.lostBox.length - 1; i >= 0; i--) { const r = lostBoxTake(i); if (typeof r === 'string') err = r; else n += r.q; } if (n) { sfx('ok'); toast(`보관함에서 ${n}개를 가방에 넣었습니다.${state.lostBox.length ? ' (자리가 모자라 일부는 남았어요)' : ''}`); } else if (err) { toast(err); sfx('error'); } renderBag(); openLostBox(); },
+  'user-back': () => { const b = view.userBack; view.userBack = ''; if (b === 'friend') openFriends(true); else if (b === 'mail') openMail(); else if (b === 'guild') openGuild(); else closeModal(); },
   'avatar-zoom': el => { const im = el.querySelector('img'); openAvatarZoom(el.dataset.name, im && im.getAttribute('src')); },
   'codex-journal': el => { codexView.jIdx = +el.dataset.j || 0; $('#codexRoot').innerHTML = codexHtml(); },
   'codex-tab': el => { codexView.tab = el.dataset.codex; codexView.sub = null; codexView.q = ''; $('#codexRoot').innerHTML = codexHtml(); },
@@ -2448,6 +2455,8 @@ async function nameFree(name) { // 서버에 같은 이름의 다른 대원이 �
 }
 async function viewUser(name, knownUid) { // 이름·아이콘을 누르면 그 대원의 프로필을 보여준다. 나도 남이 보는 것과 같은 화면 (편집은 왼쪽 위 내 사진을 눌렀을 때만)
   const me = name === '나' || (UID_RE.test(knownUid || '') ? knownUid === Cloud.userUid : name === state.character.name); if (me) name = state.character.name;
+  { const ov = $('#overlay'), mb = $('#modalBody'), open = ov && ov.classList.contains('open') && mb; // 친구·길드 창에서 열었으면 '뒤로'로 돌아간다
+    if (!(open && mb.querySelector('.user-card'))) view.userBack = !open ? '' : mb.querySelector('#friendList') ? 'friend' : mb.querySelector('.mail-row, .mail-view') ? 'mail' : /길드/.test($('#modalTitle').textContent || '') ? 'guild' : ''; }
   const cell = (k, v) => `<div class="uc"><span>${esc(k)}</span><b>${esc(v)}</b></div>`;
   const draw = (r, uid, note) => {
     const has = !me && state.friends.includes(name), p = samplePlayer(name), pr = r && r.ability !== undefined ? r : null;
@@ -2457,7 +2466,7 @@ async function viewUser(name, knownUid) { // 이름·아이콘을 누르면 그 
       `<div class="user-grid">${cell('상태', st)}${r ? cell('레벨', 'Lv.' + intIn(r.level, 1, MAX_LEVEL, 1)) + cell('등급', ('FEDCBAS'.includes(r.rank) ? r.rank : 'F') + '등급') : ''}${pr ? cell('나이', intIn(pr.age, 0, 999, 0) + '세') : ''}${cell('관계', me ? '나' : has ? '친구' : '친구 아님')}${pr ? cell('길드', pr.guild ? cleanText(pr.guild, 12) : '-') : ''}</div>` +
       (kw ? `<div class="char-tags">${esc(kw)}</div>` : '') + (pr && pr.equipment ? otherEquipHtml(pr.equipment, name, pr.weaponNick) : pr ? '<p class="tiny">장비 정보는 서버에 supabase/friends.sql 최신본을 실행하면 보여요.</p>' : '') +
       (pr ? '' : (Cloud.enabled && Cloud.user() ? `<p class="tiny">${esc(note || '자세한 프로필을 불러오는 중…')}</p>` : '<p class="tiny">서버에 로그인하면 이능력 등 자세한 프로필을 볼 수 있어요.</p>')),
-      me ? [btnClose] : [btnClose, (PARTY.members.some(m => m.name === name) || (view.nearby || []).some(p => p.name === name)) ? `<button class="primary" data-act="ftrade-open" data-name="${esc(name)}">교환</button>` : '', uid && chatOnline() && (!PARTY.id || partyLeader()) && !PARTY.members.some(m => m.name === name) ? `<button data-act="party-invite" data-uid="${esc(uid)}" data-name="${esc(name)}">파티 초대</button>` : '', !has && uid ? `<button class="primary" data-act="friend-req" data-uid="${esc(uid)}" data-name="${esc(name)}">친구 신청</button>` : ''].filter(Boolean));
+      (view.userBack ? [`<button data-act="user-back">${icon('arrow_back')} 뒤로</button>`] : []).concat(me ? [btnClose] : [btnClose, (PARTY.members.some(m => m.name === name) || (view.nearby || []).some(p => p.name === name)) ? `<button class="primary" data-act="ftrade-open" data-name="${esc(name)}">교환</button>` : '', uid && chatOnline() && (!PARTY.id || partyLeader()) && !PARTY.members.some(m => m.name === name) ? `<button data-act="party-invite" data-uid="${esc(uid)}" data-name="${esc(name)}">파티 초대</button>` : '', !has && uid ? `<button class="primary" data-act="friend-req" data-uid="${esc(uid)}" data-name="${esc(name)}">친구 신청</button>` : ''].filter(Boolean)));
     view.userShown = name;
   };
   if (me) { draw(myCard(), ''); return; } // 내 정보는 서버에 묻지 않고 지금 상태로
