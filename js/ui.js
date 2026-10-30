@@ -396,7 +396,8 @@ function renderDungeon() {
   renderMapSearch(hlCount);
 }
 function renderMapHead() {
-  const loc = LOCATIONS[state.location], d = state.dungeon;
+  const d = state.dungeon; if (d && LOCATIONS[d.zone] && state.location !== d.zone) { state.location = d.zone; save(); } // 지상 미궁 안이면 위치는 그 구역 (옛 신호기 버그로 '이동장치'가 남은 저장도 고친다)
+  const loc = LOCATIONS[state.location];
   let desc = loc.desc, meta = loc.meta.join(' / ');
   if (d && state.rift) { const r = state.rift, c = r.cells[r.pos]; desc = `${c.k === 'boss' ? '균열 최심부' : c.k === 'start' ? '균열 입구' : '균열 속'} — 남은 행동 ${r.left}/${RIFT_COST}`; meta = `균열 · 랜덤 던전 · 남은 행동 ${r.left}`; }
   else if (d) {
@@ -2242,13 +2243,16 @@ const A = {
   },
   'transfer-ask': () => {
     const f = ($('#tfFrom') || {}).value, t = ($('#tfTo') || {}).value; if (!f || !t) return; view.tfFrom = f; view.tfTo = t;
-    askConfirm('무기 계승', `${f}의 강화(${REINFORCE_RANKS[reinforceLv(f)]}랭)·세공·이름을 ${t}(으)로 옮길까요? ${f}은(는) F랭이 되고, ${t}에 있던 강화·세공은 사라집니다. (${TRANSFER_COST} CR)`, '계승하기', 'transfer-do', {}, () => openEnhance());
+    const op = view.tfOpt = { base: !!($('#tfBase') || {}).checked, rank: !!($('#tfRank') || {}).checked, ench: !!($('#tfEnch') || {}).checked };
+    if (!op.base && !op.rank && !op.ench) { toast('계승할 것을 하나 이상 골라 주세요.'); sfx('error'); return; }
+    const what = [op.base ? `기본 등급(등급 ${weaponGrade(f) || '?'} · 공격력 +${itemAtk(f)})` : '', op.rank ? `강화 ${REINFORCE_RANKS[reinforceLv(f)]}랭${nickOf(f) ? `·이름 「${nickOf(f)}」` : ''}` : '', op.ench ? (state.enchants[f] ? `세공(${enchantText(state.enchants[f])})` : '세공(없음)') : ''].filter(Boolean).join(', ');
+    askConfirm('무기 계승', `${f}의 ${what}을(를) ${t}에 물려줄까요? ${t}에 있던 같은 항목은 덮어써집니다.${op.base ? ` ${f} 1개는 사라집니다.` : ` ${f}은(는) 남고 옮긴 항목만 빠집니다.`} (${TRANSFER_COST} CR)`, '계승하기', 'transfer-do', {}, () => openEnhance());
   },
   'transfer-do': () => {
-    const r = transferWeapon(view.tfFrom, view.tfTo);
+    const r = transferWeapon(view.tfFrom, view.tfTo, view.tfOpt || { base: true, rank: true, ench: true });
     if (typeof r === 'string') { toast(r); sfx('error'); openEnhance(); return; }
-    sfx('ok'); toast(`${view.tfTo}이(가) ${REINFORCE_RANKS[r.lv]}랭을 이어받았어요.`); addLog(`무기 계승: ${view.tfFrom} → ${view.tfTo} (${REINFORCE_RANKS[r.lv]}랭)`);
-    view.tfFrom = view.tfTo; renderBag(); renderStatus(); openEnhance();
+    sfx('ok'); toast(`${view.tfTo}이(가) ${[r.opt.base ? `${r.base}의 기본 등급(${weaponGrade(view.tfTo) || '?'})` : '', r.opt.rank ? `강화 ${REINFORCE_RANKS[r.lv]}랭` : '', r.opt.ench ? '세공' : ''].filter(Boolean).join('·')}을(를) 이어받았어요.`); addLog(`무기 계승: ${view.tfFrom} → ${view.tfTo} (등급 ${weaponGrade(view.tfTo) || '?'} · ${REINFORCE_RANKS[r.lv]}랭)`);
+    if (r.opt.base) view.tfFrom = ''; renderBag(); renderStatus(); openEnhance();
   },
   'nick-open': el => {
     const n = el.dataset.name; if (!canNick(n)) { toast('A랭까지 강화한 무기에만 이름을 붙일 수 있어요.'); return; }
@@ -3652,17 +3656,18 @@ function openEnhance(keepScroll) {
     rows = names.filter(n => ITEMS[n].slot === '무기').map(n => {
       const it = ITEMS[n], lv = reinforceLv(n), aRank = lv >= REINFORCE_A, top = lv >= REINFORCE_MAX, need = reinforceNeed(n), xp = reinforceXpOf(n);
       const info = top ? `최고 랭크(SSS)입니다.${nickOf(n) ? ` 이름: 「${esc(nickOf(n))}」` : ''}` : aRank ? `승급 ${REINFORCE_RANKS[lv]} → ${REINFORCE_RANKS[lv + 1]} · 경험치 ${xp}/${need} · 공격력 +${REINFORCE_BONUS[lv + 1] - REINFORCE_BONUS[lv]}${nickOf(n) ? ` · 이름 「${esc(nickOf(n))}」` : ''}` : `${REINFORCE_RANKS[lv]} → ${REINFORCE_RANKS[lv + 1]} · 성공 ${Math.round(REINFORCE_RATE[lv] * 100)}% · 공격력 +${REINFORCE_BONUS[lv + 1] - REINFORCE_BONUS[lv]}`;
-      return `<div class="nearby-row"><div class="round-avatar">${icon(it.icon)}</div><div class="grow"><strong>${esc(shownName(n))}${nickOf(n) ? ` <small>(${esc(n)})</small>` : ''} <em class="tag">${REINFORCE_RANKS[lv]}랭</em></strong><small>${worn.has(n) ? '착용 중' : '소지품'} · 공격력 +${it.atk + reinforceBonus(n)}${lv ? ` (강화 +${reinforceBonus(n)})` : ''}</small><small>${info}</small>${aRank && !top ? `<span class="xp-bar"><i style="width:${Math.min(100, Math.round(xp / need * 100))}%"></i></span>` : ''}</div>` +
+      return `<div class="nearby-row"><div class="round-avatar">${icon(it.icon)}</div><div class="grow"><strong>${esc(shownName(n))}${nickOf(n) ? ` <small>(${esc(n)})</small>` : ''} <em class="tag">${REINFORCE_RANKS[lv]}랭</em></strong><small>${worn.has(n) ? '착용 중' : '소지품'} · 등급 ${weaponGrade(n) || '?'}${wbaseOf(n) !== n ? ` (계승: ${esc(wbaseOf(n))})` : ''} · 공격력 +${itemAtk(n) + reinforceBonus(n)}${lv ? ` (강화 +${reinforceBonus(n)})` : ''}</small><small>${info}</small>${aRank && !top ? `<span class="xp-bar"><i style="width:${Math.min(100, Math.round(xp / need * 100))}%"></i></span>` : ''}</div>` +
         (aRank ? `<div class="row-gap">${top ? '' : `<button class="primary" data-act="feed-open" data-name="${esc(n)}">${icon('upgrade')} 승급</button>`}<button data-act="nick-open" data-name="${esc(n)}">${icon('edit')} ${nickOf(n) ? '이름' : '이름 붙이기'}</button></div></div>` : `<button class="primary" data-act="reinforce-roll" data-name="${esc(n)}" ${state.money < REINFORCE_COST[lv] ? 'disabled' : ''}>강화 (${REINFORCE_COST[lv]} CR)</button></div>`);
     }).join('') || '<div class="empty">강화할 무기가 없습니다. 무기를 얻거나 제작해 보세요.</div>';
   } else if (tab === '계승') {
-    const ws = names.filter(n => ITEMS[n].slot === '무기'), src = ws.filter(n => reinforceLv(n) || state.enchants[n]);
+    const ws = names.filter(n => ITEMS[n].slot === '무기'), src = ws, op = view.tfOpt || (view.tfOpt = { base: true, rank: true, ench: true });
     if (!src.includes(view.tfFrom)) view.tfFrom = src[0] || ''; if (!ws.includes(view.tfTo) || view.tfTo === view.tfFrom) view.tfTo = ws.find(n => n !== view.tfFrom) || '';
-    const desc = n => !n ? '' : [reinforceLv(n) ? `${REINFORCE_RANKS[reinforceLv(n)]}랭` : 'F랭', reinforceXpOf(n) ? `경험치 ${reinforceXpOf(n)}` : '', state.enchants[n] ? `세공 ${enchantText(state.enchants[n])}` : '', nickOf(n) ? `이름 「${nickOf(n)}」` : ''].filter(Boolean).join(' · ');
+    const desc = n => !n ? '' : [`등급 ${weaponGrade(n) || '?'} · 공격력 +${itemAtk(n)}${itemMods(n) ? ' ' + modText(itemMods(n)).join(' ') : ''}`, reinforceLv(n) ? `강화 ${REINFORCE_RANKS[reinforceLv(n)]}랭(+${reinforceBonus(n)})` : '강화 F랭', reinforceXpOf(n) ? `경험치 ${reinforceXpOf(n)}` : '', state.enchants[n] ? `세공 ${enchantText(state.enchants[n])}` : '', nickOf(n) ? `이름 「${nickOf(n)}」` : ''].filter(Boolean).join(' · ');
     const opt = (l, cur) => l.map(n => `<option value="${esc(n)}" ${n === cur ? 'selected' : ''}>${esc(n)}</option>`).join('');
-    intro = `<p class="tiny">한 무기의 강화 랭크·승급 경험치·세공·이름을 다른 무기로 그대로 옮깁니다. 원래 무기는 처음 상태(F랭)가 되고, 받는 무기에 있던 강화·세공은 사라져요. 비용 ${TRANSFER_COST} CR · 보유 CR ${state.money}</p>`;
+    intro = `<p class="tiny">옮길 무기에서 고른 것만 받을 무기로 넘깁니다. 받는 무기는 이름·모양은 그대로 두고 고른 성능만 바뀌어요. 고른 항목은 받는 무기에 있던 것을 덮어쓰고, 옮긴 무기에서는 빠집니다. <b>기본 등급을 옮길 때만 옮긴 무기 1개가 사라져요</b>(그때는 소지품에 있어야 하고 잠금도 풀려 있어야 해요). 비용 ${TRANSFER_COST} CR · 보유 CR ${state.money}</p>`;
     rows = src.length && ws.length > 1 ? `<div class="srow fontrow"><span>옮길 무기</span><select id="tfFrom" data-act-change="tf">${opt(src, view.tfFrom)}</select></div><p class="tiny tf-info">${esc(desc(view.tfFrom))}</p>` +
       `<div class="srow fontrow"><span>받을 무기</span><select id="tfTo">${opt(ws.filter(n => n !== view.tfFrom), view.tfTo)}</select></div><p class="tiny tf-info">지금: ${esc(desc(view.tfTo))}</p>` +
+      `<div class="choice-label">계승할 것</div><div class="tf-opts"><label><input type="checkbox" id="tfBase" ${op.base ? 'checked' : ''}> 기본 등급 <small>(등급·공격력·능력치 — 옮긴 무기는 사라짐)</small></label><label><input type="checkbox" id="tfRank" ${op.rank ? 'checked' : ''}> 강화 등급 <small>(강화·승급 경험치·이름)</small></label><label><input type="checkbox" id="tfEnch" ${op.ench ? 'checked' : ''}> 세공</label></div>` +
       `<div class="row-gap"><button class="primary" data-act="transfer-ask" ${state.money < TRANSFER_COST ? 'disabled' : ''}>계승하기 (${TRANSFER_COST} CR)</button></div>`
       : '<div class="empty">강화·세공한 무기와 옮겨 받을 다른 무기가 모두 있어야 해요.</div>';
   } else {
@@ -3689,6 +3694,7 @@ document.addEventListener('change', e => { // 승급 합계 / 계승 무기 고�
   if (e.target && e.target.classList && e.target.classList.contains('feed-q')) { const t = $$('.feed-q').reduce((a, x) => a + (+x.value) * (+x.dataset.xp), 0), lv = reinforceLv(view.feedT), cur = reinforceXpOf(view.feedT) + t; let l = lv, c = cur; while (l < REINFORCE_MAX && c >= REINFORCE_XP[l - REINFORCE_A]) { c -= REINFORCE_XP[l - REINFORCE_A]; l++; } const el = $('#feedSum'); if (el) el.textContent = `고른 경험치 +${t}${l > lv ? ` → ${REINFORCE_RANKS[l]}랭으로 승급!` : ''}`; }
   if (e.target && e.target.id === 'tfFrom') { view.tfFrom = e.target.value; openEnhance(true); }
   if (e.target && e.target.id === 'tfTo') view.tfTo = e.target.value;
+  if (e.target && ['tfBase', 'tfRank', 'tfEnch'].includes(e.target.id)) view.tfOpt = { base: !!($('#tfBase') || {}).checked, rank: !!($('#tfRank') || {}).checked, ench: !!($('#tfEnch') || {}).checked };
 });
 function openDismantle(keepScroll) {
   const st0 = keepScroll === true && $('#modalBody') ? $('#modalBody').scrollTop : 0, rows = dismantlable().map(([n, c]) => {

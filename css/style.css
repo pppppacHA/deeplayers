@@ -1666,3 +1666,6 @@ button.pcard:not(.off):hover{transform:translateY(-2px)}
 .feed-sum{font-weight:700;margin:6px 0}
 .nearby-row .feed-q{flex:none;width:56px}
 .tf-info{margin:0 0 8px}
+.tf-opts{display:flex;flex-direction:column;gap:4px;margin:0 0 8px}
+.tf-opts label{display:flex;align-items:center;gap:6px;cursor:pointer}
+.tf-opts small{color:var(--muted)}
