@@ -898,10 +898,11 @@ function todayPatchIndex() {
 }
 
 /* ---------- 서버 저장 (js/cloud.js 의 CLOUD 설정이 채워져 있을 때만 나타난다) ---------- */
-let _cloudTimer = 0, _cloudBlocked = false;
+let _cloudTimer = 0, _cloudBlocked = false, _applying = false;
+const CLOUD_PUSH_MS = 6000; // 바뀐 뒤 6초 안에 서버에 올린다 (예전 20초: 그 사이 탭을 닫으면 마지막 진행이 서버에 없어 다른 기기에서 옛 진행이 보였다)
 function cloudSchedule() {
   if (!Cloud.enabled || !Cloud.user() || _cloudBlocked || _cloudTimer) return;
-  _cloudTimer = setTimeout(cloudAutoPush, 20000);
+  _cloudTimer = setTimeout(cloudAutoPush, CLOUD_PUSH_MS);
 }
 /* 이 기기에서 사람이 직접 한 조작 시각(자동 저장·틱은 포함하지 않는다)과 서버와 마지막으로 맞춘 시각: 다른 기기의 진행을 덮어써도 되는지 가른다 */
 const LS_ACT = 'deeplayer-lastact', LS_SYNC = 'deeplayer-syncedat';
@@ -924,28 +925,32 @@ function lockDevice() {
   $('#devTake').onclick = async () => { $('#devTake').disabled = true; try { const s = await Cloud.pull(); if (s && s.data) { window.__locked = false; cloudApply(s.data, s.rev); } else { $('#devTake').disabled = false; } } catch (e) { $('#devTake').disabled = false; toast('서버에 연결하지 못했어요.'); } };
 }
 let _avCache = { src: '', out: '' };
+function cloudPayloadNow() { // 화면을 떠날 때: 이미지 변환(비동기)을 기다리지 않고 바로 (만들어 둔 작은 이미지가 있으면 함께)
+  const d = JSON.parse(JSON.stringify(state)), my = getAvatar(); d.__dev = DEV; if (my && _avCache.src === my && _avCache.out) d.__avatar = _avCache.out; return d;
+}
 async function cloudPayload() { // 서버 세이브에 64px 프로필 이미지를 함께 싣는다: 다른 기기에서 서버 불러오기만 해도 이미지가 따라온다
   const d = JSON.parse(JSON.stringify(state)), my = getAvatar(); d.__dev = DEV;
   if (my) { try { if (_avCache.src !== my) _avCache = { src: my, out: await smallAvatar(my) }; if (_avCache.out) d.__avatar = _avCache.out; } catch (e) { /* 이미지 없이 저장 */ } }
   return d;
 }
-async function cloudPushNow() { // 지금 서버에 저장. → { ok } | { ok:false, skip:true }
+async function cloudPushNow(leaving) { // 지금 서버에 저장. → { ok } | { ok:false, skip:true } / leaving: 화면을 떠나는 중(탭 닫기·앱 내리기)
   if (!Cloud.enabled || !Cloud.user() || !state.created || window.__noSave || _locked) return { ok: false, skip: true };
-  const t = Date.now(), d = await cloudPayload();
-  const r = await Cloud.push(d);
+  const t = Date.now(), d = leaving ? cloudPayloadNow() : await cloudPayload();
+  const r = await Cloud.push(d, !!leaving);
   if (r && r.ok) { lsSet(LS_SYNC, t); _claimed = true; }
   return r || { ok: false };
 }
-async function cloudAutoPush() {
+async function cloudAutoPush(leaving) {
   _cloudTimer = 0;
   if (!state.created) return; // 캐릭터를 아직 만들지 않은 빈 상태로 서버 진행을 덮어쓰지 않는다
   try {
-    const r = await cloudPushNow();
+    const r = await cloudPushNow(leaving);
     if (!r.ok && !r.skip) { _cloudBlocked = true; cloudSync(true); }
   } catch (e) { /* 오프라인: 다음 저장 때 다시 시도 */ }
 }
 const AV_RE = /^data:image\/(webp|jpeg|png);base64,[A-Za-z0-9+/=]+$/;
 function cloudApply(data, rev) { // 서버 세이브로 교체하고 다시 시작
+  _applying = true; if (_cloudTimer) { clearTimeout(_cloudTimer); _cloudTimer = 0; } // 다시 시작하기 전에 옛 진행을 올리지 않게
   data = JSON.parse(JSON.stringify(data));
   const av = data.__avatar; delete data.__avatar; delete data.__dev;
   if (typeof av === 'string' && av.length < 40000 && AV_RE.test(av) && !getAvatar()) { try { localStorage.setItem(AVATAR_KEY, av); } catch (e) { /* 저장 불가 */ } }
@@ -981,7 +986,8 @@ async function cloudSync(force) {
     if (_claimed && s.data.__dev && s.data.__dev !== DEV) { lockDevice(); return; } // 다른 기기가 새로 접속함
     if (!(s.rev > Cloud.rev())) { if (!_claimed) { if (s.data.__dev === DEV) _claimed = true; else await cloudPushNow(); } return; } // 서버와 같은 버전이면 이 기기가 현재 기기가 된다
     cloudApply(s.data, s.rev); // 서버가 더 새로우면 항상 서버 진행으로 (이 기기에서 바뀐 것이 있었다면 apply 가 만약을 위해 따로 보관)
-  } catch (e) { /* 오프라인 */ } finally { _syncBusy = false; }
+    return;
+  } catch (e) { /* 오프라인 */ } finally { _syncBusy = false; if (_cloudBlocked && !_locked && !_applying) { _cloudBlocked = false; if (_saveQueued || cloudDirty()) cloudSchedule(); } } // 충돌로 막혔던 자동 저장을 서버 확인 뒤 다시 연다 (예전엔 한 번 막히면 그 접속 내내 서버에 안 올라갔다)
 }
 function cloudGroupHtml() {
   const u = Cloud.enabled && Cloud.user();
@@ -4174,9 +4180,10 @@ function init() {
   syncNotices(); // 이후는 pollTick 이 (자리 비움·숨김이면 덜 자주) 부른다
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden) { checkUpdate(); cloudSync(); }
-    else if (Cloud.enabled && Cloud.user() && !_cloudBlocked && (_saveQueued || _cloudTimer)) { if (_saveQueued) flushSave(); if (_cloudTimer) { clearTimeout(_cloudTimer); _cloudTimer = 0; } cloudAutoPush(); } // 폰은 백그라운드에서 타이머가 멈추므로 화면을 떠날 때 바로 저장
+    else if (Cloud.enabled && Cloud.user() && !_cloudBlocked && (_saveQueued || _cloudTimer)) { if (_saveQueued) flushSave(); if (_cloudTimer) { clearTimeout(_cloudTimer); _cloudTimer = 0; } cloudAutoPush(true); } // 폰은 백그라운드에서 타이머가 멈추므로 화면을 떠날 때 바로 저장
   });
   addEventListener('focus', () => cloudSync());
+  addEventListener('pagehide', () => { if (Cloud.enabled && Cloud.user() && !_cloudBlocked && (_saveQueued || _cloudTimer)) { if (_saveQueued) flushSave(); if (_cloudTimer) { clearTimeout(_cloudTimer); _cloudTimer = 0; } cloudAutoPush(true); } }); // 창·탭을 닫을 때 (keepalive로 끝까지 보낸다)
   if (state.created && !(Cloud.enabled && !Cloud.user())) setTimeout(() => cloudSync(true), 600);
 }
 if (!(Cloud.enabled && !Cloud.user())) init(); // 서버 연결 중 로그인 전이면 게임을 시작하지 않는다 (가입 페이지로 이동 중)

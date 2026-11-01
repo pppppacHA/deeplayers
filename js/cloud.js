@@ -9,8 +9,9 @@ const Cloud = (() => {
   const wr = s => { try { s ? localStorage.setItem(SKEY, JSON.stringify(s)) : localStorage.removeItem(SKEY); } catch (e) { /* 저장 불가 */ } };
   const kor = m => /invalid_invite|Database error saving new user/i.test(m) ? '초대코드가 올바르지 않거나 정원이 찼어요. (계속 안 되면 서버의 초대코드 등록을 확인해 주세요)' : /signups? (are )?(not allowed|disabled)/i.test(m) ? '지금은 가입이 막혀 있어요. (서버의 가입 허용 설정 확인 필요)' : kor0(m);
   const kor0 = m => /invalid_invite/.test(m) ? '초대코드가 올바르지 않거나 정원이 찼어요.' : /already registered|already been registered/i.test(m) ? '이미 사용 중인 아이디예요.' : /invalid login/i.test(m) ? '아이디 또는 비밀번호가 맞지 않아요.' : /rate|too many/i.test(m) ? '시도가 너무 많아요. 잠시 뒤에 다시 해 주세요.' : `서버 요청에 실패했어요. 잠시 뒤에 다시 시도해 주세요. (${String(m).slice(0, 90)})`;
-  async function call(path, body, token) {
-    const r = await fetch(base() + path, { method: 'POST', headers: { 'Content-Type': 'application/json', apikey: CLOUD.key, Authorization: 'Bearer ' + (token || CLOUD.key) }, body: JSON.stringify(body || {}) });
+  async function call(path, body, token, keepalive) {
+    const txt = JSON.stringify(body || {}); // keepalive: 탭을 닫거나 앱을 내려도 요청이 끝까지 가게 (브라우저 한도 64KB 안일 때만)
+    const r = await fetch(base() + path, { method: 'POST', headers: { 'Content-Type': 'application/json', apikey: CLOUD.key, Authorization: 'Bearer ' + (token || CLOUD.key) }, body: txt, keepalive: !!keepalive && txt.length < 60000 });
     let j = null; try { j = await r.json(); } catch (e) { /* 본문 없음 */ }
     if (!r.ok) throw new Error((j && (j.msg || j.message || j.error_description || j.error)) || String(r.status));
     return j;
@@ -148,8 +149,8 @@ const Cloud = (() => {
     async deleteBackup(id) { return await call('/rest/v1/rpc/delete_backup', { p_id: id }, await token()); },
     async backupNow() { return await call('/rest/v1/rpc/backup_now', {}, await token()); },
     /* → { ok, rev } — ok:false 면 다른 기기가 먼저 저장한 것 */
-    async push(data) {
-      const s = rd(); const j = await call('/rest/v1/rpc/push_save', { p_rev: s ? s.rev : 0, p_data: data }, await token());
+    async push(data, keepalive) {
+      const s = rd(), tk = await token(); const j = await call('/rest/v1/rpc/push_save', { p_rev: s ? s.rev : 0, p_data: data }, tk, keepalive);
       const c = rd(); if (c && j && Number.isFinite(j.rev)) { c.rev = j.rev; wr(c); }
       return j;
     }
