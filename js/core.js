@@ -182,7 +182,7 @@ function hardenState(s) {
     ? { name: cleanText(jb.name, JOB_NAME_MAX) || jb.tags.find(t => TAG_NAMES.includes(t)), tags: [...new Set(jb.tags.filter(t => TAG_NAMES.includes(t)))].slice(0, JOB_TAG_MAX), level: intIn(jb.level, 1, JOB_MAX_LV, 1), prog: intIn(jb.prog, 0, 99, 0), lastAt: Number.isFinite(jb.lastAt) ? jb.lastAt : 0 } : null;
   s.friends = [...new Set((Array.isArray(s.friends) ? s.friends : []).map(n => cleanText(n, 12)).filter(Boolean))].slice(0, FRIEND_MAX);
   s.mailSeq = intIn(s.mailSeq, 1, 999999999, 1);
-  const okItems = it => (Array.isArray(it) ? it : []).filter(r => Array.isArray(r)).map(r => [legacyName(r[0]), ...r.slice(1)]).filter(r => ITEMS[r[0]]).map(r => ilRow(r[0], intIn(r[1], 1, 99, 1), typeof r[2] === 'string' ? cleanText(r[2], MK_LEN) : '')).slice(0, MAIL_ITEM_KINDS);
+  const okItems = it => (Array.isArray(it) ? it : []).filter(r => Array.isArray(r)).map(r => [legacyName(r[0]), ...r.slice(1)]).filter(r => ITEMS[r[0]]).map(r => tagRow(r[0], intIn(r[1], 1, 99, 1), typeof r[2] === 'string' ? cleanText(r[2], MK_LEN) : '', r[3])).slice(0, MAIL_ITEM_KINDS);
   s.mail = (Array.isArray(s.mail) ? s.mail : []).filter(m => m && Number.isFinite(m.at)).map(m => ({ id: intIn(m.id, 1, 999999999, 1), from: cleanText(m.from, 12), subject: cleanText(m.subject, 30), body: cleanText(m.body, 300),
     items: okItems(m.items), at: m.at, kept: m.kept === true, read: m.read === true, got: m.got === true, sid: typeof m.sid === 'string' ? m.sid.replace(/[^\w-]/g, '').slice(0, 24) : '' })).slice(0, MAIL_BOX_MAX);
   s.results = (Array.isArray(s.results) ? s.results : []).filter(r => r && typeof r.text === 'string').slice(0, RESULT_KEEP).map(r => ({ t: cleanText(r.t, 30), text: cleanText(r.text, 300), at: Number.isFinite(r.at) ? r.at : 0,
@@ -619,6 +619,7 @@ function settleLive(v) { // 마감된 교환(done/cancelled)을 정리한다. �
   back.forEach(([n, q, mk]) => { const g = addItem(n, q, mk || ''); if (g < q) left.push(ilRow(n, q - g, mk || '')); });
   if (left.length) receiveServerMail(`교환 · ${name}`.slice(0, 12), '교환 물건 반환', '가방에 자리가 없어 못 돌려받은 물건입니다. 수령하세요.', left, 'lb' + id);
   const got = done ? cleanItemList(v.their, 5) : [];
+  if (done && b) cleanItemList(v.mine, 5).forEach(([n]) => dropUpIfGone(n)); // 넘겨준 장비의 강화 정보는 상대에게 갔다
   if (done) {
     if (got.length) receiveServerMail(`교환 · ${name}`.slice(0, 12), '교환 성사', `${name} 대원과의 교환이 성사됐어요. 받은 물건을 수령하세요.`, got, 'lt' + id);
     state.trades = { day: todayKey(), n: (state.trades.day === todayKey() ? state.trades.n : 0) + 1 };
@@ -2529,13 +2530,45 @@ const REMOTE_PLAYERS = {}; // 서버 검색으로 찾은 대원 { 이름: '온�
 /* 서버에서 온 아이템 목록 [[이름, 수량]]을 믿지 않고 걸러낸다 */
 function ilKey(r) { return r[0] + '\u0001' + (r[2] || ''); } // 물건 목록의 한 줄 = 이름 + 제작자 (function 선언: hardenState 에서도 쓴다)
 function ilRow(n, q, mk) { return mk ? [n, q, mk] : [n, q]; }
+/* 강화·세공 꼬리표 (2026-11-02): 장비를 메일·교환·교환대로 넘기면 [이름, 수량, 제작자, 꼬리표]로 강화·세공·계승·이름이 따라간다 */
+function upTag(n) { // 지금 내 그 장비의 강화 정보 (없으면 null)
+  const it = ITEMS[n]; if (!it || it.tab !== '장비') return null;
+  const t = {}; if (state.enchants && state.enchants[n]) t.e = state.enchants[n];
+  if (it.slot === '무기') { const r = (state.reinforce || {})[n] | 0, x = ((state.reinforceXp || {})[n]) | 0, w = (state.wbase || {})[n], k = (state.nicks || {})[n]; if (r) t.r = r; if (x) t.x = x; if (w) t.w = w; if (k) t.k = k; }
+  return Object.keys(t).length ? t : null;
+}
+function cleanUpTag(t, n) { // 받은 꼬리표를 다시 거른다 (불러오기 검증에서도 쓰므로 function 선언 · data.js 상수만)
+  const it = ITEMS[n]; if (!t || typeof t !== 'object' || !it || it.tab !== '장비') return null;
+  const o = {}, e = t.e;
+  if (e && typeof e === 'object' && (['hp', 'sp'].includes(e.k) || STAT_DEFS.some(d => d.key === e.k))) o.e = { k: e.k, v: intIn(e.v, 1, 15, 1), n: intIn(e.n, 1, 9999, 1) };
+  if (it.slot === '무기') {
+    const r = intIn(t.r, 0, REINFORCE_MAX, 0); if (r) o.r = r;
+    const x = intIn(t.x, 0, 99999, 0); if (x && r >= REINFORCE_A && r < REINFORCE_MAX) o.x = x;
+    if (typeof t.w === 'string' && ITEMS[t.w] && ITEMS[t.w].slot === '무기' && t.w !== n) o.w = t.w;
+    if (typeof t.k === 'string' && r >= REINFORCE_A) { const k = cleanText(t.k, NICK_MAX); if (k) o.k = k; }
+  }
+  return Object.keys(o).length ? o : null;
+}
+function tagRow(n, q, mk, tag) { const t = cleanUpTag(tag, n); return t ? [n, q, mk || '', t] : ilRow(n, q, mk); } // 불러오기 검증에서 쓰므로 function 선언 (TDZ)
+function withTags(list) { return (Array.isArray(list) ? list : []).map(r => Array.isArray(r) && !r[3] ? tagRow(r[0], r[1], r[2], upTag(r[0])) : r); } // 서버로 보내기 직전에 붙인다
+const hasUpgrades = n => !!((state.enchants || {})[n] || (state.reinforce || {})[n] || (state.reinforceXp || {})[n] || (state.wbase || {})[n] || (state.nicks || {})[n]);
+function dropUpIfGone(n) { // 넘겨준 장비가 내게 하나도 안 남으면 그 이름의 강화 정보도 지운다 (넘긴 사람·받은 사람 양쪽에 복사되지 않게)
+  if (countItem(n) > 0 || Object.values(state.equipment).includes(n) || (state.storage[n] > 0)) return;
+  delete state.enchants[n]; delete state.reinforce[n]; delete state.nicks[n]; if (state.reinforceXp) delete state.reinforceXp[n]; if (state.wbase) delete state.wbase[n];
+}
+function applyUpTag(n, tag) { // 받은 장비의 강화 정보를 내 것으로. 같은 이름 장비에 이미 강화·세공이 있으면 그대로 둔다 (같은 이름은 정보를 함께 쓰기 때문) → 적용했으면 true
+  const t = cleanUpTag(tag, n); if (!t || hasUpgrades(n)) return false;
+  if (t.e) state.enchants[n] = t.e; if (t.r) state.reinforce[n] = t.r;
+  if (t.x) { state.reinforceXp = state.reinforceXp || {}; state.reinforceXp[n] = t.x; } if (t.w) { state.wbase = state.wbase || {}; state.wbase[n] = t.w; } if (t.k) state.nicks[n] = t.k;
+  return true;
+}
 function cleanItemList(arr, max = 5) { // [[이름, 수량, 제작자?]] (같은 이름이라도 제작자가 다르면 다른 줄)
   const out = [], seen = new Set();
   for (const r0 of Array.isArray(arr) ? arr : []) {
     const r = Array.isArray(r0) && LEGACY_ITEMS[r0[0]] ? [LEGACY_ITEMS[r0[0]], ...r0.slice(1)] : r0; // 옛 클라이언트가 보낸 옛 이름도 받는다
     if (!Array.isArray(r) || typeof r[0] !== 'string' || !ITEMS[r[0]] || r[0] === MAIL_SHIP_ITEM) continue;
     const mk = typeof r[2] === 'string' ? cleanText(r[2], MK_LEN) : '', k = ilKey([r[0], 0, mk]); if (seen.has(k)) continue;
-    seen.add(k); out.push(ilRow(r[0], intIn(r[1], 1, 99, 1), mk));
+    seen.add(k); out.push(tagRow(r[0], intIn(r[1], 1, 99, 1), mk, r[3]));
     if (out.length >= max) break;
   }
   return out;
@@ -2596,7 +2629,8 @@ function claimMail(id) {
   if (m.got) return '이미 받았습니다.';
   const snap = JSON.stringify(state.inventory); // 하나라도 못 담으면 전부 되돌린다 (제작자 표시 포함)
   if (m.items.some(([n, q, mk]) => addItem(n, q, mk || '') < q)) { state.inventory = JSON.parse(snap); return '가방에 빈 칸이 부족합니다. 비운 뒤 다시 받으세요.'; }
-  m.got = true; save();
+  claimMail.kept = m.items.filter(r => r[3]).filter(([n, , , t]) => !applyUpTag(n, t)).map(r => r[0]); // 강화·세공 정보도 함께 (같은 이름에 이미 있으면 내 것을 유지)
+  m.got = true; syncMax(); save();
   return null;
 }
 /* 메일 보내기. items = [[이름, 수량]]. 첨부가 있으면 운송장치 1개가 든다. 받는 사람은 반드시 친구. 성공하면 null, 아니면 사유 */

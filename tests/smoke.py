@@ -2607,7 +2607,7 @@ with sync_playwright() as p:
       const used=takeMats(rc,1);state.crafting={index:RECIPES.indexOf(rc),out:rc.out,qty:1,startAt:0,endAt:Date.now()+99999,great:false,ready:false,used};cancelCraft();const back=countItem(m,'초보 요리사 미나');state.inventory=JSON.parse(bak[0]);state.crafting=bak[1];return [JSON.stringify(used).includes('초보 요리사 미나'),back===q]})()""")
     check('craft_cancel_returns_signed_materials', r == [True, True], r)
     _sql = ROOT / 'supabase' / 'friends.sql'  # 저장소에 SQL이 있을 때만 확인 (zip에는 없다)
-    if _sql.exists(): check('trade_sql_accepts_maker_rows', "jsonb_array_length(e) not between 2 and 3" in _sql.read_text(encoding='utf8') and "p_mk text default ''" in _sql.read_text(encoding='utf8'))
+    if _sql.exists(): check('trade_sql_accepts_maker_rows', "jsonb_array_length(e) not between 2 and 4" in _sql.read_text(encoding='utf8') and "p_mk text default ''" in _sql.read_text(encoding='utf8'))
 
     # ---------- 2026-10-25 (2): 먹이통 · SOS · 승리 디버프 · 레시피 검색 · 별 · 퀵슬롯 · 운동 · 위험도 · 농장 알림 · 속성학습 ----------
     ev(pg, "closeModal()")

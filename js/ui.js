@@ -1456,7 +1456,7 @@ function openMail(keepScroll) {
   // (보낸 대원의 사진은 mailFace)
   if (open) {
     body = `<div class="result mail-view"><div class="mail-from">${mailFace(open)}<strong>${esc(open.subject)}</strong></div><small>${esc(open.from)} · ${new Date(open.at).toLocaleDateString('ko-KR')} · ${open.kept ? '보존됨' : `${mailDaysLeft(open)}일 뒤 사라짐`}</small><p>${esc(open.body)}</p>` +
-      (open.items.length ? `<div class="reward-list">${chipList(open.items.map(([n, q, mk]) => `${n} ×${q}${mk ? ` (제작 · ${mk})` : ''}`))}</div>` : '') + '</div>';
+      (open.items.length ? `<div class="reward-list">${chipList(open.items.map(([n, q, mk, t]) => `${n} ×${q}${mk ? ` (제작 · ${mk})` : ''}${t ? ` [${[t.w ? `계승 ${weaponGrade(t.w) || ''}` : '', t.r ? `강화 ${REINFORCE_RANKS[t.r]}` : '', t.e ? `세공 ${enchantText(t.e)}` : '', t.k ? `「${t.k}」` : ''].filter(Boolean).join(' · ')}]` : ''}`))}</div>` : '') + '</div>';
     modal('메일', body, [`<button data-act="mail-back">목록</button>`, `<button data-act="mail-reply" data-id="${open.id}">${icon('reply')} 답장</button>`, `<button data-act="mail-keep" data-id="${open.id}">${open.kept ? '보존 해제' : `보존 (${keptCount()}/${MAIL_KEEP_MAX})`}</button>`, `<button data-act="mail-delete" data-id="${open.id}">삭제</button>`,
       open.items.length ? `<button class="primary" data-act="mail-claim" data-id="${open.id}" ${open.got ? 'disabled' : ''}>${open.got ? '수령 완료' : '첨부 받기'}</button>` : btnClose], true);
     return;
@@ -2336,7 +2336,7 @@ const A = {
   'mail-claim': el => {
     const err = claimMail(+el.dataset.id);
     if (err) { toast(err); sfx('error'); return; }
-    renderBag(); renderMailBadge(); sfx('ok'); toast('첨부 아이템을 받았습니다.'); openMail(true);
+    const kept = claimMail.kept || []; renderBag(); renderStatus(); renderMailBadge(); sfx('ok'); toast(kept.length ? `첨부 아이템을 받았습니다. (${kept.join(', ')}: 같은 이름 장비에 이미 강화·세공이 있어 내 것을 유지했어요)` : '첨부 아이템을 받았습니다.'); openMail(true);
   },
   'mail-pick-open': () => { $('#mailPicker').classList.remove('hidden'); renderMailAttach(); },
   'mail-pick-close': () => $('#mailPicker').classList.add('hidden'),
@@ -2369,6 +2369,7 @@ const A = {
         renderBag(); save(); sfx('error');
         toast(e && e.message === 'full' ? '상대의 메일함이 가득 차서 보낼 수 없어요.' : e && e.message === 'not_friend' ? '서버에서 친구로 확인되지 않아요.' : '메일을 보내지 못했어요. 서버에 friends.sql 을 실행했는지 확인해 주세요.'); return;
       }
+      sent.forEach(([n]) => dropUpIfGone(n)); save(); // 보낸 장비의 강화·세공은 받는 사람에게 갔다
       renderBag(); sfx('ok'); toast(`메일을 보냈습니다.${sent.length ? ' (운송장치 1개 사용)' : ''}`); view.mailTab = '받은 메일함'; openMail(); return;
     }
     renderBag(); sfx('ok'); toast(`메일을 보냈습니다.${had.length ? ' (운송장치 1개 사용)' : ''} (서버에 로그인하지 않아 실제로는 전달되지 않아요)`); view.mailTab = '받은 메일함'; openMail();
