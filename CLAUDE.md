@@ -358,3 +358,14 @@ STUB_ICONS=1 python3 tests/smoke.py   # 아이콘 폰트를 못 받는 환경(�
 - 균열 보스전(10/28): 승패 토스트·로그·CR/HP 화면 갱신·균열 닫힘은 대련 연출이 끝난 뒤(show→finish)에만. 창을 먼저 닫으면 즉시.
 - 서버 백업 보관 4개(10/28): backups.sql _trim_backups limit 4 + 실행 시 기존 초과분 일괄 정리. 설정 창·패치 노트 문구도 4개.
 - 10/28 (7): 제3구역 '산' 눈표범→잿빛 산양. 지도 검색 = 칸별 tileNames(그 칸에 실제로 나오는 재료·희귀·몬스터). 동명이인: avatarOf(name, uid)·userAttr(data-uid)·viewUser(name, uid)·get_profile_uid/get_avatars_uid(없으면 view._noAvU로 이름 기준), 새 이름은 name_taken으로 중복 금지(nameFree, 생성 1단계·프로필 수정). friends.sql 재실행.
+
+## 2026-10-29 ~ 11-06
+- 아이템 도트 아이콘: data.js 끝 `ITEM_PNG`(이름→assets/items/파일.png), `icon('png:파일:원래아이콘')`, 실패하면 원래 아이콘(`PX_BAD`), 크기는 화면 배율 맞춤 `--px-1/--px-2`(pxScale). 미리보기 빌드는 `ITEM_ASSETS`로 담는다.
+- 무기: 승급(A→S/SS/SSS, `REINFORCE_A/MAX/XP`, `reinforceFeed`, 장비를 먹여 경험치), 계승(`transferWeapon(from,to,{base,rank,ench})`, `state.wbase`=기본 성능을 물려준 무기, `wbaseOf/itemAtk/itemMods/weaponGrade`, 기본 등급을 옮길 때만 옮긴 무기가 사라짐), 내 무기 설명 첫머리는 `weaponDesc`가 지금 성능으로.
+- 강화·세공 꼬리표: 메일·교환대 아이템 줄 4번째 칸(`upTag/cleanUpTag/tagRow/withTags/applyUpTag/dropUpIfGone`), 서버 `_lt_items_ok`가 4칸 허용. 같은 이름에 이미 강화가 있으면 받는 쪽 유지.
+- 서버 저장: 바뀐 뒤 `CLOUD_PUSH_MS`(6초), 화면을 떠날 때·pagehide 는 `cloudAutoPush(true)` → keepalive fetch(`cloudPayloadNow`), 충돌로 막힌 자동 저장은 cloudSync 뒤 다시 열림.
+- 상대 강도: `FOE_SCALE`(모의전투)·`RESCUE_SCALE`(구조)는 내 기본 피해·레벨에 맞춤(`foeLvScale`), `DUEL_DUMMY_MULT`, 대련 스탯 `DUEL_STAT`(evMult·senWeak), 모의전투 스탯 `MOCK_STAT`. 대련 수치를 바꾸면 모든 기기가 새로고침해야 결과가 같다.
+- 가방 강화(장비 강화 창 '가방' 탭, `state.bagPlus`, `bagPlusCost`, `BAG_PLUS_MAX` 20).
+- 낚시대회 `FISH_FEST`(id fe202611, 11/6 20:00~11/9 06:00 KST): 낚시터 칸 '낚시대회'(kind fishfest, `openFishFest`), `state.ffest`(cleanFishFest), `fishFestJoin/Catch/Deliver`, `ffSync`(POLLS.ffest, 끝난 뒤 5분 지나 순위→칭호 9종). 서버 friends.sql `fish_fest*`(기간은 `_ff_window`에 고정 — 다음 대회는 id·기간을 data.js와 SQL 양쪽에서 바꾼다).
+- 낚시대회 보상(11/06 2차): 칭호는 부문별 1~3위 공통 1개(`FISH_FEST.titles.big/sent/kinds`), 참가 보상·10위 안 보상 `FISH_FEST.rewards`(CR·뽑기권은 바로, 물건은 메일), `fishFestSettle(me)`. 테스트 대회: 개발자 도구 '낚시대회 테스트'(id fetest, 서버는 admins 만, 보상 지급 없음), 서버 없으면 `ffLocalBoard`.
+- 한 번에 한 창: `TAB_KEY`/`TAB_ID`/`tabClaim`/`tabStale`(core flushSave), 다른 창이 더 최근에 저장했으면 `onStaleTab`(#tabLock)로 멈추고 저장·업로드 안 함. bfcache 복원(pageshow persisted)은 새로고침.

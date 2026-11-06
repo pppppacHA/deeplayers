@@ -102,6 +102,7 @@ function hardenState(s) {
   s.rescueAt = Object.fromEntries(Object.entries(s.rescueAt && typeof s.rescueAt === 'object' ? s.rescueAt : {}).filter(([k, v]) => DANGER_ZONES.some(z => z.id === k) && Number.isFinite(v)));
   if (s.dungeon) s.dungeon.rs = Object.fromEntries(Object.entries(s.dungeon.rs && typeof s.dungeon.rs === 'object' ? s.dungeon.rs : {}).filter(([k]) => /^-?\d{1,3},-?\d{1,3}$/.test(k)).map(([k]) => [k, 1]));
   s.deaths = intIn(s.deaths, 0, 99999, 0); s.lostCount = intIn(s.lostCount, 0, 999999, 0);
+  s.bagPlus = intIn(s.bagPlus, 0, BAG_PLUS_MAX, 0); s.ffest = cleanFishFest(s.ffest);
   { const m = s.trainMsg && typeof s.trainMsg === 'object' ? s.trainMsg : {}; s.trainMsg = { help: cleanText(m.help || '', DUEL_MSG_MAX), win: cleanText(m.win || '', DUEL_MSG_MAX), lose: cleanText(m.lose || '', DUEL_MSG_MAX) }; s.duelSeen = (Array.isArray(s.duelSeen) ? s.duelSeen : []).map(x => intIn(x, 1, 9e15, 0)).filter(Boolean).slice(-20); s.duelBets = cleanDuelBets(s.duelBets); s.duelEscrow = cleanEscrow(s.duelEscrow); s.locks = (Array.isArray(s.locks) ? s.locks : []).filter(n => typeof n === 'string' && ITEMS[n]).slice(-200); s.rift = cleanRift(s.rift); if (s.rift && !(s.dungeon && s.dungeon.zone === s.rift.zone)) s.rift = null; s.riftAt = s.riftAt && typeof s.riftAt === 'object' ? s.riftAt : {}; }
   s.qact = Object.fromEntries(Object.entries(s.qact && typeof s.qact === 'object' ? s.qact : {}).filter(([k]) => QMARKS[k]).map(([k, v]) => [k, intIn(v, 0, 7, 0)]));
   s.lostBox = (Array.isArray(s.lostBox) ? s.lostBox : []).filter(x => x && ITEMS[legacyName(x.n)]).map(x => { const n = legacyName(x.n), mk = typeof x.mk === 'string' ? cleanText(x.mk, MK_LEN) : ''; return { n, q: intIn(x.q, 1, ITEMS[n].tab === '장비' ? 1 : STACK_MAX, 1), ...(mk ? { mk } : {}) }; }).slice(0, LOSTBOX_SLOTS);
@@ -236,14 +237,23 @@ function discover(type, id) {
 })();
 /* 저장: 같은 동작 안에서 save()가 여러 번 불려도 마지막에 한 번만 쓴다 (JSON 직렬화·디스크 쓰기 절감). 창을 닫을 때는 즉시 쓴다 */
 let _saveQueued = false;
-function flushSave() { _saveQueued = false; if (window.__noSave) return; try { localStorage.setItem(SAVE_KEY, JSON.stringify(state)); } catch (e) { /* 저장 불가 환경 */ }
+/* 한 번에 한 창(탭)만 (2026-11-06): 같은 기기에서 게임 창을 두 개 열면, 뒤에 놔둔 옛 창이 옛 진행으로 저장·서버 업로드를 해서 진행이 되돌아갔다.
+   가장 최근에 연(또는 저장한) 창만 저장하고, 다른 창이 그 뒤에 저장했으면 이 창은 멈춘다. */
+const TAB_KEY = 'deeplayer-tab', TAB_ID = Math.random().toString(36).slice(2, 10);
+let _tabWrote = 0;
+function tabClaim() { const t = Date.now(); try { localStorage.setItem(TAB_KEY, JSON.stringify({ id: TAB_ID, t })); } catch (e) { /* 저장 불가 */ } _tabWrote = t; }
+function tabStale() { try { const o = JSON.parse(localStorage.getItem(TAB_KEY) || 'null'); return !!(o && o.id !== TAB_ID && +o.t > _tabWrote); } catch (e) { return false; } }
+function flushSave() { _saveQueued = false; if (window.__noSave) return;
+  if (tabStale()) { window.__noSave = true; if (typeof onStaleTab === 'function') onStaleTab(); return; } // 다른 창이 더 최근 진행을 저장했다 → 이 창의 옛 진행으로 덮어쓰지 않는다
+  try { localStorage.setItem(SAVE_KEY, JSON.stringify(state)); } catch (e) { /* 저장 불가 환경 */ }
+  tabClaim();
   if (typeof cloudSchedule === 'function') cloudSchedule(); }
 function save() { if (_saveQueued) return; _saveQueued = true; queueMicrotask(flushSave); }
 addEventListener('pagehide', () => { if (_saveQueued) flushSave(); });
 document.addEventListener('visibilitychange', () => { if (document.hidden && _saveQueued) flushSave(); });
 
 /* ---------- 인벤토리 ---------- */
-const bagCapacityFor = eq => ((eq['가방'] && ITEMS[eq['가방']].capacity) || BASE_BAG_CAPACITY) + exerciseSlots();
+const bagCapacityFor = eq => ((eq['가방'] && ITEMS[eq['가방']].capacity) || BASE_BAG_CAPACITY) + exerciseSlots() + ((state && state.bagPlus) | 0); // + 가방 강화 칸
 function exerciseSlots() { return Math.max(0, masteryInfo('운동').lv - 1); } // 운동 숙련 레벨이 1 오를 때마다 소지품 1칸 (Lv.1 = +0)
 const bagCapacity = () => bagCapacityFor(state.equipment);
 /* 제작자 표시: 한 칸(스택) 안에서 제작자별 개수를 따로 센다. 스택 { n, q, mk?: { '초보 요리사 미나': 2 } } — mk에 없는 나머지(q - 합계)는 이름 없는 것.
@@ -1652,6 +1662,7 @@ function claimResult() {
   state.money = Math.max(0, state.money + r.money);
   if (r.pet) addPet(r.pet);
   if (r.tameFail && state.dungeon) { const tf = state.dungeon.tf || (state.dungeon.tf = {}), k = `${state.dungeon.x},${state.dungeon.y}`; tf[k] = Math.min(TAME_FAIL_MAX, (tf[k] | 0) + 1); }
+  if (Array.isArray(r.fish) && fishFestCatch(r.fish)) r.ffBest = true; // 낚시대회 기록
   (Array.isArray(r.fish) ? r.fish : []).forEach(([n, cm]) => { const rg = FISH_SIZE[n]; if (rg && Number.isFinite(cm) && cm > 0 && cm <= rg[1] * 1.15 + .1 && cm > (state.fishBest[n] || 0)) state.fishBest[n] = cm; });
   v.hp = clamp(v.hp + r.hp, 1, v.hpMax);
   v.sp = clamp(v.sp + r.sp + (r.refund || 0), 0, v.spMax);
@@ -1853,7 +1864,7 @@ function leaveDungeon() { state.dungeon = null; state.location = '이동장치';
 function currentGroups() {
   if (!state.dungeon) return LOCATIONS[state.location].groups;
   const z = zoneOf(state.dungeon.zone), ch = tileOf(z, state.dungeon.x, state.dungeon.y), ti = terrainIndex(ch);
-  if (ti >= 0) { const t = z.terrains[ti]; const sp = spotAt(z, state.dungeon.x, state.dungeon.y); return [{ label: sp ? sp.name : t.name, items: [t.actions[0], ...(sp ? sp.ids : []), ...(rescueShown(z, state.dungeon.x, state.dungeon.y, state.dungeon.seed) ? [`${z.id} 대원 구조`] : []), ...(riftShown(z, state.dungeon.x, state.dungeon.y, state.dungeon.seed) ? [`${z.id} 균열 진입`] : []), ...tileGatherIds(z, state.dungeon.x, state.dungeon.y, state.dungeon.seed).filter(id => !(sp && ACTIONS[id] && ACTIONS[id].method === '낚시' && sp.fish.includes(ACTIONS[id].items[0]))), tileBattleId(z, t, state.dungeon.x, state.dungeon.y, state.dungeon.seed), ...(tameShown(z, state.dungeon.x, state.dungeon.y, state.dungeon.seed) ? [t.tameId] : []), ...(tameShown2(z, state.dungeon.x, state.dungeon.y, state.dungeon.seed) ? [t.tameId2] : [])] }]; }
+  if (ti >= 0) { const t = z.terrains[ti]; const sp = spotAt(z, state.dungeon.x, state.dungeon.y); return [{ label: sp ? sp.name : t.name, items: [t.actions[0], ...(sp && (fishFestOpen() || (fishFest() && fishFestOver() && nowMs() < FISH_FEST.end + 3 * 864e5)) ? ['낚시대회'] : []), ...(sp ? sp.ids : []), ...(rescueShown(z, state.dungeon.x, state.dungeon.y, state.dungeon.seed) ? [`${z.id} 대원 구조`] : []), ...(riftShown(z, state.dungeon.x, state.dungeon.y, state.dungeon.seed) ? [`${z.id} 균열 진입`] : []), ...tileGatherIds(z, state.dungeon.x, state.dungeon.y, state.dungeon.seed).filter(id => !(sp && ACTIONS[id] && ACTIONS[id].method === '낚시' && sp.fish.includes(ACTIONS[id].items[0]))), tileBattleId(z, t, state.dungeon.x, state.dungeon.y, state.dungeon.seed), ...(tameShown(z, state.dungeon.x, state.dungeon.y, state.dungeon.seed) ? [t.tameId] : []), ...(tameShown2(z, state.dungeon.x, state.dungeon.y, state.dungeon.seed) ? [t.tameId2] : [])] }]; }
   if (ch === 'C') return [{ label: '안전 캠프', items: ['캠프 휴식', '임무 수주', '상점', '모닥불 주사위', ...(lostHeld().length ? ['분실물 전달'] : [])] }];
   if (ch === 'S') return [{ label: '입구', items: ['퇴장'] }];
   if (ch === '?' && QMARKS[z.id]) return [{ label: QMARKS[z.id].name, items: [`${z.id} 시간을 보낸다`, ...(allJournals() && QMARK_ACTS[z.id] ? QMARK_ACTS[z.id].map(q => q.id) : [])] }];
@@ -3055,4 +3066,68 @@ function cleanRift(r) { // 저장 검증 (hardenState에서 쓰므로 function �
   if (!r || typeof r !== 'object' || !Array.isArray(r.cells) || r.cells.length < 2 || r.cells.length > 12) return null;
   const cells = r.cells.map(c => ({ x: Math.max(0, Math.min(6, c.x | 0)), y: Math.max(0, Math.min(6, c.y | 0)), k: ['start', 'room', 'boss'].includes(c.k) ? c.k : 'room', done: !!c.done, seen: c.seen === 'near' ? 'near' : !!c.seen }));
   return { zone: typeof r.zone === 'string' ? r.zone : '', ox: r.ox | 0, oy: r.oy | 0, seed: (r.seed >>> 0) || 1, cells, pos: Math.max(0, Math.min(cells.length - 1, r.pos | 0)), left: Math.max(0, Math.min(RIFT_COST, r.left | 0)), lv: Math.max(1, Math.min(99, r.lv | 0)), boss: !!r.boss, bossHp: Math.max(0, Math.min(99999, r.bossHp | 0)), log: (Array.isArray(r.log) ? r.log : []).filter(x => typeof x === 'string').slice(-30).map(x => x.slice(0, 200)) };
+}
+
+/* ===== 가방 강화 (2026-11-06) ===== */
+function bagUpgrade() { // → { slots, cost } / 사유
+  if (!state.created) return '먼저 캐릭터를 만드세요.';
+  if (placeKey() !== '본부') return '가방 강화는 본부에서만 할 수 있습니다.';
+  const n = state.bagPlus | 0; if (n >= BAG_PLUS_MAX) return `가방은 최대 +${BAG_PLUS_MAX}칸까지 늘릴 수 있습니다.`;
+  const cost = bagPlusCost(n); if (state.money < cost) return `CR이 부족합니다. (필요 ${cost})`;
+  state.money -= cost; state.bagPlus = n + 1; save();
+  return { slots: state.bagPlus, cost };
+}
+/* ===== 낚시대회 (2026-11-06) ===== */
+function cleanFishFest(f) { // 불러오기 검증 (function 선언 · data.js 상수만)
+  if (!f || typeof f !== 'object' || f.id !== FISH_FEST.id) return null;
+  const fishOk = n => typeof n === 'string' && !!FISH_SIZE[n] && !!ITEMS[n];
+  const b = f.best && fishOk(f.best.n) && Number.isFinite(+f.best.cm) && +f.best.cm > 0 && +f.best.cm <= FISH_SIZE[f.best.n][1] * 1.15 + .1 ? { n: f.best.n, cm: Math.round(+f.best.cm * 10) / 10 } : null;
+  const q = (Array.isArray(f.q) ? f.q : []).filter(r => r && typeof r.key === 'string' && /^[a-z0-9]{6,24}$/.test(r.key) && Array.isArray(r.items)).slice(-30).map(r => ({ key: r.key, items: r.items.filter(x => Array.isArray(x) && fishOk(x[0])).map(([n, c]) => [n, intIn(c, 1, 99, 1)]).slice(0, 12) }));
+  return { id: FISH_FEST.id, joined: !!f.joined, synced: !!f.synced, best: b, bestSent: f.bestSent && b && +f.bestSent === b.cm ? b.cm : 0, sent: intIn(f.sent, 0, 99999, 0), kinds: [...new Set((Array.isArray(f.kinds) ? f.kinds : []).filter(fishOk))].slice(0, 80), q,
+    awards: (Array.isArray(f.awards) ? f.awards : []).filter(t => Object.values(FISH_FEST.titles).includes(t)).slice(0, 3), done: !!f.done };
+}
+const fishFestOpen = (t = nowMs()) => t >= FISH_FEST.start && t < FISH_FEST.end;
+const fishFestOver = (t = nowMs()) => t >= FISH_FEST.end;
+const fishFest = () => (state.ffest && state.ffest.id === FISH_FEST.id ? state.ffest : null);
+const festFishes = () => Object.keys(FISH_SIZE).filter(n => ITEMS[n] && !LEGACY_ITEMS[n]);
+const atFishSpot = () => { const d = state.dungeon; if (!d) return null; const z = DANGER_ZONES.find(x => x.id === d.zone); return z ? spotAt(z, d.x, d.y) : null; };
+function fishFestJoin() {
+  if (!state.created) return '먼저 캐릭터를 만드세요.';
+  if (!fishFestOpen()) return fishFestOver() ? '대회가 끝났습니다.' : '아직 대회가 시작되지 않았습니다.';
+  if (!atFishSpot()) return '참가 신청은 낚시터에서 할 수 있습니다.';
+  const f = fishFest(); if (f && f.joined) return '이미 참가 신청을 했습니다.';
+  state.ffest = { id: FISH_FEST.id, joined: true, synced: false, best: null, bestSent: 0, sent: 0, kinds: [], q: [], awards: [], done: false }; save();
+  return null;
+}
+function fishFestCatch(list) { // claimResult 에서 낚은 물고기 [[이름, cm]] → 대회 최고 기록
+  const f = fishFest(); if (!f || !f.joined || !fishFestOpen()) return false;
+  let up = false;
+  (Array.isArray(list) ? list : []).forEach(([n, cm]) => { const rg = FISH_SIZE[n]; if (rg && ITEMS[n] && Number.isFinite(cm) && cm > 0 && cm <= rg[1] * 1.15 + .1 && (!f.best || cm > f.best.cm)) { f.best = { n, cm: Math.round(cm * 10) / 10 }; up = true; } });
+  return up;
+}
+function fishFestDeliver(picks) { // picks [[이름, 개수]] → { n, kinds, cr } / 사유
+  const f = fishFest();
+  if (!f || !f.joined) return '먼저 낚시터에서 참가 신청을 하세요.';
+  if (!fishFestOpen()) return '대회 기간이 아닙니다.';
+  if (!atFishSpot()) return '납품은 낚시터에서 할 수 있습니다.';
+  const ok = new Set(festFishes()), list = (Array.isArray(picks) ? picks : []).map(([n, q]) => [n, intIn(q, 0, 99, 0)]).filter(([n, q]) => q > 0 && ok.has(n));
+  if (!list.length) return '납품할 물고기를 골라 주세요.';
+  for (const [n, q] of list) { if (isLocked(n)) return LOCK_MSG; if (countItem(n) < q) return `${n}이(가) 모자랍니다.`; }
+  let cnt = 0, cr = 0; list.forEach(([n, q]) => { removeItem(n, q); cnt += q; cr += (ITEMS[n].sell || 1) * q; });
+  state.money += cr; f.sent += cnt; f.kinds = [...new Set([...f.kinds, ...list.map(r => r[0])])];
+  f.q.push({ key: Math.random().toString(36).slice(2, 10) + nowMs().toString(36), items: list }); save();
+  return { n: cnt, kinds: f.kinds.length, cr };
+}
+
+function fishFestSettle(me) { // 끝난 뒤 한 번: me = 서버 순위 {big, sent, kinds} → { titles, top } (테스트 대회면 아무것도 주지 않고 결과만)
+  const f = fishFest(); if (!f || f.done) return null;
+  const rank = k => +((me || {})[k]) || 0, titles = ['big', 'sent', 'kinds'].filter(k => rank(k) >= 1 && rank(k) <= 3).map(k => FISH_FEST.titles[k]);
+  const top = ['big', 'sent', 'kinds'].some(k => rank(k) >= 1 && rank(k) <= 10), out = { titles, top, test: !!FISH_FEST.test };
+  f.done = true;
+  if (FISH_FEST.test) { save(); return out; }
+  f.awards = [...new Set([...f.awards, ...titles])];
+  const give = (r, why) => { state.money += r.cr; state.tickets = (state.tickets | 0) + r.tickets; if (r.items.length) pushMail('낚시대회', `${FISH_FEST.name} ${why}`, `${why}이에요. 첨부를 수령하세요. (${r.cr} CR · 뽑기권 ${r.tickets}장은 바로 들어갔어요)`, r.items.map(([n, q]) => ilRow(n, q, '')), nowMs(), `ff${FISH_FEST.id}${why === '참가 보상' ? 'j' : 't'}`); };
+  if (f.joined) give(FISH_FEST.rewards.join, '참가 보상');
+  if (top) give(FISH_FEST.rewards.top, '상위 10위 보상');
+  save(); return out;
 }

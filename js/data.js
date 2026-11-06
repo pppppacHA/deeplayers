@@ -393,6 +393,7 @@ Object.entries(TODO_ICONS).forEach(([label, icon]) => {
 });
 ACTIONS['임무 수주'] = { kind: 'board', icon: 'assignment', label: '임무 수주', title: '임무 수주', action: '이 장소에서 받을 수 있는 임무를 확인하고 수주합니다.' };
 ACTIONS['상점'] = { kind: 'shop', icon: 'storefront', label: '상점', title: '상점', action: '이 장소에서 아이템을 구입합니다.' };
+ACTIONS['낚시대회'] = { kind: 'fishfest', icon: 'phishing', label: '낚시대회', title: '늦가을 낚시대회', action: '낚시터 관리인이 대회 접수대를 차려 두었다. 참가 신청·물고기 납품·순위를 확인할 수 있다.' };
 ACTIONS['분실물 보관함'] = { kind: 'lostbox', icon: 'inventory', label: '분실물 보관함', title: '분실물 보관함', action: '가방이 가득 차 받지 못한 보상이 보관됩니다. (최대 5칸)' };
 ACTIONS['승급'] = { kind: 'promo', icon: 'military_tech', label: '승급', title: '승급', action: '승급 시험(메인 임무)을 받고, 마치면 등급이 오릅니다.' };
 ACTIONS['농장'] = { kind: 'farm', icon: 'yard', label: '농장', title: '농장', action: '씨앗을 심고 작물을 수확합니다. 시간이 지나면 자랍니다.' };
@@ -667,6 +668,7 @@ defItems('재료', [
   ['라벤더', 'local_florist', '은은한 향이 나는 보랏빛 풀꽃이다.', { how: '채집' }],
   ['슬라임', 'water_drop', '이능 몬스터에게서 떨어진 말랑하고 끈적한 덩어리다.'],
   ['마석', 'hexagon', '이능 몬스터의 몸속에서 굳은 작은 결정이다. 미약한 에너지가 서려 있다.'],
+  ['은빛 낚시 메달', 'military_tech', '늦가을 낚시대회에서 10위 안에 든 낚시꾼에게 주는 은빛 메달이다. 가지고만 있어도 물결의 움직임이 잘 보인다.', { hold: { sen: 1 }, sell: 50, tags: ['RP'] }],
   ['우정반지', 'diamond', '서로의 우정을 약속하는 소박한 은반지다. 착용하지 않고 가지고만 있어도 마음이 든든해진다.', { engrave: true, hold: { luk: 1 }, sell: 80, tags: ['RP'] }],
   ['결혼반지', 'favorite', '평생을 약속하는 반지다. 착용하지 않고 가지고만 있어도 좋은 일이 따른다.', { engrave: true, hold: { luk: 1 }, sell: 200, tags: ['RP'] }]
 ]);
@@ -1230,6 +1232,17 @@ const SKY_ALT = 8420;
 const ZONE_ALT = { '제1구역': 180, '제2구역': 6, '제3구역': 1650, '제4구역': 820, '제5구역': 2480, '제6구역': 45, '제7구역': 310 }; // 지상 구역 기준 고도(m). 칸마다 ±끝자리만큼 달라진다
 const ENGRAVE_MAX = 8; // 반지에 새기는 이름 최대 글자 수 (저장 검증이 불러올 때 쓰므로 data.js에 둔다)
 const NICK_MAX = 12; // 무기에 붙이는 이름 최대 글자 수
+/* 2026-11-06 가방 강화: 장비 강화 창에서 CR로 소지품 칸을 1칸씩 늘린다 (CR 사용처) */
+const BAG_PLUS_MAX = 20, bagPlusCost = n => Math.round(300 * Math.pow(1.25, n) / 10) * 10; // n = 지금까지 늘린 칸 수 → 300, 380, 470, … (20칸째 약 2.6만)
+/* 2026-11-06 낚시대회 (한국 시간 11/6 20:00 ~ 11/9 06:00). 서버 순위는 friends.sql 의 fish_fest_* */
+const FISH_FEST = {
+  id: 'fe202611', name: '늦가을 낚시대회', start: Date.parse('2026-11-06T20:00:00+09:00'), end: Date.parse('2026-11-09T06:00:00+09:00'),
+  titles: { big: '전설의 강태공', sent: '어시장의 큰손', kinds: '물고기 박사' }, // 부문별 1~3위 공통 칭호
+  rewards: { // 참가만 해도 '참가', 어느 부문이든 10위 안이면 '상위'를 더 받는다 (메일로)
+    join: { cr: 300, tickets: 1, items: [['건조 식량', 3]] },
+    top: { cr: 1500, tickets: 3, items: [['은빛 낚시 메달', 1], ['응급 키트', 2]] } },
+  labels: { big: '가장 큰 물고기', sent: '가장 많이 납품', kinds: '가장 다양한 종류' }
+};
 const SPOT_BIG = .1; // 낚시터에서 한 마리가 '대물'(크기 +15%)일 확률 (일반 3%)
 const FISH_SHOW = 4; // 결과 카드에 크기를 보여 줄 마릿수 (큰 순서)
 /* 전광판(본부): 리코가 뉴스·광고를 읽어 준다. 이벤트 때는 BILLBOARD_EVENT 에 문구를 넣으면 평소 문구 대신 이것만 나온다 (비우면 평소 문구).
@@ -1372,6 +1385,7 @@ const TITLE_DEFS = [
 const MASTERY_JOB = { '요리': '요리사', '목공': '목수', '재봉': '재봉사', '대장': '대장장이', '가죽공예': '가죽공예가', '보석공예': '보석공예가', '약학': '약사' };   // 제작 계열만 호칭이 붙는다(채집·채굴·낚시·농사는 없음)
 const masteryRanks = tag => [[30, '레전드'], [20, '숙련'], [5, '초보']];
 const masteryTitleOf = (tag, lv) => { const r = masteryRanks(tag).find(([n]) => lv >= n); return r && MASTERY_JOB[tag] ? `${r[1]} ${MASTERY_JOB[tag]}` : ''; };
+['big', 'sent', 'kinds'].forEach(k => { const t = FISH_FEST.titles[k]; TITLE_DEFS.push([t, `${FISH_FEST.name} '${FISH_FEST.labels[k]}' 1~3위`, () => !!(state.ffest && state.ffest.awards.includes(t))]); }); // 낚시대회 칭호 (맨 앞에 두면 기본 칭호가 바뀐다)
 Object.entries(MASTERY_JOB).forEach(([tag, job]) => masteryRanks(tag).slice().reverse().forEach(([n, nm]) => TITLE_DEFS.push([`${nm} ${job}`, `${tag} 숙련 레벨 ${n}에 도달한다 (더 높은 호칭을 얻으면 바뀐다)`, () => masteryTitleOf(tag, masteryLv(tag)) === `${nm} ${job}`])));
 const TITLES = TITLE_DEFS.map(t => t[0]);
 const TODO_MAX = 30, TODO_LEN = 40; // 투두리스트: 최대 30개, 한 줄 40자 (저장 검증이 불러올 때 쓰므로 data.js에 둔다)
@@ -1381,6 +1395,18 @@ const NEARBY_PLAYERS = []; // 같은 장소의 다른 대원 [이름, 상태, �
 
 const POSTS = {
   '공지': [
+    ['업데이트 · 11월 6일', `[이벤트] 늦가을 낚시대회
+· 기간: 11월 6일(금) 저녁 8시 ~ 11월 9일(월) 아침 6시
+· 참가: 지상 구역의 낚시터 칸에서 '낚시대회' → 참가 신청
+· 기록 1 — 가장 큰 물고기: 참가 신청 뒤 낚은 물고기 중 가장 큰 것(cm)
+· 기록 2 — 가장 많이 납품: 낚시터에서 물고기를 납품한 마릿수 (납품하면 판매가만큼 CR을 받아요)
+· 기록 3 — 가장 다양한 종류: 납품한 물고기 종류 수
+· 참가 보상: 참가 신청만 해도 300 CR · 뽑기권 1장 · 건조 식량 3개
+· 상위 보상: 어느 부문이든 10위 안이면 1,500 CR · 뽑기권 3장 · 은빛 낚시 메달(소지 시 감각 +1) · 응급 키트 2개를 더
+· 칭호: 부문별 1~3위 — 가장 큰 물고기 「전설의 강태공」 · 가장 많이 납품 「어시장의 큰손」 · 가장 다양한 종류 「물고기 박사」
+· 대회가 끝난 뒤 접속하면 보상이 메일로, 칭호는 바로 들어와요.
+[신규]
+· 가방 강화: 본부 '장비 강화'의 가방 탭에서 CR로 소지품 칸을 1칸씩 늘릴 수 있어요(최대 +20칸).`],
     ['업데이트 · 10월 28일', `[신규]
 · 균열(랜덤 던전): 지상 칸에 가끔 일렁이는 균열이 열려요. 들어가면 8칸짜리 짧은 미궁이 이어지고(이동은 공짜, 가 본 칸은 눌러서 바로), 칸마다 한 번 조사할 수 있어요. 좋은 일이면 균열이 열린 칸 지형의 희귀 재료(코코넛 등)·CR·EXP·가호를 얻고, 나쁜 일도 생겨요. 가장 깊은 곳의 보스는 대련처럼 싸우고 내 레벨에 맞춰 강해져요. 져도 보스가 잃은 체력은 남아 있고(내 HP -4~6), 이기면 희귀 재료나 CR을 얻어요. 가끔 그 구역의 특징을 담은 무기(분화구 열검·서리 장궁·신기루 권총 등)가 나와요. 조사·보스전은 합쳐서 5번까지. 균열 안의 '?'에 규칙이 있어요.
 · 새 장비 레시피: 도끼·카타나·쌍절곤·반바지·트레이너 상의·트레이너 하의(함께 입으면 트레이너 세트: 근력·의지 +1).
@@ -1681,6 +1707,8 @@ function createDefaultState() {
     trades: { day: '', n: 0 }, // 주위 대원과 물건을 교환한 날짜와 횟수 (하루 TRADE_DAILY회)
     reinforce: {}, // 무기 강화 { 무기 이름: 랭크 번호(1=E … 5=A, 6~8=S·SS·SSS) }
     reinforceXp: {}, // A랭 이후 승급 경험치 { 무기 이름: 경험치 }
+    bagPlus: 0, // 가방 강화로 늘린 소지품 칸
+    ffest: null, // 낚시대회 { id, joined, best:{n,cm}, sent, kinds:[], q:[보낼 납품], caught:[보낼 기록], awards:[], done }
     wbase: {}, // 계승받은 무기 { 무기 이름: 기본 성능을 물려준 무기 이름 }
     nicks: {},    // A랭까지 강화한 무기에 붙인 이름 { 무기 이름: 별명 }
     fishBest: {}, // 물고기별 최고 크기 기록 { 물고기 이름: cm }

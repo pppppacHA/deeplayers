@@ -1066,9 +1066,9 @@ textarea#mailBody{width:100%;min-height:80px;resize:vertical}
 .gacha-row.r1 .gacha-rank{color:var(--warn,#e0a020)}
 .gacha-result{margin:6px 0;padding:8px 10px;border:1px solid var(--accent-line);border-radius:8px;background:var(--accent-soft)}.gacha-result small{display:block;color:var(--muted)}
 .pet-line{font-style:italic;color:var(--text-2)}
-#devLock{position:fixed;inset:0;z-index:99999;background:rgba(8,10,16,.88);display:flex;align-items:center;justify-content:center;padding:16px}
-#devLock .dev-card{max-width:340px;width:100%;background:var(--panel,#1a1f2b);border:1px solid var(--line,#3a4256);border-radius:10px;padding:18px;text-align:center;display:flex;flex-direction:column;gap:10px}
-#devLock h3{margin:0}#devLock p{margin:0}
+#devLock,#tabLock{position:fixed;inset:0;z-index:99999;background:rgba(8,10,16,.88);display:flex;align-items:center;justify-content:center;padding:16px}
+#devLock .dev-card,#tabLock .dev-card{max-width:340px;width:100%;background:var(--panel,#1a1f2b);border:1px solid var(--line,#3a4256);border-radius:10px;padding:18px;text-align:center;display:flex;flex-direction:column;gap:10px}
+#devLock h3,#tabLock h3{margin:0}#devLock p,#tabLock p{margin:0}
 .feed-picks{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 8px}
 .feed-opt{display:inline-flex;align-items:center;gap:5px;padding:5px 9px;border:1px solid var(--line,#3a4256);border-radius:8px;background:transparent;color:inherit;font:inherit;cursor:pointer}
 .feed-opt.selected{border-color:var(--accent,#7aa7ff);background:rgba(122,167,255,.14);font-weight:700}
@@ -1664,8 +1664,16 @@ button.pcard:not(.off):hover{transform:translateY(-2px)}
 .xp-bar{display:block;height:5px;margin-top:4px;background:var(--bar-track);overflow:hidden}
 .xp-bar i{display:block;height:100%;background:var(--accent)}
 .feed-sum{font-weight:700;margin:6px 0}
-.nearby-row .feed-q{flex:none;width:56px}
+.nearby-row .feed-q,.nearby-row .ff-q{flex:none;width:64px;min-width:0}
+.nearby-row:has(.ff-q) .grow{min-width:0;flex:1 1 auto}
+.nearby-row:has(.ff-q) strong{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tf-info{margin:0 0 8px}
 .tf-opts{display:flex;flex-direction:column;gap:4px;margin:0 0 8px}
 .tf-opts label{display:flex;align-items:center;gap:6px;cursor:pointer}
 .tf-opts small{color:var(--muted)}
+
+/* 낚시대회 순위 */
+.ff-row.me{outline:1px solid var(--accent)}
+.ff-rank{flex:none;width:24px;height:24px;display:grid;place-items:center;border-radius:50%;background:var(--bar-track);font-size:12px}
+.ff-rank.r1{background:var(--accent);color:var(--accent-ink,#fff)}
+.ff-rank.r2,.ff-rank.r3{border:1px solid var(--accent)}

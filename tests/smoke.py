@@ -1714,7 +1714,7 @@ with sync_playwright() as p:
     ev(pg, "(()=>{state.money=1000;state.enchants={};addItem('가죽 장갑',1);addItem('전술 장갑',1);syncMax()})()")
     check('enhance_is_real_action', ev(pg, "ACTIONS['장비 강화'].kind")== 'enhance' and ev(pg, "enchantables().includes('가죽 장갑')"))
     home('본부'); pg.click('#choices button:has-text("장비 강화")'); pg.wait_for_timeout(80)
-    check('enhance_modal_default_reinforce_tab', pg.locator('#overlay.open').count() == 1 and '장비 강화' in text(pg, '#modalTitle') and pg.locator('[data-act="enh-tab"]').count() == 3 and pg.locator('[data-act="enhance-roll"]').count() == 0)
+    check('enhance_modal_default_reinforce_tab', pg.locator('#overlay.open').count() == 1 and '장비 강화' in text(pg, '#modalTitle') and pg.locator('[data-act="enh-tab"]').count() == 4 and pg.locator('[data-act="enhance-roll"]').count() == 0)
     ev(pg, "(()=>{state.money=5000;state.reinforce={};addItem('훈련용 검',1);openEnhance()})()")
     check('reinforce_lists_weapons_with_rank', pg.locator('[data-act="reinforce-roll"]').count() >= 1 and 'F랭' in text(pg, '#modalBody') and '130' in text(pg, '#modalBody'))
     check('reinforce_rules', ev(pg, """(()=>{const bak=JSON.stringify(state.reinforce);state.reinforce={};state.money=99999;let a=reinforceItem('훈련용 검',()=>0.99);let okFail=a.ok===false&&reinforceLv('훈련용 검')===0;let b=reinforceItem('훈련용 검',()=>0.01);let okWin=b.ok===true&&reinforceLv('훈련용 검')===1;

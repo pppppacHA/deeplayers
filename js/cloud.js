@@ -68,6 +68,10 @@ const Cloud = (() => {
       catch (e) { if (/market_list|PGRST|function/i.test(String(e && e.message))) return await call('/rest/v1/rpc/market_list', b, await token()); throw e; }
     },
     async marketBrowse(q) { return await call('/rest/v1/rpc/market_browse', { p_q: q || '' }, await token()); },
+    async ffJoin(ev) { return await call('/rest/v1/rpc/fish_fest_join', { p_event: ev }, await token()); },
+    async ffCatch(ev, fish, cm) { return await call('/rest/v1/rpc/fish_fest_catch', { p_event: ev, p_fish: fish, p_cm: cm }, await token()); },
+    async ffDeliver(ev, key, items) { return await call('/rest/v1/rpc/fish_fest_deliver', { p_event: ev, p_key: key, p_items: items }, await token()); },
+    async ffBoard(ev) { return await call('/rest/v1/rpc/fish_fest_board', { p_event: ev }, await token()); },
     async marketStatus(keys) { return (await call('/rest/v1/rpc/market_status', { p_keys: (keys || []).slice(0, 10) }, await token())) || []; },
     async marketMine() { return await call('/rest/v1/rpc/market_mine', {}, await token()); },
     async marketBuy(id, qty, req) { return await call('/rest/v1/rpc/market_buy', { p_id: id, p_qty: qty, p_req: req }, await token()); },

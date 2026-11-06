@@ -1093,6 +1093,7 @@ function itemSources() {
   Object.entries(FISH_SPOTS).forEach(([z, sp]) => (sp.fish || []).forEach(n => put(n, `${z} ${sp.name} 낚시`)));
   Object.entries(RIFT_WEAPONS).forEach(([z, l]) => l.forEach(([n]) => put(n, `${z} 균열 (보스 처치·조사에서 드물게)`)));
   WEAPON_NAMES.forEach(n => put(n, '튜토리얼 시작 무기 (6종 중 1개를 골라 받는다)'));
+  put('은빛 낚시 메달', `${FISH_FEST.name} 10위 안 보상`);
   _src = m; return m;
 }
 const sourceText = n => { const l = itemSources()[n]; return l ? l.join(' / ') : '특별한 이벤트·거래 등'; }; // 얻는 곳은 전부 보여 준다 (예전엔 4곳 + 외 n곳)
@@ -1365,6 +1366,7 @@ const following = () => !!(state.follow && PARTY.id);
 const POLLS = { // 이름: [함수, active, idle, hidden, away] (밀리초, null = 안 함)
   party: [() => partySync(), () => (following() ? 3000 : 20000), () => (following() ? 3000 : 60000), () => (following() ? 5000 : null), () => (following() ? 5000 : 300000)], // 파티 초대·구성·위치: 평소 20초, 동행 중 3초 (파티장 출발을 바로 따라간다)
   chat: [() => chatPoll(), () => (nowMs() - (view.chatNewAt || 0) > 180000 ? 15000 : 5000), 40000, null, 300000], // 대화가 오가는 3분 동안 5초, 조용하면 15초 (10/27)
+  ffest: [() => ffSync(), () => (fishFest() && !fishFest().done ? 60000 : null), () => (fishFest() && !fishFest().done ? 120000 : null), null, () => (fishFest() && !fishFest().done ? 600000 : null)], // 낚시대회 기록 보내기·끝난 뒤 칭호
   nearby: [() => nearbyPoll(), () => (state.side === '상황' ? 30000 : 60000), 90000, null, null],
   lt: [() => ltPoll(), 20000, 60000, null, null], // 실시간 교환 초대 확인 (교환 창이 열려 있으면 창이 2초마다 따로 확인)
   friend: [() => friendPoll(), 60000, 180000, 300000, 600000],
@@ -1637,7 +1639,7 @@ const A = {
       toast(`캠프 관리인이 물건을 받아 들고 한참을 들여다보더니, 뽑기권 ${r.tickets}장을 건넸습니다.`); addLog(`분실물을 전달하고 뽑기권 ${r.tickets}장을 받았습니다.`);
       if (r.gift) toast(`그리고 감사의 표시로 「${r.gift}」을(를) 받았습니다.`); awardTitles(); renderProfile(); renderInventory(); renderAction(); sfx('levelup');
     }
-    else if (a.kind === 'enhance') openEnhance(); else if (a.kind === 'dismantle') openDismantle(); else if (a.kind === 'market') openMarket('사기'); else if (a.kind === 'room') openRoom(); else if (a.kind === 'storage') { view.storSel = null; openStorage(); } else if (a.kind === 'promo') openPromo(); else if (a.kind === 'lostbox') openLostBox(); else if (a.kind === 'duel') openDuel(); else if (a.kind === 'bossinfo') openBossInfo(); else if (a.kind === 'tmsg') openTrainMsg(); else if (a.kind === 'farm') openFarm(); else if (a.kind === 'pet') openPets(); else if (a.kind === 'subjob') { view.quitAsk = false; openJob(); }
+    else if (a.kind === 'enhance') openEnhance(); else if (a.kind === 'dismantle') openDismantle(); else if (a.kind === 'market') openMarket('사기'); else if (a.kind === 'room') openRoom(); else if (a.kind === 'storage') { view.storSel = null; openStorage(); } else if (a.kind === 'promo') openPromo(); else if (a.kind === 'lostbox') openLostBox(); else if (a.kind === 'fishfest') openFishFest(); else if (a.kind === 'duel') openDuel(); else if (a.kind === 'bossinfo') openBossInfo(); else if (a.kind === 'tmsg') openTrainMsg(); else if (a.kind === 'farm') openFarm(); else if (a.kind === 'pet') openPets(); else if (a.kind === 'subjob') { view.quitAsk = false; openJob(); }
     else if (a.kind === 'travel') { // 시간이 걸리지 않는 이동은 묻지 않고 바로 간다. 이동장치에서 지상으로 내려가는 1분짜리만 묻는다
       if (LOCATIONS[a.to].danger && state.location === '이동장치') askAction(el.dataset.choice); else doTravel(a.to);
     }
@@ -2232,6 +2234,15 @@ const A = {
     renderBag(); renderInventory(); renderProfile(); renderAction(); sfx('ok'); openStorage(true);
   },
   'enh-tab': el => { view.enhTab = el.dataset.tab; openEnhance(); },
+  'bag-up': () => { const r = bagUpgrade(); if (typeof r === 'string') { toast(r); sfx('error'); return; } sfx('levelup'); toast(`소지품이 1칸 늘었어요. (가방 강화 +${r.slots}칸 · ${r.cost} CR)`); renderBag(); renderStatus(); openEnhance(true); },
+  'ff-join': async () => { const e = fishFestJoin(); if (e) { toast(e); sfx('error'); return; } sfx('levelup'); toast(`${FISH_FEST.name}에 참가 신청했어요! 이제 낚은 물고기가 기록돼요.`); addLog(`${FISH_FEST.name} 참가 신청`); await ffSync(); openFishFest(); },
+  'ff-tab': el => { view.ffTab = el.dataset.tab; openFishFest(); },
+  'ff-deliver': async () => {
+    const picks = $$('.ff-q').map(x => [x.dataset.name, +x.value]).filter(([, q]) => q > 0);
+    const r = fishFestDeliver(picks); if (typeof r === 'string') { toast(r); sfx('error'); return; }
+    sfx('ok'); toast(`물고기 ${r.n}마리를 납품했어요. (+${r.cr} CR · 납품한 종류 ${r.kinds}가지)`); renderBag(); renderStatus(); await ffSync(); openFishFest();
+  },
+  'ff-refresh': async () => { view.ffBoard = null; await ffSync(true); openFishFest(); },
   'feed-open': el => openFeed(el.dataset.name),
   'feed-back': () => openEnhance(),
   'feed-do': () => {
@@ -3655,8 +3666,8 @@ function askConfirm(title, msg, okLabel, act, data, back) {
 }
 function openEnhance(keepScroll) {
   const st0 = keepScroll === true && $('#modalBody') ? $('#modalBody').scrollTop : 0, names = enchantables(), worn = new Set(Object.values(state.equipment));
-  const tab = ['세공', '계승'].includes(view.enhTab) ? view.enhTab : '강화';
-  const tabs = `<div class="tabs flush">${['강화', '계승', '세공'].map(t => `<button class="${t === tab ? 'active' : ''}" data-act="enh-tab" data-tab="${t}">${t}</button>`).join('')}</div>`;
+  const tab = ['세공', '계승', '가방'].includes(view.enhTab) ? view.enhTab : '강화';
+  const tabs = `<div class="tabs flush">${['강화', '계승', '세공', '가방'].map(t => `<button class="${t === tab ? 'active' : ''}" data-act="enh-tab" data-tab="${t}">${t}</button>`).join('')}</div>`;
   let intro, rows;
   if (tab === '강화') {
     intro = `<p class="tiny">무기를 F랭에서 A랭까지 CR로 강화합니다. 실패하면 CR만 잃어요(랭크는 내려가지 않아요). A랭부터는 <b>승급</b>: 쓰지 않는 장비를 먹여 경험치를 채우면 S → SS → SSS랭이 됩니다. 보유 CR ${state.money}</p>`;
@@ -3666,6 +3677,10 @@ function openEnhance(keepScroll) {
       return `<div class="nearby-row"><div class="round-avatar">${icon(it.icon)}</div><div class="grow"><strong>${esc(shownName(n))}${nickOf(n) ? ` <small>(${esc(n)})</small>` : ''} <em class="tag">${REINFORCE_RANKS[lv]}랭</em></strong><small>${worn.has(n) ? '착용 중' : '소지품'} · 등급 ${weaponGrade(n) || '?'}${wbaseOf(n) !== n ? ` (계승: ${esc(wbaseOf(n))})` : ''} · 공격력 +${itemAtk(n) + reinforceBonus(n)}${lv ? ` (강화 +${reinforceBonus(n)})` : ''}</small><small>${info}</small>${aRank && !top ? `<span class="xp-bar"><i style="width:${Math.min(100, Math.round(xp / need * 100))}%"></i></span>` : ''}</div>` +
         (aRank ? `<div class="row-gap">${top ? '' : `<button class="primary" data-act="feed-open" data-name="${esc(n)}">${icon('upgrade')} 승급</button>`}<button data-act="nick-open" data-name="${esc(n)}">${icon('edit')} ${nickOf(n) ? '이름' : '이름 붙이기'}</button></div></div>` : `<button class="primary" data-act="reinforce-roll" data-name="${esc(n)}" ${state.money < REINFORCE_COST[lv] ? 'disabled' : ''}>강화 (${REINFORCE_COST[lv]} CR)</button></div>`);
     }).join('') || '<div class="empty">강화할 무기가 없습니다. 무기를 얻거나 제작해 보세요.</div>';
+  } else if (tab === '가방') {
+    const n = state.bagPlus | 0, top = n >= BAG_PLUS_MAX, cost = top ? 0 : bagPlusCost(n);
+    intro = `<p class="tiny">CR을 내고 소지품 칸을 1칸씩 늘립니다. 어떤 가방을 메도 늘린 칸은 그대로 더해져요. 늘릴수록 비용이 올라갑니다(최대 +${BAG_PLUS_MAX}칸). 보유 CR ${state.money}</p>`;
+    rows = `<div class="nearby-row"><div class="round-avatar">${icon('backpack')}</div><div class="grow"><strong>가방 강화 +${n}칸</strong><small>지금 소지품 ${bagCapacity()}칸${top ? ' · 최대까지 늘렸어요' : ` · 다음 +1칸 ${cost} CR`}</small><span class="xp-bar"><i style="width:${Math.round(n / BAG_PLUS_MAX * 100)}%"></i></span></div>${top ? '' : `<button class="primary" data-act="bag-up" ${state.money < cost ? 'disabled' : ''}>+1칸 (${cost} CR)</button>`}</div>`;
   } else if (tab === '계승') {
     const ws = names.filter(n => ITEMS[n].slot === '무기'), src = ws, op = view.tfOpt || (view.tfOpt = { base: true, rank: true, ench: true });
     if (!src.includes(view.tfFrom)) view.tfFrom = src[0] || ''; if (!ws.includes(view.tfTo) || view.tfTo === view.tfFrom) view.tfTo = ws.find(n => n !== view.tfFrom) || '';
@@ -4217,3 +4232,72 @@ function pxScale() { // 도트 아이콘(16px 원본)이 실제 화면 픽셀에
   const r = document.documentElement.style; r.setProperty('--px-1', f(16)); r.setProperty('--px-2', f(32));
 }
 pxScale(); window.addEventListener('resize', pxScale); // 확대·축소(Ctrl +/−)도 배율이 바뀌어 resize가 온다
+
+/* ===== 낚시대회 화면 · 서버 맞추기 (2026-11-06) ===== */
+const ffLeft = ms => { const t = Math.max(0, Math.ceil(ms / 60000)), d = Math.floor(t / 1440), h = Math.floor(t % 1440 / 60), m = t % 60; return `${d ? `${d}일 ` : ''}${h}시간 ${m}분`; };
+function ffLocalBoard() { // 서버가 없을 때(미리보기): 내 기록만으로 순위표를 만든다
+  const f = fishFest(), nm = state.character.name, me = {}, b = { local: true, big: [], sent: [], kinds: [], me };
+  if (f && f.best) { b.big.push({ name: nm, v: f.best.cm, fish: f.best.n, r: 1 }); me.big = 1; }
+  if (f && f.sent) { b.sent.push({ name: nm, v: f.sent, r: 1 }); me.sent = 1; }
+  if (f && f.kinds.length) { b.kinds.push({ name: nm, v: f.kinds.length, r: 1 }); me.kinds = 1; }
+  return b;
+}
+async function ffSync(force) { // 참가·최고 기록·납품을 서버로 보내고 순위를 받는다. 끝난 뒤에는 순위대로 칭호·보상
+  const f = fishFest(); if (!f || view._ffBusy) return;
+  if (!(Cloud.enabled && Cloud.user())) { view.ffBoard = ffLocalBoard(); if (fishFestOver() && !f.done && nowMs() > FISH_FEST.end + 5 * 60000) { const r = fishFestSettle(view.ffBoard.me); if (r) { awardTitles(); renderProfile(); renderBars(); toast(`${r.test ? '(테스트) ' : ''}${FISH_FEST.name} 결과: ${r.titles.length ? `칭호 「${r.titles.join('」「')}」 · ` : ''}참가 보상${r.top ? ' + 상위 10위 보상' : ''}${r.test ? ' — 테스트라 지급하지 않았어요.' : ''}`); } } return; }
+  view._ffBusy = true;
+  try {
+    if (fishFestOpen() || nowMs() < FISH_FEST.end + 5 * 60000) {
+      if (f.joined && !f.synced) { const r = await Cloud.ffJoin(FISH_FEST.id); if (r && r.ok) { f.synced = true; save(); } }
+      if (f.synced && f.best && f.bestSent !== f.best.cm) { const r = await Cloud.ffCatch(FISH_FEST.id, f.best.n, f.best.cm); if (r && r.ok) { f.bestSent = f.best.cm; save(); } }
+      while (f.synced && f.q.length) { const q = f.q[0], r = await Cloud.ffDeliver(FISH_FEST.id, q.key, q.items); if (!r || (!r.ok && r.msg !== 'bad')) break; f.q.shift(); save(); } // 끊기면 다음에 같은 key 로 다시 (서버가 한 번만 센다)
+    }
+    if (force || !view.ffBoard || nowMs() - (view.ffBoardAt || 0) > 60000 || (fishFestOver() && !f.done)) { const b = await Cloud.ffBoard(FISH_FEST.id); if (b && typeof b === 'object') { view.ffBoard = b; view.ffBoardAt = nowMs(); } }
+    if (fishFestOver() && !f.done && view.ffBoard && nowMs() > FISH_FEST.end + 5 * 60000) { // 끝난 뒤 5분이 지나면 순위 확정 → 칭호
+      const r = fishFestSettle(view.ffBoard.me); if (r) { awardTitles(); renderProfile(); renderBars(); renderMailBadge(); sfx('levelup');
+        const msg = `${r.titles.length ? `칭호 「${r.titles.join('」「')}」 · ` : ''}참가 보상${r.top ? ' + 상위 10위 보상' : ''}`;
+        toast(r.test ? `(테스트) 이 순위라면 ${msg}을(를) 받아요. 실제로는 지급하지 않았어요.` : `${FISH_FEST.name} 결과: ${msg}을(를) 받았어요! 보상 물건은 메일함에 있어요.`); if (!r.test) addLog(`${FISH_FEST.name} 결과: ${msg}`); }
+    }
+  } catch (e) { /* 서버에 friends.sql 이 아직 없거나 오프라인 — 다음에 다시 */ } finally { view._ffBusy = false; }
+}
+function ffBoardHtml(k) {
+  const b = view.ffBoard, rows = b && Array.isArray(b[k]) ? b[k] : null, me = state.character.name, unit = k === 'big' ? 'cm' : k === 'sent' ? '마리' : '종';
+  if (!rows) return `<div class="empty">${Cloud.enabled && Cloud.user() ? '순위를 불러오는 중이에요…' : '서버에 로그인해야 순위를 볼 수 있어요.'}</div>`;
+  const note = b.local ? '<p class="tiny">서버에 연결되지 않아 내 기록만 보여요.</p>' : '';
+  if (!rows.length) return note + '<div class="empty">아직 기록이 없어요.</div>';
+  return note + rows.map(r => `<div class="nearby-row ff-row ${r.name === me ? 'me' : ''}"><b class="ff-rank r${Math.min(4, r.r | 0)}">${r.r | 0}</b><div class="grow"><strong>${esc(cleanText(r.name, 12))}</strong>${k === 'big' && r.fish ? `<small>${esc(cleanText(r.fish, 20))}</small>` : ''}</div><b>${esc(String(r.v))}${unit}</b></div>`).join('') +
+    (b.me && b.me[k] > 10 ? `<p class="tiny">내 순위: ${b.me[k]}위</p>` : '');
+}
+function openFishFest() {
+  const f = fishFest(), now = nowMs(), open = fishFestOpen(now), over = fishFestOver(now), at = !!atFishSpot();
+  if (!view.ffTab || !['납품', '순위'].includes(view.ffTab)) view.ffTab = '납품';
+  const when = open ? `진행 중 · 남은 시간 ${ffLeft(FISH_FEST.end - now)}` : over ? '대회가 끝났어요' : `시작까지 ${ffLeft(FISH_FEST.start - now)}`;
+  const mine = f ? `<p class="tiny">내 기록 · 가장 큰 물고기 ${f.best ? `${esc(f.best.n)} ${f.best.cm}cm` : '없음'} · 납품 ${f.sent}마리 · ${f.kinds.length}종</p>` : '';
+  const R = FISH_FEST.rewards, rw = r => [`${r.cr} CR`, `뽑기권 ${r.tickets}장`, ...r.items.map(([n, q]) => `${n} ${q}개`)].join(' · ');
+  let body = `${FISH_FEST.test ? '<p class="tiny"><b>테스트 대회</b> — 이 기기·관리자만 보이고, 끝나도 보상·칭호는 지급하지 않아요.</p>' : ''}<p class="tiny"><b>${FISH_FEST.name}</b> · ${FISH_FEST.test ? '테스트' : '11/6(금) 20:00 ~ 11/9(월) 06:00'} · ${when}</p><p class="tiny">부문: 가장 큰 물고기 · 가장 많이 납품 · 가장 다양한 종류 (참가 신청 뒤 낚은 물고기만 기록돼요)</p>` +
+    `<p class="tiny">참가 보상: ${rw(R.join)}<br>10위 안(어느 부문이든): ${rw(R.top)} 추가<br>부문별 1~3위 칭호: 「${FISH_FEST.titles.big}」「${FISH_FEST.titles.sent}」「${FISH_FEST.titles.kinds}」</p>${mine}`;
+  if (!f || !f.joined) {
+    body += open ? `<div class="row-gap"><button class="primary" data-act="ff-join" ${at ? '' : 'disabled'}>${icon('how_to_reg')} 참가 신청</button></div>${at ? '' : '<p class="tiny">참가 신청은 낚시터 칸에서 할 수 있어요.</p>'}` : '';
+    if (!open) body += `<div class="choice-label">순위</div>${['big', 'sent', 'kinds'].map(k => `<div class="choice-label">${FISH_FEST.labels[k]}</div>${ffBoardHtml(k)}`).join('')}`;
+  } else {
+    const tabs = `<div class="tabs flush">${['납품', '순위'].map(t => `<button class="${view.ffTab === t ? 'active' : ''}" data-act="ff-tab" data-tab="${t}">${t}</button>`).join('')}</div>`;
+    if (view.ffTab === '납품') {
+      const list = festFishes().map(n => [n, countItem(n)]).filter(([, c]) => c > 0);
+      body = tabs + body + (open ? (list.length ? list.map(([n, c]) => `<div class="nearby-row"><div class="round-avatar">${icon(ITEMS[n].icon)}</div><div class="grow"><strong>${esc(n)}${f.kinds.includes(n) ? '' : ' <em class="tag">새 종류</em>'}</strong></div><select class="ff-q" data-name="${esc(n)}" aria-label="${esc(n)} 개수">${Array.from({ length: Math.min(99, c) + 1 }, (_, k) => `<option value="${k}" ${k === c ? '' : ''}>${k}</option>`).join('')}</select><small class="tiny">/ ${c}</small></div>`).join('') +
+        `<div class="row-gap"><button class="primary" data-act="ff-deliver" ${at ? '' : 'disabled'}>${icon('set_meal')} 납품하기</button></div>${at ? '' : '<p class="tiny">납품은 낚시터 칸에서 할 수 있어요.</p>'}` : '<div class="empty">가방에 물고기가 없어요. 낚시를 해 보세요!</div>') : '<div class="empty">대회 기간이 아니라 납품할 수 없어요.</div>');
+    } else body = tabs + body + `<div class="row-gap"><button data-act="ff-refresh">${icon('refresh')} 새로고침</button></div>` + ['big', 'sent', 'kinds'].map(k => `<div class="choice-label">${FISH_FEST.labels[k]}</div>${ffBoardHtml(k)}`).join('');
+  }
+  modal(FISH_FEST.name, body, [btnClose], true);
+  if (!view.ffBoard && Cloud.enabled && Cloud.user()) ffSync(true).then(() => { if ($('#modalTitle') && $('#modalTitle').textContent === FISH_FEST.name) openFishFest(); });
+}
+
+/* 다른 창(탭)에서 게임을 열었으면 이 창은 멈춘다 — 옛 창이 옛 진행으로 저장해 되돌아가는 문제 (2026-11-06) */
+tabClaim(); // 이 창이 가장 최근
+function onStaleTab() {
+  if ($('#tabLock')) return; window.__noSave = true; window.__locked = true; if (typeof _cloudTimer !== 'undefined' && _cloudTimer) { clearTimeout(_cloudTimer); _cloudTimer = 0; }
+  const el = document.createElement('div'); el.id = 'tabLock'; el.className = 'tab-lock';
+  el.innerHTML = `<div class="dev-card"><h3>${icon('tab')} 다른 창에서 게임이 열려 있어요</h3><p>같은 기기의 다른 창(탭)에서 진행 중이라 이 창은 멈췄어요.<br>이 창의 옛 진행으로 덮어쓰지 않아요.</p><button class="primary" id="tabTake">이 창에서 계속하기</button></div>`;
+  document.body.appendChild(el); $('#tabTake').onclick = () => location.reload(); // 다시 열면 저장된 최신 진행을 불러온다
+}
+addEventListener('storage', e => { if (e.key !== TAB_KEY || !e.newValue) return; try { const o = JSON.parse(e.newValue); if (o && o.id !== TAB_ID) onStaleTab(); } catch (er) { /* 무시 */ } });
+addEventListener('pageshow', e => { if (e.persisted) location.reload(); }); // 뒤로 가기 캐시에서 되살아난 옛 화면은 다시 불러온다
