@@ -118,6 +118,10 @@ def api(route):
     if '/rpc/get_profile' in u:
         return route.fulfill(headers=h, body=json.dumps({'uid': '33333333-3333-3333-3333-333333333333', 'name': body.get('p_name'), 'title': '신입 능력자', 'rank': 'E', 'level': '7', 'age': '24', 'keywords': '과묵,정찰', 'ability': '그림자 이동', 'abilityDesc': '그림자 사이를 건넌다', 'online': True, 'guild': '별무리'}) if body.get('p_name') == '하늘' else 'null')
     if '/rpc/chat_send' in u: server['chatsent'].append(body); return route.fulfill(headers=h, body=json.dumps({'ok': True}))
+    if '/rpc/fish_fest_board' in u:  # 낚시대회 순위 (ffmode='404'면 서버에 함수가 없는 상황)
+        server['ffb'] = server.get('ffb', 0) + 1
+        if server.get('ffmode') == '404': return route.fulfill(status=404, headers=h, body=json.dumps({'message': 'Could not find the function'}))
+        return route.fulfill(headers=h, body=json.dumps({'joined': False, 'count': 1, 'big': [{'name': '갑', 'v': 50.5, 'fish': '붕어', 'r': 1}], 'sent': [], 'kinds': [], 'me': {}}))
     if '/rpc/get_avatars_uid' in u:  # 계정 기준 프로필 사진 (없으면 404 → 클라이언트가 이름 기준으로 되돌아간다)
         if server.get('avatarsU') is None: return route.fulfill(status=404, headers=h, body=json.dumps({'message': 'Could not find the function public.get_avatars_uid'}))
         return route.fulfill(headers=h, body=json.dumps({x: server['avatarsU'][x] for x in body.get('p_uids', []) if x in server['avatarsU']}))
@@ -749,6 +753,13 @@ with sync_playwright() as p:
     pg.evaluate("document.querySelector('#tutorial').classList.add('hidden')")
     pg.evaluate("openSettings()")
     check('settings_has_no_logout_or_signup_link', pg.locator('[data-act="cloud-logout"]').count() == 0 and pg.locator('a[href="signup.html"]').count() == 0)
+    # 낚시대회: 참가 전에 열어도 멈추지 않고(순위를 계속 다시 요청하지 않고) 순위가 보인다
+    pg.evaluate("FISH_FEST.start=Date.now()-60000;FISH_FEST.end=Date.now()+3600000;state.ffest=null;view.ffBoard=null")
+    for mode in ('404', 'ok'):
+        server['ffmode'] = mode; server['ffb'] = 0; pg.evaluate("view.ffBoard=null;openFishFest()"); pg.wait_for_timeout(1200)
+        check(f'fish_fest_open_no_loop_{mode}', server['ffb'] <= 2, server['ffb'])
+    check('fish_fest_board_shows_before_join', pg.evaluate("document.querySelector('#modalBody').innerText.includes('갑')"))
+    pg.evaluate("closeModal()")
     # 화면을 떠날 때(탭 닫기) 6초를 기다리지 않고 바로 올린다 + 충돌로 막혀도 서버 확인 뒤 다시 열린다
     pg.evaluate("closeModal();_cloudBlocked=false;_locked=false;if(_cloudTimer){clearTimeout(_cloudTimer);_cloudTimer=0}"); server['data']['__dev'] = pg.evaluate("DEV"); pg.evaluate("Cloud.setRev(arguments[0])" if False else f"Cloud.setRev({server['rev']})")
     np1 = len(server['pushes']); pg.evaluate("state.money=31337;save();cloudSchedule()"); pg.wait_for_timeout(50)

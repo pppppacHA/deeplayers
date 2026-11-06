@@ -4243,17 +4243,17 @@ function ffLocalBoard() { // 서버가 없을 때(미리보기): 내 기록만�
   return b;
 }
 async function ffSync(force) { // 참가·최고 기록·납품을 서버로 보내고 순위를 받는다. 끝난 뒤에는 순위대로 칭호·보상
-  const f = fishFest(); if (!f || view._ffBusy) return;
-  if (!(Cloud.enabled && Cloud.user())) { view.ffBoard = ffLocalBoard(); if (fishFestOver() && !f.done && nowMs() > FISH_FEST.end + 5 * 60000) { const r = fishFestSettle(view.ffBoard.me); if (r) { awardTitles(); renderProfile(); renderBars(); toast(`${r.test ? '(테스트) ' : ''}${FISH_FEST.name} 결과: ${r.titles.length ? `칭호 「${r.titles.join('」「')}」 · ` : ''}참가 보상${r.top ? ' + 상위 10위 보상' : ''}${r.test ? ' — 테스트라 지급하지 않았어요.' : ''}`); } } return; }
+  const f = fishFest(); if (view._ffBusy) return; // 참가 전(f 없음)에도 순위는 받아 온다
+  if (!(Cloud.enabled && Cloud.user())) { view.ffBoard = ffLocalBoard(); if (f && fishFestOver() && !f.done && nowMs() > FISH_FEST.end + 5 * 60000) { const r = fishFestSettle(view.ffBoard.me); if (r) { awardTitles(); renderProfile(); renderBars(); toast(`${r.test ? '(테스트) ' : ''}${FISH_FEST.name} 결과: ${r.titles.length ? `칭호 「${r.titles.join('」「')}」 · ` : ''}참가 보상${r.top ? ' + 상위 10위 보상' : ''}${r.test ? ' — 테스트라 지급하지 않았어요.' : ''}`); } } return; }
   view._ffBusy = true;
   try {
-    if (fishFestOpen() || nowMs() < FISH_FEST.end + 5 * 60000) {
+    if (f && (fishFestOpen() || nowMs() < FISH_FEST.end + 5 * 60000)) {
       if (f.joined && !f.synced) { const r = await Cloud.ffJoin(FISH_FEST.id); if (r && r.ok) { f.synced = true; save(); } }
       if (f.synced && f.best && f.bestSent !== f.best.cm) { const r = await Cloud.ffCatch(FISH_FEST.id, f.best.n, f.best.cm); if (r && r.ok) { f.bestSent = f.best.cm; save(); } }
       while (f.synced && f.q.length) { const q = f.q[0], r = await Cloud.ffDeliver(FISH_FEST.id, q.key, q.items); if (!r || (!r.ok && r.msg !== 'bad')) break; f.q.shift(); save(); } // 끊기면 다음에 같은 key 로 다시 (서버가 한 번만 센다)
     }
-    if (force || !view.ffBoard || nowMs() - (view.ffBoardAt || 0) > 60000 || (fishFestOver() && !f.done)) { const b = await Cloud.ffBoard(FISH_FEST.id); if (b && typeof b === 'object') { view.ffBoard = b; view.ffBoardAt = nowMs(); } }
-    if (fishFestOver() && !f.done && view.ffBoard && nowMs() > FISH_FEST.end + 5 * 60000) { // 끝난 뒤 5분이 지나면 순위 확정 → 칭호
+    if (force || !view.ffBoard || nowMs() - (view.ffBoardAt || 0) > 60000 || (f && fishFestOver() && !f.done)) { const b = await Cloud.ffBoard(FISH_FEST.id); if (b && typeof b === 'object') { view.ffBoard = b; view.ffBoardAt = nowMs(); } }
+    if (f && fishFestOver() && !f.done && view.ffBoard && nowMs() > FISH_FEST.end + 5 * 60000) { // 끝난 뒤 5분이 지나면 순위 확정 → 칭호
       const r = fishFestSettle(view.ffBoard.me); if (r) { awardTitles(); renderProfile(); renderBars(); renderMailBadge(); sfx('levelup');
         const msg = `${r.titles.length ? `칭호 「${r.titles.join('」「')}」 · ` : ''}참가 보상${r.top ? ' + 상위 10위 보상' : ''}`;
         toast(r.test ? `(테스트) 이 순위라면 ${msg}을(를) 받아요. 실제로는 지급하지 않았어요.` : `${FISH_FEST.name} 결과: ${msg}을(를) 받았어요! 보상 물건은 메일함에 있어요.`); if (!r.test) addLog(`${FISH_FEST.name} 결과: ${msg}`); }
@@ -4278,7 +4278,7 @@ function openFishFest() {
     `<p class="tiny">참가 보상: ${rw(R.join)}<br>10위 안(어느 부문이든): ${rw(R.top)} 추가<br>부문별 1~3위 칭호: 「${FISH_FEST.titles.big}」「${FISH_FEST.titles.sent}」「${FISH_FEST.titles.kinds}」</p>${mine}`;
   if (!f || !f.joined) {
     body += open ? `<div class="row-gap"><button class="primary" data-act="ff-join" ${at ? '' : 'disabled'}>${icon('how_to_reg')} 참가 신청</button></div>${at ? '' : '<p class="tiny">참가 신청은 낚시터 칸에서 할 수 있어요.</p>'}` : '';
-    if (!open) body += `<div class="choice-label">순위</div>${['big', 'sent', 'kinds'].map(k => `<div class="choice-label">${FISH_FEST.labels[k]}</div>${ffBoardHtml(k)}`).join('')}`;
+    body += ['big', 'sent', 'kinds'].map(k => `<div class="choice-label">${FISH_FEST.labels[k]}</div>${ffBoardHtml(k)}`).join(''); // 참가 전에도 순위는 보인다
   } else {
     const tabs = `<div class="tabs flush">${['납품', '순위'].map(t => `<button class="${view.ffTab === t ? 'active' : ''}" data-act="ff-tab" data-tab="${t}">${t}</button>`).join('')}</div>`;
     if (view.ffTab === '납품') {
@@ -4288,7 +4288,7 @@ function openFishFest() {
     } else body = tabs + body + `<div class="row-gap"><button data-act="ff-refresh">${icon('refresh')} 새로고침</button></div>` + ['big', 'sent', 'kinds'].map(k => `<div class="choice-label">${FISH_FEST.labels[k]}</div>${ffBoardHtml(k)}`).join('');
   }
   modal(FISH_FEST.name, body, [btnClose], true);
-  if (!view.ffBoard && Cloud.enabled && Cloud.user()) ffSync(true).then(() => { if ($('#modalTitle') && $('#modalTitle').textContent === FISH_FEST.name) openFishFest(); });
+  if (!view.ffBoard && !view._ffAsk && Cloud.enabled && Cloud.user()) { view._ffAsk = true; ffSync(true).finally(() => { view._ffAsk = false; if (view.ffBoard && $('#modalTitle') && $('#modalTitle').textContent === FISH_FEST.name) openFishFest(); }); } // 순위를 받은 뒤 한 번만 다시 그린다 (예전엔 참가 전이면 받지도 못한 채 계속 다시 열어 화면이 멈췄다)
 }
 
 /* 다른 창(탭)에서 게임을 열었으면 이 창은 멈춘다 — 옛 창이 옛 진행으로 저장해 되돌아가는 문제 (2026-11-06) */
