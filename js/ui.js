@@ -1093,7 +1093,7 @@ function itemSources() {
   Object.entries(FISH_SPOTS).forEach(([z, sp]) => (sp.fish || []).forEach(n => put(n, `${z} ${sp.name} 낚시`)));
   Object.entries(RIFT_WEAPONS).forEach(([z, l]) => l.forEach(([n]) => put(n, `${z} 균열 (보스 처치·조사에서 드물게)`)));
   WEAPON_NAMES.forEach(n => put(n, '튜토리얼 시작 무기 (6종 중 1개를 골라 받는다)'));
-  put('은빛 낚시 메달', `${FISH_FEST.name} 10위 안 보상`);
+  put('은빛 낚시 메달', `${FISH_FEST.name} 10위 안 보상`); put('각성의 비늘', `${FISH_FEST.name} 참가·10위 안 보상`);
   _src = m; return m;
 }
 const sourceText = n => { const l = itemSources()[n]; return l ? l.join(' / ') : '특별한 이벤트·거래 등'; }; // 얻는 곳은 전부 보여 준다 (예전엔 4곳 + 외 n곳)
@@ -2119,7 +2119,7 @@ const A = {
     if (err) { toast(err); sfx('error'); return; }
     const gainTxt = ITEMS[name].use.warp ? '' : useGainText(name, n);
     if (useItem(name, n, el.dataset.mk)) {
-      closeModal(); resetPhase(); renderBars(); renderBag(); renderMapHead(); renderMap(); renderAction(); renderSide(); save();
+      closeModal(); resetPhase(); renderBars(); renderBag(); renderMapHead(); renderMap(); renderAction(); renderSide(); if (ITEMS[name].use.pt) { renderStatus(); renderProfile(); } save();
       toast(ITEMS[name].use.warp ? '귀환 신호기로 본부에 돌아왔습니다.' : `${name}을(를) ${n > 1 ? n + '개 ' : ''}사용했습니다. (${gainTxt})`);
     }
   },
@@ -2234,13 +2234,13 @@ const A = {
     renderBag(); renderInventory(); renderProfile(); renderAction(); sfx('ok'); openStorage(true);
   },
   'enh-tab': el => { view.enhTab = el.dataset.tab; openEnhance(); },
-  'bag-up': () => { const r = bagUpgrade(); if (typeof r === 'string') { toast(r); sfx('error'); return; } sfx('levelup'); toast(`소지품이 1칸 늘었어요. (가방 강화 +${r.slots}칸 · ${r.cost} CR)`); renderBag(); renderStatus(); openEnhance(true); },
+  'bag-up': () => { const r = bagUpgrade(); if (typeof r === 'string') { toast(r); sfx('error'); return; } sfx('levelup'); toast(`소지품이 1칸 늘었어요. (가방 강화 +${r.slots}칸 · ${r.cost} CR)`); renderBag(); renderStatus(); renderProfile(); openEnhance(true); },
   'ff-join': async () => { const e = fishFestJoin(); if (e) { toast(e); sfx('error'); return; } sfx('levelup'); toast(`${FISH_FEST.name}에 참가 신청했어요! 이제 낚은 물고기가 기록돼요.`); addLog(`${FISH_FEST.name} 참가 신청`); await ffSync(); openFishFest(); },
   'ff-tab': el => { view.ffTab = el.dataset.tab; openFishFest(); },
   'ff-deliver': async () => {
     const picks = $$('.ff-q').map(x => [x.dataset.name, +x.value]).filter(([, q]) => q > 0);
     const r = fishFestDeliver(picks); if (typeof r === 'string') { toast(r); sfx('error'); return; }
-    sfx('ok'); toast(`물고기 ${r.n}마리를 납품했어요. (+${r.cr} CR · 납품한 종류 ${r.kinds}가지)`); renderBag(); renderStatus(); await ffSync(); openFishFest();
+    sfx('ok'); toast(`물고기 ${r.n}마리를 납품했어요. (+${r.cr} CR · 납품한 종류 ${r.kinds}가지)`); renderBag(); renderStatus(); renderProfile(); await ffSync(); openFishFest();
   },
   'ff-refresh': async () => { view.ffBoard = null; await ffSync(true); openFishFest(); },
   'feed-open': el => openFeed(el.dataset.name),
@@ -2269,7 +2269,7 @@ const A = {
     const r = transferWeapon(view.tfFrom, view.tfTo, view.tfOpt || { base: true, rank: true, ench: true });
     if (typeof r === 'string') { toast(r); sfx('error'); openEnhance(); return; }
     sfx('ok'); toast(`${view.tfTo}이(가) ${[r.opt.base ? `${r.base}의 기본 등급(${weaponGrade(view.tfTo) || '?'})` : '', r.opt.rank ? `강화 ${REINFORCE_RANKS[r.lv]}랭` : '', r.opt.ench ? '세공' : ''].filter(Boolean).join('·')}을(를) 이어받았어요.`); addLog(`무기 계승: ${view.tfFrom} → ${view.tfTo} (등급 ${weaponGrade(view.tfTo) || '?'} · ${REINFORCE_RANKS[r.lv]}랭)`);
-    if (r.opt.base) view.tfFrom = ''; renderBag(); renderStatus(); openEnhance();
+    if (r.opt.base) view.tfFrom = ''; renderBag(); renderStatus(); renderProfile(); openEnhance();
   },
   'nick-open': el => {
     const n = el.dataset.name; if (!canNick(n)) { toast('A랭까지 강화한 무기에만 이름을 붙일 수 있어요.'); return; }

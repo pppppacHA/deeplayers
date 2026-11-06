@@ -782,7 +782,7 @@ function useGain(name, n = 1) {
   const m = 1 + healBonus(name);
   return { hp: use.hp ? Math.max(0, Math.min(v.hpMax, v.hp + Math.round(use.hp * m) * n) - v.hp) : 0, sp: use.sp ? Math.max(0, Math.min(v.spMax, v.sp + Math.round(use.sp * m) * n) - v.sp) : 0 };
 }
-const useGainText = (name, n) => { const g = useGain(name, n), v = state.vitals, b = []; if (ITEMS[name].use.hp) b.push(`HP ${v.hp} → ${v.hp + g.hp}`); if (ITEMS[name].use.sp) b.push(`기력 ${v.sp} → ${v.sp + g.sp}`); return b.join(' · '); }; // 지금 수치 → 사용 뒤 수치
+const useGainText = (name, n) => { const g = useGain(name, n), v = state.vitals, b = []; if (ITEMS[name].use.hp) b.push(`HP ${v.hp} → ${v.hp + g.hp}`); if (ITEMS[name].use.sp) b.push(`기력 ${v.sp} → ${v.sp + g.sp}`); if (ITEMS[name].use.pt) b.push(`스테이터스 포인트 ${state.statPoints | 0} → ${Math.min(99, (state.statPoints | 0) + ITEMS[name].use.pt * Math.max(1, n | 0))}`); return b.join(' · '); }; // 지금 수치 → 사용 뒤 수치
 const useFull = (name, n) => { const g = useGain(name, n), u = ITEMS[name].use; return (!u.hp || !g.hp) && (!u.sp || !g.sp); }; // 오를 수치가 하나도 없다
 /* 캠프 신호기: 구역의 캠프 칸 목록 [{x,y,label}] (둘이면 북쪽/남쪽, 같은 줄이면 서쪽/동쪽) */
 function campsOf(zoneId) {
@@ -809,6 +809,7 @@ function useItem(name, n = 1, mk) {
   const m = 1 + healBonus(name); // 서브잡 요리/약학 버프
   if (use.hp) v.hp = clamp(v.hp + Math.round(use.hp * m) * n, 0, v.hpMax);
   if (use.sp) v.sp = clamp(v.sp + Math.round(use.sp * m) * n, 0, v.spMax);
+  if (use.pt) state.statPoints = Math.min(99, (state.statPoints | 0) + use.pt * n); // 각성의 비늘: 스테이터스 포인트
   return true;
 }
 
@@ -1726,7 +1727,7 @@ function takeMats(rc, qty, picks) { // 쓴 재료 [[이름, 수량, 제작자?],
 /* 제작 아이템의 효과 문장 */
 function itemEffectParts(name, plain, fresh) { // fresh: 제작·상점·레시피처럼 새로 만들 물건 (내 강화·세공·이름은 붙이지 않는다) / { base: 기본 효과, extra: 강화·세공·세트 } 문장 목록
   const it = ITEMS[name], base = [], extra = [];
-  if (it.use) { if (it.use.hp) base.push(`HP +${it.use.hp} 회복`); if (it.use.sp) base.push(`기력 +${it.use.sp} 회복`); }
+  if (it.use) { if (it.use.hp) base.push(`HP +${it.use.hp} 회복`); if (it.use.sp) base.push(`기력 +${it.use.sp} 회복`); if (it.use.pt) base.push(`스테이터스 포인트 +${it.use.pt}`); }
   const wb = !plain && !fresh && wbaseOf(name) !== name ? wbaseOf(name) : ''; // 계승받은 무기: 원래 무기의 기본 성능
   const headAtk = !plain && !fresh && it.slot === '무기' && (wb || reinforceLv(name)); // 공격력은 설명 앞머리(weaponDesc)에 이미 있다
   if (wb) { if (ITEMS[wb].mods) base.push(...modText(ITEMS[wb].mods)); }
